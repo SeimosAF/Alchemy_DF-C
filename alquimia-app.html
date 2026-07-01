@@ -159,6 +159,25 @@
   .cat-badge.cat-danina { background: #b71c1c; }
   .cat-badge.cat-magica { background: #6a1b9a; }
 
+  .aplic-badge { font-size: 0.78em; padding: 1px 6px; border-radius: 3px; margin-left: 4px; background: #4a7a6a; color: #fff; }
+
+  .inv-subtab-bar { display: flex; gap: 6px; margin-bottom: 12px; }
+  .inv-subtab-btn { background: #999; flex: none; }
+  .inv-subtab-btn.active { background: var(--accent); }
+
+  .loot-row { border-bottom: 1px solid #d8cdb4; padding: 8px 0; }
+  .loot-row:last-child { border-bottom: none; }
+  .loot-tipo-label { color: #6b3a8a; font-style: italic; font-size: 0.9em; }
+  .loot-desc-area { width: 100%; padding: 4px 7px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 0.9em; resize: vertical; min-height: 36px; }
+
+  .pot-cat-section { margin-top: 12px; }
+  .pot-cat-section h3 { margin: 10px 0 4px; font-size: 1em; color: var(--accent); border-bottom: 1px solid #ccc; padding-bottom: 3px; }
+  .pot-cat-section h4 { margin: 6px 0 2px; font-size: 0.9em; color: #5a4a35; }
+  .pot-cat-entry { padding: 4px 0 4px 8px; border-bottom: 1px dashed #d8cdb4; }
+  .pot-cat-entry:last-child { border-bottom: none; }
+  .apodo-badge { font-style: italic; color: #8a5a2b; margin-left: 6px; font-size: 0.92em; }
+  .apodo-input-inline { padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 0.88em; width: 140px; margin: 0 4px; }
+
   .mat-row, .inv-row { border-bottom: 1px solid #d8cdb4; padding: 7px 0; }
   .mat-row:last-child, .inv-row:last-child { border-bottom: none; }
   .mat-desc { font-style: italic; color: #5a4a35; margin-top: 3px; font-size: 0.92em; }
@@ -340,18 +359,43 @@
       <h2>Catálogo de materiales</h2>
       <div id="matList"></div>
     </div>
+    <div class="panel">
+      <h2>📚 Catálogo de pociones</h2>
+      <div id="potionCatalogList"><p class="muted">Todavía no has creado ninguna poción.</p></div>
+    </div>
   </section>
 
   <!-- INVENTARIO -->
   <section id="tab-inventario" class="tab-content">
     <div class="panel">
-      <h2>Materiales</h2>
-      <div id="invMatList"></div>
-    </div>
-    <div class="panel">
-      <h2>Pociones</h2>
-      <div id="invPotList"></div>
-      <div id="drinkResult"></div>
+      <div class="inv-subtab-bar">
+        <button class="btn inv-subtab-btn active" data-action="inv-subtab" data-id="materiales">📦 Materiales</button>
+        <button class="btn inv-subtab-btn" data-action="inv-subtab" data-id="pociones">🧪 Pociones</button>
+        <button class="btn inv-subtab-btn" data-action="inv-subtab" data-id="loot">🔍 Loot</button>
+      </div>
+      <div id="invSubtabMateriales">
+        <div id="invMatList"></div>
+      </div>
+      <div id="invSubtabPociones" style="display:none;">
+        <div id="invPotList"></div>
+        <div id="drinkResult"></div>
+      </div>
+      <div id="invSubtabLoot" style="display:none;">
+        <h3 style="margin:0 0 8px;font-size:1em;">Añadir poción Loot</h3>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end;">
+          <div>
+            <label style="display:block;font-size:0.85em;font-weight:bold;margin-bottom:2px;">Nombre</label>
+            <input type="text" id="lootName" placeholder="Ej. Frasco misterioso" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font-family:inherit;width:200px;">
+          </div>
+          <div>
+            <label style="display:block;font-size:0.85em;font-weight:bold;margin-bottom:2px;">Cantidad</label>
+            <input type="number" id="lootQty" min="1" value="1" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font-family:inherit;width:70px;">
+          </div>
+          <button class="btn" data-action="add-loot">➕ Añadir</button>
+        </div>
+        <div id="lootPotList"><p class="muted">No tienes pociones Loot todavía.</p></div>
+        <div id="lootResult"></div>
+      </div>
     </div>
   </section>
 
@@ -392,8 +436,21 @@
       </div>
     </div>
 
+    <div id="craftAplicacionPanel" class="panel" style="display:none;">
+      <h2>2. Método de aplicación</h2>
+      <div class="form-row" style="max-width:340px;">
+        <label for="craftAplicacion">¿Cómo se aplica esta poción?</label>
+        <select id="craftAplicacion">
+          <option value="al beber">Al beber</option>
+          <option value="al contacto con la piel">Al contacto con la piel</option>
+          <option value="al contacto con la sangre">Al contacto con la sangre</option>
+          <option value="al inhalar">Al inhalar</option>
+        </select>
+      </div>
+    </div>
+
     <div class="panel">
-      <h2>3. Craftea</h2>
+      <h2 id="craftStepLabel">3. Craftea</h2>
       <p>Dificultad total: <strong id="craftDifficulty">—</strong></p>
       <div class="form-row" style="max-width:260px;">
         <label for="craftBonus">Bono situacional de esta tirada (ej. 3 o -2)</label>
@@ -447,16 +504,19 @@
     if (btn) btn.textContent = soundMuted ? '🔇' : '🔊';
   }
   // ──────────────────────────────────────────────────────────────────
-  var craftMode = 'elaboracion'; // 'elaboracion' | 'concentracion'
+  var craftMode = 'elaboracion'; // 'elaboracion' | 'concentracion' | 'multipocion'
   var craftSelection = { baseId: null, mods: {}, potions: {} };
   var editingMatId = null;
+  var invSubtab = 'materiales'; // 'materiales' | 'pociones' | 'loot'
 
   function defaultState() {
     return {
       character: { name: 'Mi personaje', intMod: 0, bonus: 0 },
       catalog: {},
       inventory: {},
-      potions: {}
+      potions: {},
+      potionCatalog: {},  // key → { apodo: '' }
+      lootPotions: {}     // id → { name, qty, descripcion, tipo, identificada }
     };
   }
 
@@ -470,6 +530,8 @@
         merged.catalog = parsed.catalog || {};
         merged.inventory = parsed.inventory || {};
         merged.potions = parsed.potions || {};
+        merged.potionCatalog = parsed.potionCatalog || {};
+        merged.lootPotions = parsed.lootPotions || {};
         return merged;
       }
     } catch (e) { console.error('Error cargando datos guardados:', e); }
@@ -484,6 +546,49 @@
 
   function genId() {
     return 'M' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function genLootId() {
+    return 'L' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  // Devuelve la dificultad total de base de una poción (para Concentración/Multipoción)
+  function getPotionBaseDifficulty(p) {
+    if (typeof p.baseDifficulty === 'number') return p.baseDifficulty;
+    // retrocompatibilidad: buscar en catálogo
+    if (p.isMulti && Array.isArray(p.effects)) {
+      return p.effects.reduce(function (sum, e) {
+        return sum + (e.baseId && state.catalog[e.baseId] ? (state.catalog[e.baseId].difficulty || 0) : 0);
+      }, 0);
+    }
+    if (p.baseId && state.catalog[p.baseId]) return state.catalog[p.baseId].difficulty || 0;
+    return 0;
+  }
+
+  // Resuelve el método de aplicación al combinar pociones componentes
+  function resolveAplicacion(compKeys, selPotions) {
+    var values = [];
+    compKeys.forEach(function (key) {
+      var count = selPotions[key] || 0;
+      if (count > 0 && state.potions[key]) {
+        var ap = state.potions[key].aplicacion || 'al beber';
+        if (values.indexOf(ap) === -1) values.push(ap);
+      }
+    });
+    if (values.length === 0) return 'al beber';
+    if (values.length === 1) return values[0];
+    return 'multiaplicable';
+  }
+
+  var APLICACION_LABELS = {
+    'al beber': '👄 Al beber',
+    'al contacto con la piel': '🖐️ Contacto piel',
+    'al contacto con la sangre': '🩸 Contacto sangre',
+    'al inhalar': '💨 Al inhalar',
+    'multiaplicable': '🔀 Multiaplicable'
+  };
+  function aplicacionLabel(ap) {
+    return APLICACION_LABELS[ap] || esc(ap);
   }
 
   function esc(s) {
@@ -704,7 +809,9 @@
     toggleEffectField();
     updateMuteBtn();
     renderInfo();
+    renderPotionCatalog();
     renderInventario();
+    renderLootPotions();
     renderCrafteo();
   }
 
@@ -755,6 +862,16 @@
   }
 
   function renderInventario() {
+    // --- sync subtab buttons ---
+    var subtabBtns = document.querySelectorAll('.inv-subtab-btn');
+    for (var si = 0; si < subtabBtns.length; si++) {
+      subtabBtns[si].classList.toggle('active', subtabBtns[si].dataset.id === invSubtab);
+    }
+    document.getElementById('invSubtabMateriales').style.display = (invSubtab === 'materiales') ? '' : 'none';
+    document.getElementById('invSubtabPociones').style.display = (invSubtab === 'pociones') ? '' : 'none';
+    document.getElementById('invSubtabLoot').style.display = (invSubtab === 'loot') ? '' : 'none';
+
+    // --- Materiales ---
     var matBox = document.getElementById('invMatList');
     var mats = getMatList();
     if (!mats.length) {
@@ -774,6 +891,7 @@
       }).join('');
     }
 
+    // --- Pociones crafteadas ---
     var potBox = document.getElementById('invPotList');
     var potKeys = Object.keys(state.potions).filter(function (k) { return state.potions[k].qty > 0; });
     if (!potKeys.length) {
@@ -784,11 +902,14 @@
         var badge = p.isMulti
           ? '<span class="cat-badge cat-magica">🌀 Multipoción</span> '
           : '<span class="cat-badge cat-' + slug(catOf(p)) + '">' + esc(catOf(p)) + '</span> ';
+        var aplBadge = p.aplicacion ? '<span class="aplic-badge">' + aplicacionLabel(p.aplicacion) + '</span>' : '';
         var effectText = effectDisplayText(p);
+        var catalogEntry = state.potionCatalog[key];
+        var apodoText = (catalogEntry && catalogEntry.apodo) ? ' <em class="apodo-badge">"' + esc(catalogEntry.apodo) + '"</em>' : '';
         return '<div class="inv-row">' +
           '<button class="btn btn-sm" data-action="pot-drink" data-id="' + key + '">🧪 Beber</button> ' +
-          badge +
-          '<strong>' + esc(p.name) + '</strong> — Tienes: <span class="qty">' + p.qty + '</span>' +
+          badge + aplBadge +
+          '<strong>' + esc(p.name) + '</strong>' + apodoText + ' — Tienes: <span class="qty">' + p.qty + '</span>' +
           (effectText ? '<div class="mat-desc"><strong>' + esc(effectText) + '</strong></div>' : '') +
           '<div class="mat-desc">' + esc(p.description) + '</div>' +
           '</div>';
@@ -796,10 +917,19 @@
     }
   }
 
+  function switchInvSubtab(id) {
+    invSubtab = id;
+    renderInventario();
+    renderLootPotions();
+  }
+
   function renderCrafteo() {
     document.getElementById('craftElaboracionPanels').style.display = (craftMode === 'elaboracion') ? '' : 'none';
     document.getElementById('craftConcentracionPanels').style.display = (craftMode === 'concentracion') ? '' : 'none';
     document.getElementById('craftMultipocionPanels').style.display = (craftMode === 'multipocion') ? '' : 'none';
+    // P7-3: mostrar panel de aplicación solo en Elaboración; en Concentración/Multipoción se calcula automáticamente
+    document.getElementById('craftAplicacionPanel').style.display = (craftMode === 'elaboracion') ? '' : 'none';
+    document.getElementById('craftStepLabel').textContent = (craftMode === 'elaboracion') ? '3. Craftea' : '2. Craftea';
     var modeBtns = document.querySelectorAll('.mode-btn');
     for (var k = 0; k < modeBtns.length; k++) {
       modeBtns[k].classList.toggle('active', modeBtns[k].dataset.id === craftMode);
@@ -944,6 +1074,7 @@
       var count = craftSelection.potions[key] || 0;
       if (state.potions[key] && count > 0) {
         totalDiff += (state.potions[key].modDifficulty || 0) * count;
+        totalDiff += getPotionBaseDifficulty(state.potions[key]) * count; // P7-2
       }
     });
     var dc = totalUnits > 0 ? Math.max(6, 10 + totalDiff) : null;
@@ -1020,6 +1151,7 @@
       var count = craftSelection.potions[key] || 0;
       if (state.potions[key] && count > 0) {
         totalDiff += (state.potions[key].modDifficulty || 0) * count;
+        totalDiff += getPotionBaseDifficulty(state.potions[key]) * count; // P7-2
         rawEffects = rawEffects.concat(expandPotionEffects(state.potions[key], count));
       }
     });
@@ -1034,7 +1166,18 @@
     var typeEl = document.getElementById('matType');
     var rowEl = document.getElementById('matMaxUsesRow');
     if (!typeEl || !rowEl) return;
-    rowEl.style.display = (typeEl.value === 'Modificador') ? '' : 'none';
+    var isMod = typeEl.value === 'Modificador';
+    rowEl.style.display = isMod ? '' : 'none';
+    // P7-1: los Modificadores no pueden ser Únicos
+    var rarityEl = document.getElementById('matRarity');
+    if (rarityEl) {
+      for (var i = 0; i < rarityEl.options.length; i++) {
+        if (rarityEl.options[i].value === 'Único') {
+          rarityEl.options[i].disabled = isMod;
+          if (isMod && rarityEl.value === 'Único') rarityEl.value = 'Común';
+        }
+      }
+    }
   }
 
   function diceCapableCategory(category) {
@@ -1409,18 +1552,23 @@
       '<p class="verdict">' + (success ? '✅ ÉXITO' : '❌ FALLO') + '</p>' +
       '</div>';
 
+    var aplicacion = (document.getElementById('craftAplicacion') || {}).value || 'al beber'; // P7-3
+
     if (success) {
       // la clave incluye la cantidad de cada modificador, para que combinaciones distintas no se mezclen
       var key = [craftSelection.baseId].concat(validModIds.map(function (id) {
         return id + ':' + (craftSelection.mods[id] || 0);
       })).join('-');
 
-      if (!state.potions[key]) {
+      var isNewDiscovery = !state.potions[key];
+      if (isNewDiscovery) {
         state.potions[key] = {
           qty: 0,
           name: 'Poción de ' + base.name + (modParts.length ? ' (' + modParts.join(', ') + ')' : ''),
           description: [base.description].concat(modDescs).filter(Boolean).join(' + '),
           modDifficulty: modDiffSum,
+          baseDifficulty: base.difficulty || 0, // P7-2
+          aplicacion: aplicacion,               // P7-3
           category: baseCategory,
           baseId: craftSelection.baseId,
           baseName: base.name,
@@ -1434,12 +1582,19 @@
         };
       }
       state.potions[key].qty += 1;
+
+      // P7-4: nueva poción descubierta → pedir apodo
+      if (isNewDiscovery && !state.potionCatalog[key]) {
+        var apodo = prompt('🆕 ¡Nueva poción descubierta!\n"' + state.potions[key].name + '"\n\n¿Quieres darle un apodo? (Puedes dejarlo en blanco y cambiarlo después.)');
+        state.potionCatalog[key] = { apodo: (apodo != null ? apodo.trim() : '') };
+      }
     }
 
     document.getElementById('craftResult').innerHTML = resultHtml;
     craftSelection = { baseId: null, mods: {}, potions: {} };
     saveState();
     renderInventario();
+    renderPotionCatalog();
     renderCrafteo();
   }
 
@@ -1462,6 +1617,7 @@
     if (totalUnits !== 2) return;
 
     var modDiffSum = 0; // suma SOLO de los modificadores aportados por cada poción componente
+    var baseDiffSum = 0; // P7-2: suma de dificultades de bases
     var rawEffects = [];
     var descParts = [];
     compKeys.forEach(function (key) {
@@ -1469,12 +1625,14 @@
       var count = Math.min(craftSelection.potions[key] || 0, p.qty || 0);
       if (count <= 0) return;
       modDiffSum += (p.modDifficulty || 0) * count;
+      baseDiffSum += getPotionBaseDifficulty(p) * count; // P7-2
       rawEffects = rawEffects.concat(expandPotionEffects(p, count));
       for (var i = 0; i < count; i++) descParts.push(p.description);
     });
     var groupedEffects = groupEffectsByBase(rawEffects);
+    var aplicacionResult = resolveAplicacion(compKeys, craftSelection.potions); // P7-3
 
-    var difficulty = Math.max(6, 10 + modDiffSum); // la dificultad de concentración parte de 10 y nunca baja de 6
+    var difficulty = Math.max(6, 10 + modDiffSum + baseDiffSum); // P7-2: incluye bases
 
     var situational = parseInt(document.getElementById('craftBonus').value, 10) || 0;
     var intMod = parseInt(state.character.intMod, 10) || 0;
@@ -1513,6 +1671,8 @@
         name: purityName,
         description: descParts.filter(Boolean).join(' + '),
         modDifficulty: modDiffSum,
+        baseDifficulty: eff.baseId && state.catalog[eff.baseId] ? (state.catalog[eff.baseId].difficulty || 0) : (getPotionBaseDifficulty(firstPotion)), // P7-2
+        aplicacion: aplicacionResult, // P7-3
         category: eff.category,
         baseId: eff.baseId,
         baseName: eff.baseName,
@@ -1531,11 +1691,16 @@
       effectText = formatMultiEffectsText(groupedEffects);
       modNames = [];
       groupedEffects.forEach(function (e) { (e.modifiersUsed || []).forEach(function (n) { if (modNames.indexOf(n) === -1) modNames.push(n); }); });
+      var totalBaseDiff = groupedEffects.reduce(function (s, e) {
+        return s + (e.baseId && state.catalog[e.baseId] ? (state.catalog[e.baseId].difficulty || 0) : 0);
+      }, 0);
       newRecord = {
         qty: 0,
         name: purityName,
         description: descParts.filter(Boolean).join(' + '),
         modDifficulty: modDiffSum,
+        baseDifficulty: totalBaseDiff, // P7-2
+        aplicacion: aplicacionResult,  // P7-3
         category: 'Mágica',
         isMulti: true,
         effects: groupedEffects,
@@ -1560,16 +1725,21 @@
         return key + ':' + (craftSelection.potions[key] || 0);
       }).join('-');
 
-      if (!state.potions[key]) {
-        state.potions[key] = newRecord;
-      }
+      var isNewDiscovery = !state.potions[key];
+      if (isNewDiscovery) state.potions[key] = newRecord;
       state.potions[key].qty += 1;
+
+      if (isNewDiscovery && !state.potionCatalog[key]) { // P7-4
+        var apodo = prompt('🆕 ¡Nueva poción descubierta!\n"' + newRecord.name + '"\n\n¿Quieres darle un apodo? (Puedes dejarlo en blanco y cambiarlo después.)');
+        state.potionCatalog[key] = { apodo: (apodo != null ? apodo.trim() : '') };
+      }
     }
 
     document.getElementById('craftResult').innerHTML = resultHtml;
     craftSelection = { baseId: null, mods: {}, potions: {} };
     saveState();
     renderInventario();
+    renderPotionCatalog();
     renderCrafteo();
   }
 
@@ -1593,8 +1763,8 @@
       }
     });
     if (catsPresent['Básica'] && catsPresent['Dañina']) return;
-
     var modDiffSum = 0;
+    var baseDiffSumM = 0; // P7-2
     var rawEffects = [];
     var descParts = [];
     compKeys.forEach(function (key) {
@@ -1602,19 +1772,18 @@
       var count = Math.min(craftSelection.potions[key] || 0, p.qty || 0);
       if (count <= 0) return;
       modDiffSum += (p.modDifficulty || 0) * count;
-      // las Multipociones usadas como componente se aplanan: nunca quedan anidadas
+      baseDiffSumM += getPotionBaseDifficulty(p) * count; // P7-2
       rawEffects = rawEffects.concat(expandPotionEffects(p, count));
       for (var i = 0; i < count; i++) descParts.push(p.description);
     });
+    var aplicacionResultM = resolveAplicacion(compKeys, craftSelection.potions); // P7-3
 
-    // Si dos efectos de la misma base coinciden al aplanar, se fusionan automáticamente
-    // (misma regla que Concentración: dados y pureza se suman, bono fijo y mod. una sola vez)
     var groupedEffects = groupEffectsByBase(rawEffects);
-    if (groupedEffects.length < 2) return; // hacen falta al menos 2 bases distintas; si no, usa Concentración
+    if (groupedEffects.length < 2) return;
 
-    var difficulty = Math.max(6, 10 + modDiffSum); // misma fórmula que Concentración
+    var difficulty = Math.max(6, 10 + modDiffSum + baseDiffSumM); // P7-2
 
-    var situational = parseInt(document.getElementById('craftBonus').value, 10) || 0;
+    var situational = parseInt(document.getElementById("craftBonus").value, 10) || 0;
     var intMod = parseInt(state.character.intMod, 10) || 0;
     var permanent = parseInt(state.character.bonus, 10) || 0;
 
@@ -1623,8 +1792,8 @@
     var puterio = (roll === 1);
     var success = puterio ? false : (total >= difficulty);
 
-    playSound('craft');
-    setTimeout(function () { playSound(puterio ? 'pifia' : (success ? 'success' : 'fail')); }, 500);
+    playSound("craft");
+    setTimeout(function () { playSound(puterio ? "pifia" : (success ? "success" : "fail")); }, 500);
 
     // Las pociones componentes se consumen SIEMPRE, haya éxito o fallo
     compKeys.forEach(function (key) {
@@ -1633,9 +1802,9 @@
     });
 
     var effectNames = groupedEffects.map(function (e) {
-      return e.baseName + (e.pureUnits > 1 ? ' (Nivel de pureza ' + toRoman(e.pureUnits) + ')' : '');
+      return e.baseName + (e.pureUnits > 1 ? " (Nivel de pureza " + toRoman(e.pureUnits) + ")" : "");
     });
-    var multiName = 'Multipoción: ' + effectNames.join(' + ');
+    var multiName = "Multipoción: " + effectNames.join(" + ");
     var multiEffectText = formatMultiEffectsText(groupedEffects);
     var totalPureUnits = groupedEffects.reduce(function (s, e) { return s + e.pureUnits; }, 0);
     var allModNames = [];
@@ -1651,18 +1820,23 @@
       '</div>';
 
     if (success) {
-      // la clave incluye cada poción componente y su cantidad, para no mezclar combinaciones distintas
-      var key = 'X-' + compKeys.map(function (key) {
-        return key + ':' + (craftSelection.potions[key] || 0);
-      }).join('-');
+      var key = "X-" + compKeys.map(function (key) {
+        return key + ":" + (craftSelection.potions[key] || 0);
+      }).join("-");
 
-      if (!state.potions[key]) {
+      var totalMultiBaseDiff = groupedEffects.reduce(function (s, e) {
+        return s + (e.baseId && state.catalog[e.baseId] ? (state.catalog[e.baseId].difficulty || 0) : 0);
+      }, 0);
+      var isNewDiscoveryM = !state.potions[key];
+      if (isNewDiscoveryM) {
         state.potions[key] = {
           qty: 0,
           name: multiName,
-          description: descParts.filter(Boolean).join(' + '),
+          description: descParts.filter(Boolean).join(" + "),
           modDifficulty: modDiffSum,
-          category: 'Mágica',
+          baseDifficulty: totalMultiBaseDiff,
+          aplicacion: aplicacionResultM,
+          category: "Mágica",
           isMulti: true,
           effects: groupedEffects,
           pureUnits: totalPureUnits,
@@ -1670,22 +1844,27 @@
         };
       }
       state.potions[key].qty += 1;
+      if (isNewDiscoveryM && !state.potionCatalog[key]) {
+        var apodoM = prompt('🆕 ¡Nueva poción descubierta!\n"' + multiName + '"\n\n¿Quieres darle un apodo? (Puedes dejarlo en blanco y cambiarlo después.)');
+        state.potionCatalog[key] = { apodo: (apodoM != null ? apodoM.trim() : '') };
+      }
     }
 
-    document.getElementById('craftResult').innerHTML = resultHtml;
+    document.getElementById("craftResult").innerHTML = resultHtml;
     craftSelection = { baseId: null, mods: {}, potions: {} };
     saveState();
     renderInventario();
+    renderPotionCatalog();
     renderCrafteo();
   }
 
   // ---------- Exportar / Importar / Reset ----------
   function exportData() {
-    var blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    var blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
     var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
+    var a = document.createElement("a");
     a.href = url;
-    a.download = 'alquimia-' + (state.character.name || 'personaje').replace(/\s+/g, '_') + '.json';
+    a.download = "alquimia-" + (state.character.name || "personaje").replace(/s+/g, "_") + ".json";
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -1696,12 +1875,9 @@
     var reader = new FileReader();
     reader.onload = function (e) {
       var data;
-      try { data = JSON.parse(e.target.result); } catch (err) { alert('El archivo no es un JSON válido.'); return; }
+      try { data = JSON.parse(e.target.result); } catch (err) { alert("El archivo no es un JSON válido."); return; }
 
-      var mergeOnly = confirm(
-        '¿Quieres FUSIONAR solo los materiales nuevos del catálogo (manteniendo tu personaje, inventario y pociones)?\n\n' +
-        'Aceptar = fusionar catálogo.\nCancelar = ver más opciones.'
-      );
+      var mergeOnly = confirm('¿Quieres FUSIONAR solo los materiales nuevos del catálogo (manteniendo tu personaje, inventario y pociones)?\n\nAceptar = fusionar catálogo.\nCancelar = ver más opciones.');
       if (mergeOnly) {
         if (data.catalog) {
           Object.keys(data.catalog).forEach(function (id) {
@@ -1710,39 +1886,206 @@
         }
         saveState();
         render();
-        alert('Catálogo fusionado correctamente.');
+        alert("Catálogo fusionado correctamente.");
         return;
       }
 
-      var replaceAll = confirm(
-        '¿Reemplazar TODOS tus datos (personaje, inventario, pociones y catálogo) por los del archivo importado?\n\n' +
-        'Esta acción no se puede deshacer.'
-      );
+      var replaceAll = confirm('¿Reemplazar TODOS tus datos (personaje, inventario, pociones y catálogo) por los del archivo importado?\n\nEsta acción no se puede deshacer.');
       if (replaceAll) {
         var merged = defaultState();
         merged.character = Object.assign(merged.character, data.character || {});
         merged.catalog = data.catalog || {};
         merged.inventory = data.inventory || {};
         merged.potions = data.potions || {};
+        merged.potionCatalog = data.potionCatalog || {};
+        merged.lootPotions = data.lootPotions || {};
         state = merged;
         saveState();
         render();
-        alert('Datos reemplazados correctamente.');
+        alert("Datos reemplazados correctamente.");
       }
     };
     reader.readAsText(file);
   }
 
   function resetAll() {
-    if (!confirm('¿Borrar TODOS los datos (personaje, catálogo, inventario y pociones)? Esta acción no se puede deshacer.')) return;
+    if (!confirm("¿Borrar TODOS los datos (personaje, catálogo, inventario y pociones)? Esta acción no se puede deshacer.")) return;
     state = defaultState();
     saveState();
-    craftMode = 'elaboracion';
+    craftMode = "elaboracion";
     craftSelection = { baseId: null, mods: {}, potions: {} };
     editingMatId = null;
-    document.getElementById('matSubmitBtn').textContent = '➕ Añadir material';
-    document.getElementById('matCancelEditBtn').style.display = 'none';
+    invSubtab = "materiales";
+    document.getElementById("matSubmitBtn").textContent = "➕ Añadir material";
+    document.getElementById("matCancelEditBtn").style.display = "none";
     render();
+  }
+
+  // ---------- Catálogo de pociones (P7-4) ----------
+  function renderPotionCatalog() {
+    var box = document.getElementById('potionCatalogList');
+    if (!box) return;
+    var keys = Object.keys(state.potions);
+    if (!keys.length) {
+      box.innerHTML = '<p class="muted">Todavía no has creado ninguna poción.</p>';
+      return;
+    }
+    var groups = {};
+    keys.forEach(function (key) {
+      var p = state.potions[key];
+      var cat = p.isMulti ? 'Multipoción' : (catOf(p) || 'Básica');
+      var baseName = p.isMulti ? 'Multipoción' : (p.baseName || p.name);
+      if (!groups[cat]) groups[cat] = {};
+      if (!groups[cat][baseName]) groups[cat][baseName] = [];
+      groups[cat][baseName].push(key);
+    });
+    var catOrder = ['Básica', 'Dañina', 'Mágica', 'Multipoción'];
+    var html = '';
+    catOrder.forEach(function (cat) {
+      if (!groups[cat]) return;
+      html += '<div class="pot-cat-section"><h3>' + esc(cat) + '</h3>';
+      Object.keys(groups[cat]).sort().forEach(function (baseName) {
+        html += '<h4>Base: ' + esc(baseName) + '</h4>';
+        groups[cat][baseName].forEach(function (key) {
+          var p = state.potions[key];
+          var entry = state.potionCatalog[key] || {};
+          var apodo = entry.apodo || '';
+          var aplBadge = p.aplicacion ? '<span class="aplic-badge" style="font-size:0.75em;">' + aplicacionLabel(p.aplicacion) + '</span> ' : '';
+          html += '<div class="pot-cat-entry">' +
+            aplBadge +
+            '<strong>' + esc(p.name) + '</strong>' +
+            (apodo ? ' <em class="apodo-badge">"' + esc(apodo) + '"</em>' : '') +
+            ' <button class="btn btn-sm" style="background:#777;" data-action="edit-apodo" data-id="' + key + '">✏️ Apodo</button>' +
+            '</div>';
+        });
+      });
+      html += '</div>';
+    });
+    box.innerHTML = html;
+  }
+
+  function editApodo(key) {
+    var entry = state.potionCatalog[key] || {};
+    var p = state.potions[key];
+    if (!p) return;
+    var actual = entry.apodo || '';
+    var nuevo = prompt('Apodo para "' + p.name + '":\n(Deja en blanco para quitar el apodo.)', actual);
+    if (nuevo === null) return;
+    state.potionCatalog[key] = { apodo: nuevo.trim() };
+    saveState();
+    renderPotionCatalog();
+    renderInventario();
+  }
+
+  // ---------- Pociones Loot (P7-6) ----------
+  function addLootPotion() {
+    var nameEl = document.getElementById('lootName');
+    var qtyEl = document.getElementById('lootQty');
+    if (!nameEl || !qtyEl) return;
+    var name = nameEl.value.trim() || 'Poción desconocida';
+    var qty = Math.max(1, parseInt(qtyEl.value, 10) || 1);
+    var id = genLootId();
+    state.lootPotions[id] = { name: name, qty: qty, descripcion: '', tipo: '', identificada: false };
+    nameEl.value = '';
+    qtyEl.value = 1;
+    saveState();
+    renderLootPotions();
+  }
+
+  function renderLootPotions() {
+    var box = document.getElementById('lootPotList');
+    if (!box) return;
+    var ids = Object.keys(state.lootPotions).filter(function (id) { return state.lootPotions[id].qty > 0; });
+    if (!ids.length) {
+      box.innerHTML = '<p class="muted">No tienes pociones Loot todavía.</p>';
+      return;
+    }
+    box.innerHTML = ids.map(function (id) {
+      var lp = state.lootPotions[id];
+      var tipoText = lp.identificada
+        ? (lp.tipo ? '<span class="loot-tipo-label">Tipo: ' + esc(lp.tipo) + '</span>' : '<span class="loot-tipo-label">Identificada</span>')
+        : '<span class="loot-tipo-label">Sin identificar</span>';
+      return '<div class="loot-row">' +
+        '<button class="btn btn-sm" data-action="loot-drink" data-id="' + id + '">🧪 Beber</button> ' +
+        '<button class="btn btn-sm" style="background:#5a6fa0;" data-action="loot-reverse" data-id="' + id + '">🔬 Ing. inversa</button> ' +
+        '<button class="btn btn-sm" style="background:#6b3a8a;" data-action="loot-identify" data-id="' + id + '">🔎 Identificar</button> ' +
+        '<button class="btn btn-sm" data-action="loot-sub" data-id="' + id + '">➖</button> ' +
+        '<button class="btn btn-sm" data-action="loot-add" data-id="' + id + '">➕</button> ' +
+        '<button class="btn btn-danger btn-sm" data-action="loot-del" data-id="' + id + '">🗑</button>' +
+        '<br><strong>' + esc(lp.name) + '</strong> — x<span class="qty">' + lp.qty + '</span> · ' + tipoText +
+        '<div><textarea class="loot-desc-area" data-action="loot-desc-change" data-id="' + id + '" placeholder="Notas / efectos observados...">' + esc(lp.descripcion) + '</textarea></div>' +
+        '</div>';
+    }).join('');
+  }
+
+  function drinkLootPotion(id) {
+    var lp = state.lootPotions[id];
+    if (!lp || lp.qty <= 0) return;
+    playSound('drink');
+    lp.qty = Math.max(0, lp.qty - 1);
+    saveState();
+    renderLootPotions();
+    document.getElementById('lootResult').innerHTML =
+      '<div class="result-box success"><p>🧪 Bebes <strong>' + esc(lp.name) + '</strong> a ciegas.</p>' +
+      '<p class="muted">Anota abajo lo que ocurre.</p></div>';
+  }
+
+  function reverseLootPotion(id) {
+    var lp = state.lootPotions[id];
+    if (!lp) return;
+    var dcStr = prompt('🔬 Ingeniería inversa: "' + lp.name + '"\n\n¿Cuál es la dificultad (DC)?');
+    if (dcStr === null) return;
+    var dc = parseInt(dcStr, 10);
+    if (isNaN(dc)) { alert('Dificultad inválida.'); return; }
+    var modStr = prompt('¿Modificador de la tirada? (ej. 0, +3, -2)');
+    if (modStr === null) return;
+    var mod = parseInt(modStr, 10) || 0;
+    var intMod = parseInt(state.character.intMod, 10) || 0;
+    var bonus = parseInt(state.character.bonus, 10) || 0;
+    var roll = Math.floor(Math.random() * 20) + 1;
+    var total = roll + intMod + bonus + mod;
+    var success = total >= dc;
+    playSound('craft');
+    setTimeout(function () { playSound(success ? 'success' : 'fail'); }, 500);
+    document.getElementById('lootResult').innerHTML =
+      '<div class="result-box ' + (success ? 'success' : 'fail') + '">' +
+      '<p>🔬 Ingeniería inversa: <strong>' + esc(lp.name) + '</strong></p>' +
+      '<p>Tirada: 1d20 (' + roll + ') + Int (' + intMod + ') + Bono (' + bonus + ') + Mod (' + mod + ') = <strong>' + total + '</strong></p>' +
+      '<p>Dificultad: <strong>' + dc + '</strong></p>' +
+      '<p class="verdict">' + (success ? '✅ ÉXITO — has descifrado la poción.' : '❌ FALLO — no logras descubrir sus componentes.') + '</p>' +
+      '</div>';
+  }
+
+  function identifyLootPotion(id) {
+    var lp = state.lootPotions[id];
+    if (!lp) return;
+    var tipo = prompt('🔎 Identificar "' + lp.name + '"\n\n¿De qué tipo es?', lp.tipo || '');
+    if (tipo === null) return;
+    lp.tipo = tipo.trim();
+    lp.identificada = true;
+    saveState();
+    renderLootPotions();
+  }
+
+  function adjustLootPotion(id, delta) {
+    var lp = state.lootPotions[id];
+    if (!lp) return;
+    lp.qty = Math.max(0, lp.qty + delta);
+    saveState();
+    renderLootPotions();
+  }
+
+  function deleteLootPotion(id) {
+    if (!confirm('¿Eliminar esta poción Loot del inventario?')) return;
+    delete state.lootPotions[id];
+    saveState();
+    renderLootPotions();
+  }
+
+  function switchInvSubtab(id) {
+    invSubtab = id;
+    renderInventario();
+    renderLootPotions();
   }
 
   // ---------- Tabs ----------
@@ -1772,9 +2115,18 @@
       case 'edit-mat': startEditMaterial(id); break;
       case 'cancel-edit-mat': cancelEditMaterial(); break;
       case 'del-mat': deleteMaterial(id); break;
+      case 'inv-subtab': switchInvSubtab(id); break;
       case 'inv-add': adjustInventory(id, 1); break;
       case 'inv-sub': adjustInventory(id, -1); break;
       case 'pot-drink': drinkPotion(id); break;
+      case 'edit-apodo': editApodo(id); break;
+      case 'add-loot': addLootPotion(); break;
+      case 'loot-drink': drinkLootPotion(id); break;
+      case 'loot-reverse': reverseLootPotion(id); break;
+      case 'loot-identify': identifyLootPotion(id); break;
+      case 'loot-add': adjustLootPotion(id, 1); break;
+      case 'loot-sub': adjustLootPotion(id, -1); break;
+      case 'loot-del': deleteLootPotion(id); break;
       case 'craft-set-mode': setCraftMode(id); break;
       case 'craft-pick-base': pickBase(id); break;
       case 'craft-mod-inc': incMod(id); break;
@@ -1812,6 +2164,16 @@
   document.getElementById('importFile').addEventListener('change', function (e) {
     if (e.target.files.length) handleImportFile(e.target.files[0]);
     e.target.value = '';
+  });
+
+  document.addEventListener('input', function (e) {
+    var el = e.target.closest('[data-action="loot-desc-change"]');
+    if (!el) return;
+    var id = el.dataset.id;
+    if (state.lootPotions[id]) {
+      state.lootPotions[id].descripcion = el.value;
+      saveState();
+    }
   });
 
   // ---------- Init ----------
