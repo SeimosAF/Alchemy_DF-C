@@ -2,2184 +2,1670 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Alquimia</title>
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>Alquimia v2</title>
 <style>
+
   :root {
-    --border: #5b3a29;
-    --bg: #f7f0e3;
-    --text: #2b1d0e;
-    --base: #3a6b35;
-    --mod: #6b3a35;
-    --danger: #a00000;
-    --accent: #8a5a2b;
+    --border: #5b3a29; --bg: #f7f0e3; --text: #2b1d0e;
+    --base: #3a6b35; --mod: #6b3a35; --danger: #a00000;
+    --accent: #8a5a2b; --magic: #4a2a8a; --mal: #8a2a2a;
   }
   * { box-sizing: border-box; }
-  body {
-    font-family: Georgia, 'Segoe UI', serif;
-    background: #e8ddc8;
-    color: var(--text);
-    margin: 0;
-    padding: 0;
+  body { font-family: Georgia,'Segoe UI',serif; background:#e8ddc8; color:var(--text); margin:0; padding:0; }
+  header.app-header { background:var(--border); color:#fff; padding:14px 16px 10px; }
+  .header-title-row { display:flex; align-items:center; justify-content:space-between; }
+  header.app-header h1 { margin:0; font-size:1.6em; letter-spacing:1px; }
+  .mute-btn { background:rgba(255,255,255,.15); border:none; font-size:1.3rem; cursor:pointer; padding:4px 10px; border-radius:8px; color:#fff; transition:background .15s; }
+  .mute-btn:hover { background:rgba(255,255,255,.3); }
+  .char-bar { display:flex; gap:16px; align-items:center; margin-top:8px; flex-wrap:wrap; }
+  .char-bar label { font-size:.82em; color:rgba(255,255,255,.8); display:flex; align-items:center; gap:4px; }
+  .char-bar input { background:rgba(255,255,255,.15); border:1px solid rgba(255,255,255,.3); color:#fff; border-radius:4px; padding:2px 6px; font-size:.9em; width:auto; }
+  .char-bar input[type=text] { width:120px; }
+  .char-bar input[type=number] { width:60px; }
+  nav.tab-bar { display:flex; background:#3d2010; padding:0 12px; gap:2px; }
+  nav.tab-bar button { background:transparent; border:none; color:rgba(255,255,255,.65); padding:10px 18px; cursor:pointer; font-size:.95em; border-bottom:3px solid transparent; transition:all .15s; }
+  nav.tab-bar button.active { color:#fff; border-bottom-color:#d4a85a; }
+  nav.tab-bar button:hover { color:#fff; }
+  .tab-content { display:none; padding:14px 12px; }
+  .tab-content.active { display:block; }
+  .panel { background:var(--bg); border:1px solid #c9b89a; border-radius:8px; padding:14px 16px; margin-bottom:14px; }
+  .panel h2 { margin:0 0 12px; font-size:1.05em; color:var(--border); border-bottom:1px solid #d8cdb4; padding-bottom:6px; }
+  .subtab-bar { display:flex; gap:6px; margin-bottom:14px; flex-wrap:wrap; }
+  .subtab-btn { background:#999; padding:6px 12px; border:none; border-radius:6px; cursor:pointer; color:#fff; font-size:.88em; transition:background .15s; }
+  .subtab-btn.active { background:var(--accent); }
+  .subtab-btn:hover { filter:brightness(1.1); }
+  .btn { background:var(--accent); color:#fff; border:none; border-radius:6px; padding:7px 14px; cursor:pointer; font-size:.9em; transition:background .15s; }
+  .btn:hover { filter:brightness(1.1); }
+  .btn:disabled { opacity:.45; cursor:default; }
+  .btn-sm { padding:3px 8px; font-size:.82em; }
+  .btn-danger { background:#8a2a2a; }
+  .btn-info { background:#4a6a8a; }
+  .btn-edit { background:#6a5a2a; }
+  .btn-row { display:flex; gap:8px; flex-wrap:wrap; margin-top:10px; }
+  .form-row { margin-bottom:10px; }
+  .form-row label { display:block; font-size:.85em; font-weight:bold; margin-bottom:3px; }
+  .form-row input[type=text], .form-row input[type=number], .form-row select, .form-row textarea {
+    width:100%; padding:6px 9px; border:1px solid #c9b89a; border-radius:5px; background:#fff; color:var(--text); font-family:inherit; font-size:.92em;
   }
-  header.app-header {
-    background: var(--border);
-    color: #fff;
-    padding: 14px 16px 10px;
-  }
-  .header-title-row { display: flex; align-items: center; justify-content: space-between; }
-  header.app-header h1 {
-    margin: 0;
-    font-size: 1.6em;
-    letter-spacing: 1px;
-  }
-  .mute-btn {
-    background: rgba(255,255,255,0.15);
-    border: none;
-    font-size: 1.3rem;
-    cursor: pointer;
-    padding: 4px 10px;
-    border-radius: 8px;
-    color: #fff;
-    line-height: 1;
-    transition: background 0.15s;
-  }
-  .mute-btn:hover { background: rgba(255,255,255,0.3); }
-  .char-bar {
-    display: flex;
-    gap: 16px;
-    flex-wrap: wrap;
-    margin-top: 10px;
-    align-items: center;
-  }
-  .char-bar > div { display: flex; flex-direction: column; }
-  .char-bar label { font-size: 0.75em; opacity: 0.85; margin-bottom: 2px; }
-  .char-bar input {
-    padding: 5px 7px;
-    border-radius: 4px;
-    border: 1px solid #ccc;
-    font-size: 0.95em;
-  }
-  .char-bar input#charName { width: 200px; }
-  .char-bar input.narrow { width: 70px; }
-
-  .tab-bar { display: flex; gap: 6px; margin-top: 12px; }
-  .tab-btn {
-    background: rgba(255,255,255,0.15);
-    color: #fff;
-    border: none;
-    padding: 8px 16px;
-    border-radius: 6px 6px 0 0;
-    cursor: pointer;
-    font-weight: bold;
-    font-size: 0.95em;
-  }
-  .tab-btn.active { background: var(--bg); color: var(--text); }
-
-  main { max-width: 820px; margin: 0 auto; padding: 16px; }
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
-
-  .panel {
-    background: var(--bg);
-    border: 2px solid var(--border);
-    border-radius: 0 0 8px 8px;
-    padding: 14px;
-    margin-bottom: 14px;
-  }
-  .panel h2 {
-    margin: 0 0 10px;
-    font-size: 1.2em;
-    border-bottom: 1px solid var(--border);
-    padding-bottom: 6px;
-  }
-
-  .btn {
-    cursor: pointer;
-    border: none;
-    border-radius: 4px;
-    padding: 7px 12px;
-    font-weight: bold;
-    color: #fff;
-    background: var(--accent);
-    font-size: 0.95em;
-  }
-  .btn:hover { opacity: 0.9; }
-  .btn:disabled { opacity: 0.4; cursor: not-allowed; }
-  .btn-sm { padding: 3px 9px; font-size: 0.85em; }
-  .btn-danger { background: var(--danger); }
-  .btn-pick {
-    background: #999;
-    display: block;
-    width: 100%;
-    text-align: left;
-    margin: 4px 0;
-    color: #fff;
-  }
-  .btn-pick.picked { background: var(--base); }
-
-  .mode-btn-bar { display: flex; gap: 8px; }
-  .mode-btn { background: #999; flex: 1; text-align: center; }
-  .mode-btn.active { background: var(--accent); }
-
-  .mod-row {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 5px 0;
-    border-bottom: 1px solid #d8cdb4;
-  }
-  .mod-row:last-child { border-bottom: none; }
-  .mod-row .mod-label { flex: 1; }
-  .mod-row .stepper { display: flex; align-items: center; gap: 6px; }
-  .mod-row .stepper .count { min-width: 1.5em; text-align: center; font-weight: bold; }
-  .mod-row.has-count .mod-label { font-weight: bold; color: var(--mod); }
-
-  .tag {
-    display: inline-block;
-    padding: 1px 6px;
-    border-radius: 3px;
-    font-size: 0.78em;
-    color: #fff;
-    margin-left: 6px;
-  }
-  .tag-base { background: var(--base); }
-  .tag-mod { background: var(--mod); }
-
-  .rarity-badge { font-size: 0.78em; padding: 1px 6px; border-radius: 3px; margin-left: 4px; background: #999; color: #fff; }
-  .rarity-comun .rarity-badge { background: #8d8d8d; }
-  .rarity-poco-comun .rarity-badge { background: #4caf50; }
-  .rarity-raro .rarity-badge { background: #2196f3; }
-  .rarity-muy-raro .rarity-badge { background: #9c27b0; }
-  .rarity-legendario .rarity-badge { background: #ff9800; }
-  .rarity-unico .rarity-badge { background: #000; color: #ffd700; border: 1px solid #ffd700; }
-
-  .cat-badge { font-size: 0.78em; padding: 1px 6px; border-radius: 3px; margin-left: 4px; color: #fff; }
-  .cat-badge.cat-basica { background: #1565c0; }
-  .cat-badge.cat-danina { background: #b71c1c; }
-  .cat-badge.cat-magica { background: #6a1b9a; }
-
-  .aplic-badge { font-size: 0.78em; padding: 1px 6px; border-radius: 3px; margin-left: 4px; background: #4a7a6a; color: #fff; }
-
-  .inv-subtab-bar { display: flex; gap: 6px; margin-bottom: 12px; }
-  .inv-subtab-btn { background: #999; flex: none; }
-  .inv-subtab-btn.active { background: var(--accent); }
-
-  .loot-row { border-bottom: 1px solid #d8cdb4; padding: 8px 0; }
-  .loot-row:last-child { border-bottom: none; }
-  .loot-tipo-label { color: #6b3a8a; font-style: italic; font-size: 0.9em; }
-  .loot-desc-area { width: 100%; padding: 4px 7px; margin-top: 4px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 0.9em; resize: vertical; min-height: 36px; }
-
-  .pot-cat-section { margin-top: 12px; }
-  .pot-cat-section h3 { margin: 10px 0 4px; font-size: 1em; color: var(--accent); border-bottom: 1px solid #ccc; padding-bottom: 3px; }
-  .pot-cat-section h4 { margin: 6px 0 2px; font-size: 0.9em; color: #5a4a35; }
-  .pot-cat-entry { padding: 4px 0 4px 8px; border-bottom: 1px dashed #d8cdb4; }
-  .pot-cat-entry:last-child { border-bottom: none; }
-  .apodo-badge { font-style: italic; color: #8a5a2b; margin-left: 6px; font-size: 0.92em; }
-  .apodo-input-inline { padding: 2px 6px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 0.88em; width: 140px; margin: 0 4px; }
-
-  .mat-row, .inv-row { border-bottom: 1px solid #d8cdb4; padding: 7px 0; }
-  .mat-row:last-child, .inv-row:last-child { border-bottom: none; }
-  .mat-desc { font-style: italic; color: #5a4a35; margin-top: 3px; font-size: 0.92em; }
-  .muted { color: #8a7a60; font-style: italic; }
-
-  .qty { font-weight: bold; }
-
-  .result-box { padding: 10px; border-radius: 6px; margin-top: 10px; }
-  .result-box.success { background: #dcefdc; border: 2px solid var(--base); }
-  .result-box.fail { background: #f3dada; border: 2px solid var(--danger); }
-  .result-box p { margin: 4px 0; }
-  .verdict { font-weight: bold; font-size: 1.15em; }
-
-  .puterio {
-    color: #fff;
-    background: #a00000;
-    font-weight: bold;
-    font-size: 1.15em;
-    text-align: center;
-    padding: 6px;
-    border-radius: 4px;
-    margin: 6px 0;
-  }
-
-  .form-row { margin-bottom: 10px; }
-  .form-row label { display: block; font-weight: bold; margin-bottom: 3px; font-size: 0.9em; }
-  .form-row input, .form-row select, .form-row textarea {
-    width: 100%;
-    padding: 7px;
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    font-family: inherit;
-  }
-  .form-row textarea { resize: vertical; min-height: 50px; }
-
-  footer.app-footer {
-    padding: 14px 16px 24px;
-    text-align: center;
-    display: flex;
-    gap: 8px;
-    justify-content: center;
-    flex-wrap: wrap;
-  }
-  footer.app-footer .btn { background: #555; }
-  footer.app-footer .btn-danger { background: var(--danger); }
+  .form-row textarea { resize:vertical; }
+  .form-row-2 { display:grid; grid-template-columns:1fr 1fr; gap:10px; margin-bottom:10px; }
+  .form-row-2 label { display:block; font-size:.85em; font-weight:bold; margin-bottom:3px; }
+  .form-row-2 select, .form-row-2 input { width:100%; padding:6px 9px; border:1px solid #c9b89a; border-radius:5px; background:#fff; font-family:inherit; font-size:.92em; }
+  .check-label { display:flex; align-items:center; gap:6px; font-size:.9em; cursor:pointer; margin-bottom:4px; }
+  .check-label input[type=checkbox] { width:auto; margin:0; }
+  .muted { color:#888; font-size:.88em; }
+  .muted-i { color:#888; font-size:.85em; font-style:italic; }
+  .dice-section { border:1px solid #d8cdb4; border-radius:6px; padding:10px 12px; margin-bottom:10px; background:#faf6ef; }
+  .dice-section-label { font-size:.85em; font-weight:bold; margin-bottom:8px; color:var(--accent); }
+  .dice-row { display:flex; align-items:center; gap:6px; margin-bottom:6px; }
+  .dice-row input[type=number] { width:56px; padding:4px 6px; border:1px solid #c9b89a; border-radius:4px; }
+  .dice-row select { width:90px; padding:4px 6px; border:1px solid #c9b89a; border-radius:4px; }
+  .dice-row input.custom-sides { width:70px; }
+  .damage-type-row { display:flex; gap:6px; align-items:center; }
+  .damage-type-row select { flex:1; padding:6px 9px; border:1px solid #c9b89a; border-radius:5px; }
+  .flags-row { display:flex; gap:16px; flex-wrap:wrap; margin-bottom:10px; padding:8px 10px; background:#faf6ef; border-radius:6px; border:1px solid #d8cdb4; }
+  .aplicacion-grid { display:grid; gap:6px; margin:8px 0; }
+  .aplic-opt { display:flex; align-items:center; gap:8px; padding:7px 10px; border:1px solid #d8cdb4; border-radius:6px; cursor:pointer; background:#faf6ef; font-size:.9em; }
+  .aplic-opt:hover { background:#f0e8d8; }
+  .aplic-opt input[type=checkbox] { width:auto; margin:0; }
+  .aplic-diff { font-size:.82em; padding:1px 7px; border-radius:10px; background:#8a5a2b; color:#fff; margin-left:auto; }
+  .aplic-diff.selected { background:#3a6b35; }
+  .result-box { border-radius:8px; padding:12px 14px; margin-top:10px; }
+  .result-box.success { background:#d4edda; border:1px solid #3a6b35; }
+  .result-box.fail { background:#f8d7da; border:1px solid var(--danger); }
+  .verdict { font-size:1.1em; font-weight:bold; margin:4px 0 0; }
+  .puterio { color:var(--danger); font-weight:bold; font-size:1.1em; }
+  .mat-card { border:1px solid #d8cdb4; border-radius:6px; padding:10px 12px; margin-bottom:8px; background:#faf6ef; }
+  .mat-card-header { display:flex; align-items:flex-start; gap:8px; justify-content:space-between; }
+  .mat-card-title { font-weight:bold; font-size:.95em; }
+  .mat-card-meta { font-size:.82em; color:#666; margin-top:2px; }
+  .mat-card-actions { display:flex; gap:4px; flex-shrink:0; }
+  .mat-card-detail { font-size:.85em; margin-top:6px; color:#444; }
+  .multi-detail-table { width:100%; border-collapse:collapse; font-size:.82em; margin-top:4px; }
+  .multi-detail-table th { background:#ede8df; text-align:left; padding:3px 6px; font-size:.9em; }
+  .multi-detail-table td { padding:3px 6px; vertical-align:top; border-top:1px solid #e0d8cc; }
+  .multi-summary { margin-top:6px; padding:4px 6px; background:#f0ead8; border-radius:4px; font-size:.85em; }
+  .badge { font-size:.75em; padding:1px 7px; border-radius:10px; color:#fff; display:inline-block; }
+  .badge-sal { background:#3a6b35; }
+  .badge-mal { background:#8a2a2a; }
+  .badge-mag { background:#4a2a8a; }
+  .badge-base { background:#5a4a2a; }
+  .badge-mod { background:#6b3a35; }
+  .badge-rarity { background:#888; }
+  .badge-sub { background:#6a7a4a; }
+  .inv-row { display:flex; align-items:center; justify-content:space-between; padding:6px 8px; border-bottom:1px solid #e8ddc8; }
+  .inv-row:last-child { border-bottom:none; }
+  .inv-name { font-size:.92em; flex:1; }
+  .inv-stepper { display:flex; align-items:center; gap:6px; }
+  .stepper-count { min-width:24px; text-align:center; font-weight:bold; }
+  .pot-card { border:1px solid #d8cdb4; border-radius:6px; padding:10px 12px; margin-bottom:8px; background:#faf6ef; }
+  .pot-card-header { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .pot-name { font-weight:bold; font-size:.92em; }
+  .pot-qty { font-size:.88em; color:#666; }
+  .pot-meta { font-size:.82em; color:#555; margin-top:4px; }
+  .apodo-badge { font-style:italic; color:var(--accent); font-size:.88em; margin-left:4px; }
+  .pot-cat-group { margin-bottom:14px; }
+  .pot-cat-title { font-weight:bold; font-size:.92em; color:var(--border); border-bottom:1px solid #d8cdb4; padding-bottom:4px; margin-bottom:8px; }
+  .pot-base-block { margin-bottom:10px; }
+  .pot-base-toggle { background:none; border:none; cursor:pointer; font-size:.9em; color:var(--accent); padding:4px 0; display:flex; align-items:center; gap:6px; font-family:inherit; }
+  .pot-base-toggle:hover { text-decoration:underline; }
+  .pot-purity-list { padding-left:16px; border-left:2px solid #d8cdb4; margin-top:4px; }
+  .pot-purity-item { font-size:.88em; padding:3px 0; display:flex; align-items:center; justify-content:space-between; }
+  .loot-card { border:1px solid #d8cdb4; border-radius:6px; padding:10px 12px; margin-bottom:8px; background:#faf6ef; }
+  .loot-card-header { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .loot-name { font-weight:bold; font-size:.92em; }
+  .loot-tipo { font-style:italic; font-size:.82em; color:#6b3a8a; }
+  .loot-desc textarea { width:100%; padding:4px 7px; border:1px solid #ccc; border-radius:4px; font-family:inherit; font-size:.85em; margin-top:4px; resize:vertical; }
+  .loot-result { margin-top:8px; }
+  .mode-btn-bar { display:flex; gap:6px; margin-bottom:10px; flex-wrap:wrap; }
+  .mode-btn { background:#aaa; }
+  .mode-btn.active { background:var(--accent); }
+  .mod-row { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid #eee; }
+  .mod-row:last-child { border-bottom:none; }
+  .mod-label { font-size:.88em; flex:1; }
+  .stepper { display:flex; align-items:center; gap:6px; }
+  .count { min-width:20px; text-align:center; font-weight:bold; }
+  .craft-pot-row { display:flex; align-items:center; justify-content:space-between; padding:5px 0; border-bottom:1px solid #eee; font-size:.88em; }
+  .btn-pick { background:#777; }
+  .btn-pick.picked { background:var(--base); }
+  .rarity-label { font-size:.8em; padding:1px 6px; border-radius:4px; color:#fff; }
+  .rarity-comun { background:#888; }
+  .rarity-poco { background:#4a7a4a; }
+  .rarity-rara { background:#2a5a8a; }
+  .rarity-muy { background:#6a2a8a; }
+  .rarity-unico { background:#8a6a2a; }
+  .info-btn-group { display:flex; gap:4px; }
+  .confirm-del { font-size:.82em; color:#a00; }
+  .section-toggle { background:none; border:none; font-size:.9em; cursor:pointer; color:var(--accent); padding:0; font-family:inherit; }
+  .section-toggle:hover { text-decoration:underline; }
 </style>
 </head>
-<body>
 
+<body>
 <header class="app-header">
   <div class="header-title-row">
     <h1>⚗️ Alquimia</h1>
-    <button id="muteBtn" class="mute-btn" data-action="toggle-mute" title="Activar/silenciar sonido">🔊</button>
+    <button class="mute-btn" data-action="toggle-sound" id="muteBtn" title="Silenciar/Activar sonidos">🔊</button>
   </div>
   <div class="char-bar">
-    <div>
-      <label for="charName">Personaje</label>
-      <input type="text" id="charName" placeholder="Nombre del personaje">
-    </div>
-    <div>
-      <label for="charIntMod">Mod. Inteligencia</label>
-      <input type="number" id="charIntMod" class="narrow">
-    </div>
-    <div>
-      <label for="charBonus">Bono permanente de alquimista</label>
-      <input type="number" id="charBonus" class="narrow">
-    </div>
-  </div>
-  <div class="tab-bar">
-    <button class="tab-btn active" data-action="switch-tab" data-id="info">📖 Info</button>
-    <button class="tab-btn" data-action="switch-tab" data-id="inventario">🎒 Inventario</button>
-    <button class="tab-btn" data-action="switch-tab" data-id="crafteo">⚗️ Crafteo</button>
+    <label>Personaje: <input type="text" id="charName" value="Mi personaje"></label>
+    <label>Mod. INT: <input type="number" id="charInt" value="0" min="-5" max="10"></label>
+    <label>Bono alquimista: <input type="number" id="charBonus" value="0" min="0" max="20"></label>
+    <button class="btn btn-sm" data-action="export-data">💾 Exportar</button>
+    <button class="btn btn-sm" data-action="import-data">📂 Importar</button>
+    <button class="btn btn-sm" style="background:#8a2a2a" data-action="reset-all">🗑️ Borrar todo</button>
+    <input type="file" id="importFile" accept=".json" style="display:none">
   </div>
 </header>
 
-<main>
+<nav class="tab-bar">
+  <button class="active" data-action="switch-tab" data-id="info">📋 Info</button>
+  <button data-action="switch-tab" data-id="inventario">🎒 Inventario</button>
+  <button data-action="switch-tab" data-id="crafteo">⚗️ Crafteo</button>
+</nav>
 
-  <!-- INFO -->
-  <section id="tab-info" class="tab-content active">
+<section id="tab-info" class="tab-content active">
+  <div class="subtab-bar">
+    <button class="subtab-btn active" data-action="info-subtab" data-id="identificacion">📋 Identificación</button>
+    <button class="subtab-btn" data-action="info-subtab" data-id="catalogo">🗃️ Catálogo Materiales</button>
+    <button class="subtab-btn" data-action="info-subtab" data-id="pociones">🧪 Catálogo Pociones</button>
+  </div>
+
+  <!-- SUB: Identificación (formulario) -->
+  <div id="infoSub-identificacion">
     <div class="panel">
-      <h2>Añadir material</h2>
-      <div class="form-row">
-        <label for="matName">Nombre</label>
-        <input type="text" id="matName" placeholder="Ej. Esencia de fénix">
-      </div>
-      <div class="form-row">
-        <label for="matType">Tipo</label>
-        <select id="matType">
-          <option value="Base">Base</option>
-          <option value="Modificador">Modificador</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label for="matCategory">Categoría</label>
-        <select id="matCategory">
-          <option value="Básica">Básica</option>
-          <option value="Dañina">Dañina</option>
-          <option value="Mágica">Mágica</option>
-        </select>
-      </div>
-      <div class="form-row">
-        <label for="matRarity">Rareza</label>
-        <select id="matRarity">
-          <option>Común</option>
-          <option>Poco común</option>
-          <option>Raro</option>
-          <option>Muy raro</option>
-          <option>Legendario</option>
-          <option>Único</option>
-        </select>
-      </div>
-      <div class="form-row" id="matMaxUsesRow" style="display:none;">
-        <label for="matMaxUses">Límite de uso por poción (vacío = sin límite)</label>
-        <input type="number" id="matMaxUses" min="0" placeholder="Ej. 2">
-      </div>
-      <div class="form-row">
-        <label for="matDifficulty">Modificador de dificultad (+/-)</label>
-        <input type="number" id="matDifficulty" value="0" placeholder="Ej. +2 o -1">
-      </div>
-      <div id="matDiceRow">
-        <div class="form-row" style="display:flex;gap:8px;">
-          <div style="flex:1;">
-            <label for="matDiceCount">Nº de dados</label>
-            <input type="number" id="matDiceCount" min="0" value="0" placeholder="Ej. 1">
-          </div>
-          <div style="flex:1;">
-            <label for="matDiceSides">Tipo de dado</label>
-            <select id="matDiceSides">
-              <option value="0">— Ninguno —</option>
-              <option value="4">d4</option>
-              <option value="6">d6</option>
-              <option value="8">d8</option>
-              <option value="10">d10</option>
-              <option value="12">d12</option>
-              <option value="20">d20</option>
-              <option value="custom">Personalizado…</option>
-            </select>
-          </div>
-          <div style="flex:1;" id="matDiceCustomRow" style="display:none;">
-            <label for="matDiceCustom">Caras personalizadas</label>
-            <input type="number" id="matDiceCustom" min="1" placeholder="Ej. 3">
-          </div>
+      <h2 id="matFormTitle">➕ Identificar material</h2>
+      <div class="form-row-2">
+        <div class="form-row">
+          <label>Nombre *</label>
+          <input type="text" id="matName">
         </div>
-        <div class="form-row" style="display:flex;gap:8px;">
-          <div style="flex:1;">
-            <label for="matFlatBonus">Bono fijo al efecto (+/-)</label>
-            <input type="number" id="matFlatBonus" value="0" placeholder="Ej. 2">
-          </div>
-          <div style="flex:1;">
-            <label for="matStatMod">Modificador de característica</label>
-            <input type="text" id="matStatMod" placeholder="Ej. Constitución">
-          </div>
+        <div class="form-row">
+          <label>Lugar de cosecha</label>
+          <input type="text" id="matLugar" placeholder="Bosque, Cueva... (??? si vacío)">
         </div>
-        <p class="muted" id="matDiceHint" style="margin:0 0 8px;">Solo aplica a materiales de categoría Básica o Dañina (curación/daño). Los modificadores nunca restan dados: como mucho, no añaden ninguno.</p>
       </div>
-      <div class="form-row" id="matEffectRow" style="display:none;">
-        <label for="matEffect">Efecto</label>
-        <input type="text" id="matEffect" placeholder="Ej. Invisibilidad">
+      <div class="form-row-2">
+        <div>
+          <label>Categoría</label>
+          <select id="matCategory">
+            <option value="Salutífera">Salutífera</option>
+            <option value="Maliciosa">Maliciosa</option>
+            <option value="Mágica">Mágica</option>
+          </select>
+        </div>
+        <div>
+          <label>Tipo</label>
+          <select id="matType">
+            <option value="Base">Base</option>
+            <option value="Modificador">Modificador</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row-2">
+        <div>
+          <label>Subtipo</label>
+          <select id="matSubtipo"></select>
+        </div>
+        <div>
+          <label>Rareza</label>
+          <select id="matRarity">
+            <option>Común</option>
+            <option>Poco Común</option>
+            <option>Rara</option>
+            <option>Muy Rara</option>
+            <option>Única</option>
+          </select>
+        </div>
       </div>
       <div class="form-row">
-        <label for="matDuration">Duración (vacío = instantánea)</label>
-        <input type="text" id="matDuration" placeholder="Ej. 1 hora / Concentración, hasta 10 minutos">
+        <label>Dificultad <span id="diffHint" class="muted">(modificador a la CD de crafteo)</span></label>
+        <input type="number" id="matDifficulty" value="0">
       </div>
-      <div class="form-row">
-        <label for="matDesc">Descripción del efecto</label>
-        <textarea id="matDesc" placeholder="Ej. Cura 2d4+2 PV / Duplica los dados de efecto"></textarea>
-      </div>
-      <div class="form-row">
-        <label style="display:flex;align-items:center;gap:6px;font-weight:normal;">
-          <input type="checkbox" id="matUnknown" style="width:auto;">
-          Material desconocido (oculta dificultad y descripción como ???)
+
+      <!-- FLAGS (Base only) -->
+      <div id="baseFlagsSection" class="flags-row" style="display:none">
+        <label class="check-label">
+          <input type="checkbox" id="matDiscriminante"> Base Discriminante (sin modificadores)
+        </label>
+        <label class="check-label">
+          <input type="checkbox" id="matNoPurificable" id="matNoPurificable"> No purificable
         </label>
       </div>
-      <button class="btn" id="matSubmitBtn" data-action="add-mat">➕ Añadir material</button>
-      <button class="btn" id="matCancelEditBtn" style="background:#777;display:none;" data-action="cancel-edit-mat">❌ Cancelar edición</button>
-    </div>
 
+      <!-- DICE POOL (Vitalidad / Dañina / Potenciador) -->
+      <div id="dicePoolSection" class="dice-section" style="display:none">
+        <div class="dice-section-label" id="dicePoolLabel">Dados de curación</div>
+        <div id="dicePoolRows"></div>
+        <button type="button" class="btn btn-sm" onclick="addDiceRow('pool')">+ Añadir dado</button>
+        <div class="form-row" style="margin-top:8px">
+          <label>Bono plano</label>
+          <input type="number" id="matFlatBonus" value="0" style="width:90px">
+        </div>
+      </div>
+
+      <!-- STAT MOD (Vitalidad / Dañina / Potenciador) -->
+      <div id="statModSection" style="display:none" class="form-row">
+        <label>Modificador de característica (opcional)</label>
+        <input type="text" id="matStatMod" placeholder="ej. Constitución, Fuerza...">
+      </div>
+
+      <!-- DAMAGE TYPE (Resistencia / Debilitante) -->
+      <div id="damageTypeSection" style="display:none" class="form-row">
+        <label id="damageTypeLabel">Tipo de daño</label>
+        <div class="damage-type-row">
+          <select id="matDamageType">
+            <option value="">-- Elige o añade un tipo --</option>
+          </select>
+          <button type="button" class="btn btn-sm" data-action="add-damage-type">+ Nuevo tipo</button>
+        </div>
+      </div>
+
+      <!-- INCAPACITANTE -->
+      <div id="incapacitanteSection" style="display:none">
+        <div class="form-row">
+          <label>Tipo de penalización</label>
+          <select id="matPenaltyType">
+            <option value="flat">Penalización fija (número)</option>
+            <option value="disadvantage">Desventaja en tiradas</option>
+            <option value="both">Ambas</option>
+          </select>
+        </div>
+        <div id="penaltyValueRow" class="form-row">
+          <label>Valor de penalización</label>
+          <input type="number" id="matPenaltyValue" value="1" min="1" style="width:90px">
+        </div>
+      </div>
+
+      <!-- DURATION (all bases + Prolongador) -->
+      <div id="durationSection" class="dice-section" style="display:none">
+        <div class="dice-section-label">Duración del efecto</div>
+        <label class="check-label">
+          <input type="checkbox" id="matDurationInstant"> Instantánea
+        </label>
+        <div id="durationDiceSection">
+          <div id="durationDiceRows"></div>
+          <button type="button" class="btn btn-sm" onclick="addDiceRow('duration')">+ Añadir dado de duración</button>
+          <div class="form-row" style="margin-top:8px">
+            <label>Duración base (turnos fijos)</label>
+            <input type="number" id="matDurationFlat" value="0" min="0" style="width:90px">
+          </div>
+        </div>
+      </div>
+
+      <!-- MAX USES (Modificador only) -->
+      <div id="maxUsesSection" style="display:none" class="form-row">
+        <label>Límite de usos por poción (0 = sin límite)</label>
+        <input type="number" id="matMaxUses" value="0" min="0" style="width:90px">
+      </div>
+
+      <div class="form-row">
+        <label>Descripción / Notas</label>
+        <textarea id="matDesc" rows="2" placeholder="Efecto, aspecto, sabor..."></textarea>
+      </div>
+      <label class="check-label" style="margin-bottom:10px">
+        <input type="checkbox" id="matUnknown"> Estado desconocido (???)
+      </label>
+
+      <div class="btn-row">
+        <button class="btn" data-action="add-mat" id="matSubmitBtn">➕ Añadir material</button>
+        <button class="btn" style="display:none;background:#777" id="matCancelEditBtn" data-action="cancel-edit-mat">✖ Cancelar edición</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- SUB: Catálogo Materiales -->
+  <div id="infoSub-catalogo" style="display:none">
     <div class="panel">
-      <h2>Catálogo de materiales</h2>
-      <div id="matList"></div>
+      <h2>🌿 Bases</h2>
+      <div id="catBaseList"><p class="muted">No hay bases registradas.</p></div>
     </div>
     <div class="panel">
-      <h2>📚 Catálogo de pociones</h2>
+      <h2>🧪 Modificadores</h2>
+      <div id="catModList"><p class="muted">No hay modificadores registrados.</p></div>
+    </div>
+  </div>
+
+  <!-- SUB: Catálogo Pociones -->
+  <div id="infoSub-pociones" style="display:none">
+    <div class="panel">
+      <h2>📚 Pociones descubiertas</h2>
       <div id="potionCatalogList"><p class="muted">Todavía no has creado ninguna poción.</p></div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <!-- INVENTARIO -->
-  <section id="tab-inventario" class="tab-content">
-    <div class="panel">
-      <div class="inv-subtab-bar">
-        <button class="btn inv-subtab-btn active" data-action="inv-subtab" data-id="materiales">📦 Materiales</button>
-        <button class="btn inv-subtab-btn" data-action="inv-subtab" data-id="pociones">🧪 Pociones</button>
-        <button class="btn inv-subtab-btn" data-action="inv-subtab" data-id="loot">🔍 Loot</button>
-      </div>
-      <div id="invSubtabMateriales">
-        <div id="invMatList"></div>
-      </div>
-      <div id="invSubtabPociones" style="display:none;">
-        <div id="invPotList"></div>
-        <div id="drinkResult"></div>
-      </div>
-      <div id="invSubtabLoot" style="display:none;">
-        <h3 style="margin:0 0 8px;font-size:1em;">Añadir poción Loot</h3>
-        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px;align-items:flex-end;">
-          <div>
-            <label style="display:block;font-size:0.85em;font-weight:bold;margin-bottom:2px;">Nombre</label>
-            <input type="text" id="lootName" placeholder="Ej. Frasco misterioso" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font-family:inherit;width:200px;">
-          </div>
-          <div>
-            <label style="display:block;font-size:0.85em;font-weight:bold;margin-bottom:2px;">Cantidad</label>
-            <input type="number" id="lootQty" min="1" value="1" style="padding:5px 7px;border:1px solid var(--border);border-radius:4px;font-family:inherit;width:70px;">
-          </div>
-          <button class="btn" data-action="add-loot">➕ Añadir</button>
+<section id="tab-inventario" class="tab-content">
+  <div class="panel">
+    <div class="subtab-bar">
+      <button class="subtab-btn active" data-action="inv-subtab" data-id="materiales">📦 Materiales</button>
+      <button class="subtab-btn" data-action="inv-subtab" data-id="pociones">🧪 Pociones</button>
+      <button class="subtab-btn" data-action="inv-subtab" data-id="loot">🔍 Loot</button>
+    </div>
+    <div id="invSub-materiales"><div id="invMatList"></div></div>
+    <div id="invSub-pociones" style="display:none">
+      <div id="invPotList"></div>
+      <div id="drinkResult"></div>
+    </div>
+    <div id="invSub-loot" style="display:none">
+      <div class="form-row-2">
+        <div class="form-row">
+          <label>Nombre de la poción loot</label>
+          <input type="text" id="lootName" placeholder="Poción sin identificar...">
         </div>
-        <div id="lootPotList"><p class="muted">No tienes pociones Loot todavía.</p></div>
-        <div id="lootResult"></div>
+        <div class="form-row">
+          <label>Cantidad</label>
+          <input type="number" id="lootQty" value="1" min="1" style="width:80px">
+        </div>
       </div>
+      <button class="btn" data-action="add-loot">➕ Añadir poción loot</button>
+      <div id="lootPotList" style="margin-top:12px"></div>
+      <div id="lootResult"></div>
     </div>
-  </section>
+  </div>
+</section>
 
-  <!-- CRAFTEO -->
-  <section id="tab-crafteo" class="tab-content">
+<section id="tab-crafteo" class="tab-content">
+  <div class="panel">
+    <h2>Tipo de crafteo</h2>
+    <div class="mode-btn-bar">
+      <button class="btn mode-btn active" data-action="craft-set-mode" data-id="elaboracion">🧪 Elaboración</button>
+      <button class="btn mode-btn" data-action="craft-set-mode" data-id="concentracion">✨ Concentración</button>
+      <button class="btn mode-btn" data-action="craft-set-mode" data-id="multipocion">🌀 Multipoción</button>
+    </div>
+    <p class="muted" id="craftModeHint"></p>
+  </div>
+
+  <!-- Elaboración panels -->
+  <div id="craftElaboracionPanels">
     <div class="panel">
-      <h2>Tipo de crafteo</h2>
-      <div class="mode-btn-bar">
-        <button class="btn mode-btn active" data-action="craft-set-mode" data-id="elaboracion">🧪 Elaboración</button>
-        <button class="btn mode-btn" data-action="craft-set-mode" data-id="concentracion">✨ Concentración</button>
-        <button class="btn mode-btn" data-action="craft-set-mode" data-id="multipocion">🌀 Multipoción</button>
-      </div>
-      <p class="muted" id="craftModeHint" style="margin:8px 0 0;">Crea una poción a partir de un material Base y modificadores.</p>
+      <h2>1. Elige la Base</h2>
+      <div id="craftBaseList"></div>
     </div>
-
-    <div id="craftElaboracionPanels">
-      <div class="panel">
-        <h2>1. Elige la Base</h2>
-        <div id="craftBaseList"></div>
-      </div>
-      <div class="panel">
-        <h2>2. Elige los Modificadores (misma categoría que la Base)</h2>
-        <div id="craftModList"></div>
-      </div>
+    <div class="panel" id="craftModPanel" style="display:none">
+      <h2>2. Elige los Modificadores</h2>
+      <div id="craftModList"></div>
     </div>
+  </div>
 
-    <div id="craftConcentracionPanels" style="display:none;">
-      <div class="panel">
-        <h2>1. Elige las 2 pociones a combinar (exactamente 2, misma poción base)</h2>
-        <div id="craftPotionList"></div>
-      </div>
-    </div>
-
-    <div id="craftMultipocionPanels" style="display:none;">
-      <div class="panel">
-        <h2>1. Elige las 2 pociones a combinar (exactamente 2, bases distintas)</h2>
-        <div id="craftMultiList"></div>
-      </div>
-    </div>
-
-    <div id="craftAplicacionPanel" class="panel" style="display:none;">
-      <h2>2. Método de aplicación</h2>
-      <div class="form-row" style="max-width:340px;">
-        <label for="craftAplicacion">¿Cómo se aplica esta poción?</label>
-        <select id="craftAplicacion">
-          <option value="al beber">Al beber</option>
-          <option value="al contacto con la piel">Al contacto con la piel</option>
-          <option value="al contacto con la sangre">Al contacto con la sangre</option>
-          <option value="al inhalar">Al inhalar</option>
-        </select>
-      </div>
-    </div>
-
+  <!-- Concentración panels -->
+  <div id="craftConcentracionPanels" style="display:none">
     <div class="panel">
-      <h2 id="craftStepLabel">3. Craftea</h2>
-      <p>Dificultad total: <strong id="craftDifficulty">—</strong></p>
-      <div class="form-row" style="max-width:260px;">
-        <label for="craftBonus">Bono situacional de esta tirada (ej. 3 o -2)</label>
-        <input type="number" id="craftBonus" value="0">
-      </div>
+      <h2>1. Elige las 2 pociones a concentrar (misma base)</h2>
+      <div id="craftPotionList"></div>
+    </div>
+  </div>
+
+  <!-- Multipoción panels -->
+  <div id="craftMultipocionPanels" style="display:none">
+    <div class="panel">
+      <h2>1. Elige las 2 pociones a combinar (bases distintas)</h2>
+      <div id="craftMultiList"></div>
+    </div>
+  </div>
+
+  <!-- Aplicación panel -->
+  <div id="craftAplicacionPanel" class="panel" style="display:none">
+    <h2 id="craftAplicStep">2. Método de aplicación</h2>
+    <p class="muted">Elige uno o más métodos. Cada tipo añade dificultad a la tirada.</p>
+    <div class="aplicacion-grid" id="aplicacionGrid">
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="brebaje" checked>
+        🍵 <strong>Brebaje</strong> — Al Beber
+        <span class="aplic-diff" id="ad-brebaje">+0</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="hemica">
+        🩸 <strong>Hémica</strong> — Contacto con Sangre
+        <span class="aplic-diff" id="ad-hemica">+1</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="corrosiva">
+        🖐️ <strong>Corrosiva</strong> — Contacto con Piel
+        <span class="aplic-diff" id="ad-corrosiva">+2</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="inhalable" id="aplicInhalable">
+        💨 <strong>Inhalable</strong> — Al oler (1m×1m)
+        <span class="aplic-diff" id="ad-inhalable">+3</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="fumigena" id="aplicFumigena">
+        💨 <strong>Fumígena</strong> — Nube inhalable (3m×3m)
+        <span class="aplic-diff" id="ad-fumigena">+4</span>
+      </label>
+    </div>
+    <p class="muted" id="aplicConflictWarn" style="display:none;color:#a00">⚠️ Inhalable y Fumígena no pueden combinarse.</p>
+    <p style="margin-top:6px">Penalización de aplicación: <strong id="aplicDiffTotal">+0</strong></p>
+  </div>
+
+  <!-- Craftea panel -->
+  <div class="panel">
+    <h2 id="craftStepLabel">3. Craftea</h2>
+    <p>Dificultad total: <strong id="craftDifficulty">—</strong></p>
+    <div class="form-row" style="max-width:260px">
+      <label>Bono situacional de esta tirada</label>
+      <input type="number" id="craftBonus" value="0">
+    </div>
+    <div class="btn-row">
       <button class="btn" id="craftConfirmBtn" data-action="craft-confirm" disabled>🎲 Craftear</button>
-      <button class="btn" style="background:#777;" data-action="craft-reset">❌ Reiniciar selección</button>
-      <div id="craftResult"></div>
+      <button class="btn" style="background:#777" data-action="craft-reset">❌ Reiniciar</button>
     </div>
-  </section>
-
-</main>
-
-<footer class="app-footer">
-  <button class="btn" data-action="export-data">📤 Exportar datos</button>
-  <button class="btn" data-action="trigger-import">📥 Importar datos</button>
-  <input type="file" id="importFile" accept="application/json" style="display:none;">
-  <button class="btn btn-danger" data-action="reset-all">🗑 Borrar todos los datos</button>
-</footer>
-
+    <div id="craftResult"></div>
+  </div>
+</section>
 <script>
-(function () {
-  'use strict';
+var STORAGE_KEY = 'alquimiaAppData_v2';
+var SOUND_ENABLED = true;
+var APLICACION_OPTIONS = [
+  {id:'brebaje',label:'Brebaje',diffMod:0},
+  {id:'hemica',label:'Hémica',diffMod:1},
+  {id:'corrosiva',label:'Corrosiva',diffMod:2},
+  {id:'inhalable',label:'Inhalable',diffMod:3},
+  {id:'fumigena',label:'Fumígena',diffMod:4}
+];
+var SUBTIPOS = {
+  'Salutífera_Base':['Vitalidad','Resistencia','Otro'],
+  'Maliciosa_Base':['Dañina','Incapacitante','Debilitante'],
+  'Mágica_Base':[],
+  '_Modificador':['Economizador','Prolongador','Potenciador','Otro']
+};
+var state;
+var editingMatId = null;
+var diceRowCounter = 0;
+var craftMode = 'elaboracion';
+var craftSelectedBase = null;
+var craftSelectedMods = {};
+var craftPotionPicks = [];
+var deletePendingId = null;
 
-  var STORAGE_KEY = 'alquimiaAppData_v1';
-
-  // ── Sistema de sonido ──────────────────────────────────────────────
-  // Pon tus archivos en una carpeta "sounds/" junto al HTML.
-  var SOUNDS = {
-    craft:   'sounds/craft.ogg',    // sonido de tirada / brewing
-    success: 'sounds/success.ogg',  // éxito
-    fail:    'sounds/fail.ogg',     // fallo normal
-    pifia:   'sounds/pifia.ogg',    // PUTERIO (nat 1)
-    drink:   'sounds/drink.ogg'     // beber poción
+function getDefaultState() {
+  return {
+    character:{name:'',intMod:0,bonus:0},
+    catalog:{},inventory:{},potions:{},potionCatalog:{},lootPotions:{},
+    damageTypes:['Fuego','Frío','Rayo','Ácido','Veneno','Necrótico','Radiante','Psíquico','Trueno']
   };
-  var soundMuted = localStorage.getItem('alquimiaSoundMuted') === 'true';
+}
+function loadState() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    if (raw) {
+      state = JSON.parse(raw);
+      if (!state.damageTypes) state.damageTypes = getDefaultState().damageTypes;
+      if (!state.lootPotions) state.lootPotions = {};
+      if (!state.potionCatalog) state.potionCatalog = {};
+    } else { state = getDefaultState(); }
+  } catch(e) { state = getDefaultState(); }
+}
+function saveState() { localStorage.setItem(STORAGE_KEY, JSON.stringify(state)); }
+function genId() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function rarityClass(r) {
+  return 'rarity-'+({'Común':'comun','Poco Común':'poco','Rara':'rara','Muy Rara':'muy','Única':'unico'}[r]||'comun');
+}
+function rarityBadge(r) { return '<span class="rarity-label '+rarityClass(r)+'">'+r+'</span>'; }
+function catBadge(c) {
+  var cls = c==='Salutífera'?'sal':c==='Maliciosa'?'mal':'mag';
+  return '<span class="badge badge-'+cls+'">'+c+'</span>';
+}
+function purityRoman(n) { return ['I','II','III','IV','V','VI','VII','VIII','IX','X'][n-1]||'I'; }
+function getAplicOption(id) {
+  for (var i=0;i<APLICACION_OPTIONS.length;i++) if(APLICACION_OPTIONS[i].id===id) return APLICACION_OPTIONS[i];
+  return null;
+}
+function potCatKey(baseId,modsObj) {
+  return baseId+'_m'+Object.keys(modsObj).sort().join(',');
+}
+function potKey(baseId,modsObj,aplicIds,purity) {
+  return baseId+'_m'+Object.keys(modsObj).sort().join(',')+'_a'+aplicIds.slice().sort().join(',')+'_p'+purity;
+}
+function parsePotKey(key) {
+  var m = key.match(/^(.+)_m(.*)_a(.*)_p(\d+)$/);
+  if(!m) return null;
+  return {baseId:m[1],mods:m[2],aplics:m[3],purity:parseInt(m[4])};
+}
+function parsedToCatKey(p) { return p ? p.baseId+'_m'+p.mods : ''; }
+function parseCatKey(ck) {
+  var m = ck.match(/^(.+)_m(.*)$/);
+  if(!m) return null;
+  return {baseId:m[1],mods:m[2]};
+}
+function rollDice(pool) {
+  var t=0;
+  if(!pool) return 0;
+  for(var i=0;i<pool.length;i++) for(var j=0;j<(pool[i].count||1);j++) t+=Math.floor(Math.random()*(pool[i].sides||6))+1;
+  return t;
+}
+function roll20() { return Math.floor(Math.random()*20)+1; }
+function calcBonus() {
+  return (state.character.intMod||0)+(state.character.bonus||0)+(parseInt(document.getElementById('craftBonus').value)||0);
+}
 
-  function playSound(name) {
-    if (soundMuted) return;
-    var src = SOUNDS[name];
-    if (!src) return;
-    try {
-      var audio = new Audio(src);
-      audio.volume = 0.7;
-      audio.play().catch(function () {}); // si el archivo no existe, falla silenciosamente
-    } catch (e) {} // entorno sin Web Audio (p.ej. tests) — ignorar
+// ---- FORM ----
+function addDiceRow(which) {
+  var cid = which==='pool'?'dicePoolRows':'durationDiceRows';
+  var container = document.getElementById(cid);
+  var rowId = 'dr_'+which+'_'+(diceRowCounter++);
+  var div = document.createElement('div');
+  div.className='dice-row'; div.id=rowId;
+  div.innerHTML='<input type="number" min="1" max="20" value="1" style="width:50px"> × d'+
+    '<select><option>4</option><option selected>6</option><option>8</option><option>10</option><option>12</option><option>20</option></select>'+
+    ' <button type="button" class="btn btn-sm btn-danger" onclick="removeDiceRow(\''+rowId+'\')">✕</button>';
+  container.appendChild(div);
+  updateNoPurificable();
+}
+function removeDiceRow(rowId) {
+  var el=document.getElementById(rowId);
+  if(el) el.parentNode.removeChild(el);
+  updateNoPurificable();
+}
+function getDiceRows(which) {
+  var cid=which==='pool'?'dicePoolRows':'durationDiceRows';
+  var container=document.getElementById(cid);
+  if(!container) return [];
+  var rows=[],divs=container.getElementsByClassName('dice-row');
+  for(var i=0;i<divs.length;i++){
+    var inp=divs[i].getElementsByTagName('input');
+    var sel=divs[i].getElementsByTagName('select');
+    if(inp.length&&sel.length) rows.push({count:parseInt(inp[0].value)||1,sides:parseInt(sel[0].value)||6});
   }
-
-  function updateMuteBtn() {
-    var btn = document.getElementById('muteBtn');
-    if (btn) btn.textContent = soundMuted ? '🔇' : '🔊';
+  return rows;
+}
+function clearDiceRows(which) {
+  var el=document.getElementById(which==='pool'?'dicePoolRows':'durationDiceRows');
+  if(el) el.innerHTML='';
+}
+function populateDiceRows(which,rows) {
+  clearDiceRows(which);
+  if(!rows||!rows.length) return;
+  for(var i=0;i<rows.length;i++){
+    addDiceRow(which);
+    var cid=which==='pool'?'dicePoolRows':'durationDiceRows';
+    var container=document.getElementById(cid);
+    var divs=container.getElementsByClassName('dice-row');
+    var last=divs[divs.length-1];
+    var inp=last.getElementsByTagName('input');
+    var sel=last.getElementsByTagName('select');
+    if(inp[0]) inp[0].value=rows[i].count||1;
+    if(sel[0]) sel[0].value=rows[i].sides||6;
   }
-  // ──────────────────────────────────────────────────────────────────
-  var craftMode = 'elaboracion'; // 'elaboracion' | 'concentracion' | 'multipocion'
-  var craftSelection = { baseId: null, mods: {}, potions: {} };
-  var editingMatId = null;
-  var invSubtab = 'materiales'; // 'materiales' | 'pociones' | 'loot'
-
-  function defaultState() {
-    return {
-      character: { name: 'Mi personaje', intMod: 0, bonus: 0 },
-      catalog: {},
-      inventory: {},
-      potions: {},
-      potionCatalog: {},  // key → { apodo: '' }
-      lootPotions: {}     // id → { name, qty, descripcion, tipo, identificada }
-    };
+}
+function updateNoPurificable() {
+  if(document.getElementById('matType').value!=='Base') return;
+  var hasDice=getDiceRows('pool').length>0||getDiceRows('duration').length>0;
+  var cb=document.getElementById('matNoPurificable');
+  if(!hasDice){cb.checked=true;cb.disabled=true;}
+  else{cb.disabled=false;}
+}
+function populateDamageTypeSelect() {
+  var sel=document.getElementById('matDamageType');
+  if(!sel) return;
+  var cur=sel.value;
+  sel.innerHTML='<option value="">-- Elige o añade --</option>';
+  (state.damageTypes||[]).forEach(function(t){
+    var o=document.createElement('option');o.value=t;o.textContent=t;sel.appendChild(o);
+  });
+  if(cur) sel.value=cur;
+}
+function getSubtipos(cat,type) {
+  if(type==='Modificador') return SUBTIPOS['_Modificador'];
+  return SUBTIPOS[cat+'_'+type]||[];
+}
+function updateMatForm() {
+  var cat=document.getElementById('matCategory').value;
+  var type=document.getElementById('matType').value;
+  var subSel=document.getElementById('matSubtipo');
+  var subs=getSubtipos(cat,type);
+  var curSub=subSel.value;
+  subSel.innerHTML='';
+  if(!subs.length){subSel.innerHTML='<option value="">(ninguno)</option>';subSel.disabled=true;}
+  else{
+    subSel.disabled=false;
+    subs.forEach(function(s){var o=document.createElement('option');o.value=s;o.textContent=s;subSel.appendChild(o);});
+    if(subs.indexOf(curSub)>=0) subSel.value=curSub;
   }
-
-  function loadState() {
-    try {
-      var raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) {
-        var parsed = JSON.parse(raw);
-        var merged = defaultState();
-        merged.character = Object.assign(merged.character, parsed.character || {});
-        merged.catalog = parsed.catalog || {};
-        merged.inventory = parsed.inventory || {};
-        merged.potions = parsed.potions || {};
-        merged.potionCatalog = parsed.potionCatalog || {};
-        merged.lootPotions = parsed.lootPotions || {};
-        return merged;
-      }
-    } catch (e) { console.error('Error cargando datos guardados:', e); }
-    return defaultState();
+  var sub=subSel.value;
+  var isBase=type==='Base', isMod=type==='Modificador';
+  document.getElementById('baseFlagsSection').style.display=isBase?'flex':'none';
+  var showPool=(isBase&&(sub==='Vitalidad'||sub==='Dañina'))||sub==='Potenciador';
+  document.getElementById('dicePoolSection').style.display=showPool?'block':'none';
+  if(showPool){
+    document.getElementById('dicePoolLabel').textContent=
+      sub==='Potenciador'?'Dados de bonificación':sub==='Dañina'?'Dados de daño':'Dados de curación';
   }
-
-  var state = loadState();
-
-  function saveState() {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+  document.getElementById('statModSection').style.display=showPool?'block':'none';
+  var showDmg=isBase&&(sub==='Resistencia'||sub==='Debilitante');
+  document.getElementById('damageTypeSection').style.display=showDmg?'block':'none';
+  if(showDmg){
+    document.getElementById('damageTypeLabel').textContent=sub==='Resistencia'?'Resistencia a tipo de daño':'Tipo de daño que inflige';
+    populateDamageTypeSelect();
   }
-
-  function genId() {
-    return 'M' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  var showIncap=isBase&&sub==='Incapacitante';
+  document.getElementById('incapacitanteSection').style.display=showIncap?'block':'none';
+  if(showIncap){
+    var pt=document.getElementById('matPenaltyType').value;
+    document.getElementById('penaltyValueRow').style.display=pt==='disadvantage'?'none':'block';
   }
-
-  function genLootId() {
-    return 'L' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  var showDur=isBase||sub==='Prolongador';
+  document.getElementById('durationSection').style.display=showDur?'block':'none';
+  if(showDur){
+    var inst=document.getElementById('matDurationInstant').checked;
+    document.getElementById('durationDiceSection').style.display=inst?'none':'block';
   }
-
-  // Devuelve la dificultad total de base de una poción (para Concentración/Multipoción)
-  function getPotionBaseDifficulty(p) {
-    if (typeof p.baseDifficulty === 'number') return p.baseDifficulty;
-    // retrocompatibilidad: buscar en catálogo
-    if (p.isMulti && Array.isArray(p.effects)) {
-      return p.effects.reduce(function (sum, e) {
-        return sum + (e.baseId && state.catalog[e.baseId] ? (state.catalog[e.baseId].difficulty || 0) : 0);
-      }, 0);
-    }
-    if (p.baseId && state.catalog[p.baseId]) return state.catalog[p.baseId].difficulty || 0;
-    return 0;
-  }
-
-  // Resuelve el método de aplicación al combinar pociones componentes
-  function resolveAplicacion(compKeys, selPotions) {
-    var values = [];
-    compKeys.forEach(function (key) {
-      var count = selPotions[key] || 0;
-      if (count > 0 && state.potions[key]) {
-        var ap = state.potions[key].aplicacion || 'al beber';
-        if (values.indexOf(ap) === -1) values.push(ap);
-      }
-    });
-    if (values.length === 0) return 'al beber';
-    if (values.length === 1) return values[0];
-    return 'multiaplicable';
-  }
-
-  var APLICACION_LABELS = {
-    'al beber': '👄 Al beber',
-    'al contacto con la piel': '🖐️ Contacto piel',
-    'al contacto con la sangre': '🩸 Contacto sangre',
-    'al inhalar': '💨 Al inhalar',
-    'multiaplicable': '🔀 Multiaplicable'
+  document.getElementById('maxUsesSection').style.display=isMod?'block':'none';
+  var diffHint=document.getElementById('diffHint');
+  diffHint.textContent=sub==='Economizador'?'(debe ser negativo)':'(modificador a la CD)';
+  if(isBase) updateNoPurificable();
+}
+function readFormData() {
+  var cat=document.getElementById('matCategory').value;
+  var type=document.getElementById('matType').value;
+  var sub=document.getElementById('matSubtipo').value;
+  var data={
+    name:document.getElementById('matName').value.trim(),
+    lugar:document.getElementById('matLugar').value.trim(),
+    category:cat,type:type,subtipo:sub,
+    rarity:document.getElementById('matRarity').value,
+    difficulty:parseInt(document.getElementById('matDifficulty').value)||0,
+    description:document.getElementById('matDesc').value.trim(),
+    unknown:document.getElementById('matUnknown').checked,
+    discriminante:false,noPurificable:false,
+    dicePool:[],flatBonus:0,statMod:'',
+    damageType:'',penaltyType:'',penaltyValue:0,
+    durationInstant:false,durationDice:[],durationFlat:0,maxUses:0
   };
-  function aplicacionLabel(ap) {
-    return APLICACION_LABELS[ap] || esc(ap);
+  if(type==='Base'){
+    data.discriminante=document.getElementById('matDiscriminante').checked;
+    data.noPurificable=document.getElementById('matNoPurificable').checked;
   }
-
-  function esc(s) {
-    var d = document.createElement('div');
-    d.textContent = s === null || s === undefined ? '' : String(s);
-    return d.innerHTML;
+  var showPool=(type==='Base'&&(sub==='Vitalidad'||sub==='Dañina'))||sub==='Potenciador';
+  if(showPool){
+    data.dicePool=getDiceRows('pool');
+    data.flatBonus=parseInt(document.getElementById('matFlatBonus').value)||0;
+    data.statMod=document.getElementById('matStatMod').value.trim();
   }
-
-  function fmtSigned(n) {
-    n = parseInt(n, 10) || 0;
-    return (n >= 0 ? '+' : '') + n;
+  if(type==='Base'&&(sub==='Resistencia'||sub==='Debilitante'))
+    data.damageType=document.getElementById('matDamageType').value;
+  if(type==='Base'&&sub==='Incapacitante'){
+    data.penaltyType=document.getElementById('matPenaltyType').value;
+    data.penaltyValue=parseInt(document.getElementById('matPenaltyValue').value)||1;
   }
-
-  function slug(s) {
-    return String(s).toLowerCase()
-      .normalize('NFD').replace(/[̀-ͯ]/g, '')
-      .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-  }
-
-  function catOf(obj) {
-    return (obj && obj.category) || 'Básica';
-  }
-
-  function effectLabel(category) {
-    if (category === 'Básica') return 'Curación';
-    if (category === 'Dañina') return 'Daño';
-    return '';
-  }
-
-  // ---------- Dados / efectos estructurados ----------
-  var ROMAN_TABLE = [
-    [1000, 'M'], [900, 'CM'], [500, 'D'], [400, 'CD'],
-    [100, 'C'], [90, 'XC'], [50, 'L'], [40, 'XL'],
-    [10, 'X'], [9, 'IX'], [5, 'V'], [4, 'IV'], [1, 'I']
-  ];
-  function toRoman(num) {
-    num = Math.max(1, Math.round(num) || 1);
-    var out = '';
-    for (var i = 0; i < ROMAN_TABLE.length; i++) {
-      while (num >= ROMAN_TABLE[i][0]) {
-        out += ROMAN_TABLE[i][1];
-        num -= ROMAN_TABLE[i][0];
-      }
-    }
-    return out;
-  }
-
-  // pool: array de { sides: Number, count: Number }. Junta entradas con el mismo "sides".
-  function addToPool(pool, sides, count) {
-    if (!sides || !count) return pool;
-    for (var i = 0; i < pool.length; i++) {
-      if (pool[i].sides === sides) { pool[i].count += count; return pool; }
-    }
-    pool.push({ sides: sides, count: count });
-    return pool;
-  }
-
-  function mergePools(pools) {
-    var out = [];
-    pools.forEach(function (pool) {
-      (pool || []).forEach(function (entry) { addToPool(out, entry.sides, entry.count); });
-    });
-    out.sort(function (a, b) { return b.sides - a.sides; });
-    return out;
-  }
-
-  function scalePool(pool, factor) {
-    return (pool || []).map(function (e) { return { sides: e.sides, count: e.count * factor }; }).filter(function (e) { return e.count > 0; });
-  }
-
-  function formatPool(pool) {
-    return (pool || []).filter(function (e) { return e.count > 0; })
-      .map(function (e) { return e.count + 'd' + e.sides; })
-      .join(' + ');
-  }
-
-  // Tira físicamente los dados de un pool ({sides,count}[]) y devuelve el total y el detalle textual
-  function rollPool(pool) {
-    var sum = 0;
-    var parts = [];
-    (pool || []).filter(function (e) { return e.count > 0; }).forEach(function (e) {
-      var rolls = [];
-      for (var i = 0; i < e.count; i++) {
-        rolls.push(Math.floor(Math.random() * e.sides) + 1);
-      }
-      sum += rolls.reduce(function (a, b) { return a + b; }, 0);
-      parts.push(e.count + 'd' + e.sides + ' (' + rolls.join('+') + ')');
-    });
-    return { sum: sum, text: parts.join(' + ') };
-  }
-
-  // Construye el texto de efecto completo: "1d4 + 2 (+ Mod. Constitución)"
-  function formatEffectText(category, pool, flatBonus, statMod) {
-    var label = effectLabel(category);
-    if (!label) return '';
-    var diceStr = formatPool(pool);
-    var parts = [];
-    if (diceStr) parts.push(diceStr);
-    if (flatBonus) parts.push(fmtSigned(flatBonus));
-    var formula = parts.join(' ');
-    if (!formula && !statMod) return '';
-    var out = label + ': ' + (formula || '0');
-    if (statMod) out += ' + Mod. ' + statMod;
-    return out;
-  }
-
-  // ---------- Multipoción: aplanado de efectos y fusión automática de bases iguales ----------
-
-  // Descompone una poción (normal o ya Multipoción) en una lista plana de "contribuciones"
-  // de efecto, una por cada base distinta que contenga, escaladas por la cantidad de unidades
-  // seleccionadas. Una Multipoción NUNCA se anida: sus efectos internos se exponen directamente.
-  function expandPotionEffects(p, count) {
-    if (p.isMulti && Array.isArray(p.effects)) {
-      return p.effects.map(function (e) {
-        return {
-          baseId: e.baseId || null,
-          baseName: e.baseName,
-          category: e.category,
-          pureUnits: (e.pureUnits || 1) * count,
-          dicePool: scalePool(e.dicePool || [], count),
-          flatBonus: e.flatBonus || 0,
-          statMod: e.statMod || '',
-          effect: e.effect || '',
-          duration: e.duration || '',
-          modifiersUsed: (e.modifiersUsed || []).slice()
-        };
-      });
-    }
-    return [{
-      baseId: p.baseId || null,
-      baseName: p.baseName || p.name,
-      category: catOf(p),
-      pureUnits: (p.pureUnits || 1) * count,
-      dicePool: scalePool(p.dicePool || [], count),
-      flatBonus: p.flatBonus || 0,
-      statMod: p.statMod || '',
-      effect: p.effect || '',
-      duration: p.duration || '',
-      modifiersUsed: (p.modifiersUsed || []).slice()
-    }];
-  }
-
-  // Agrupa contribuciones de efecto por base. Si dos contribuciones comparten la misma base,
-  // se fusionan automáticamente con la regla de Concentración: los dados y la pureza se SUMAN;
-  // el bono fijo y el modificador de característica se toman de la primera contribución (una
-  // sola vez, nunca se multiplican).
-  function groupEffectsByBase(rawEffects) {
-    var order = [];
-    var groups = {};
-    rawEffects.forEach(function (eff) {
-      var gKey = eff.baseId || ('name:' + eff.baseName);
-      if (!groups[gKey]) {
-        groups[gKey] = {
-          baseId: eff.baseId, baseName: eff.baseName, category: eff.category,
-          pureUnits: 0, dicePools: [], flatBonus: eff.flatBonus, statMod: eff.statMod,
-          effect: eff.effect || '', duration: eff.duration || '',
-          modifiersUsed: []
-        };
-        order.push(gKey);
-      }
-      var g = groups[gKey];
-      g.pureUnits += eff.pureUnits;
-      g.dicePools.push(eff.dicePool);
-      (eff.modifiersUsed || []).forEach(function (n) { if (g.modifiersUsed.indexOf(n) === -1) g.modifiersUsed.push(n); });
-    });
-    return order.map(function (gKey) {
-      var g = groups[gKey];
-      return {
-        baseId: g.baseId, baseName: g.baseName, category: g.category,
-        pureUnits: g.pureUnits, dicePool: mergePools(g.dicePools),
-        flatBonus: g.flatBonus, statMod: g.statMod, effect: g.effect, duration: g.duration,
-        modifiersUsed: g.modifiersUsed
-      };
-    });
-  }
-
-  // Texto descriptivo de una lista de efectos ya agrupados (de una Multipoción)
-  function formatMultiEffectsText(effects) {
-    return (effects || []).map(function (e) {
-      var label = e.baseName + (e.pureUnits > 1 ? ' (Nivel de pureza ' + toRoman(e.pureUnits) + ')' : '');
-      var effText = formatEffectText(e.category, e.dicePool, e.flatBonus || 0, e.statMod || '');
-      var extra = [];
-      if (e.effect) extra.push('Efecto: ' + e.effect);
-      extra.push('Duración: ' + (e.duration || 'Instantánea'));
-      return label + (effText ? ' — ' + effText : '') + ' (' + extra.join(', ') + ')';
-    }).join('; ');
-  }
-
-  // Texto de efecto para cualquier poción (normal o Multipoción), usado en listados
-  function effectDisplayText(p) {
-    if (p.isMulti) return formatMultiEffectsText(p.effects);
-    var effText = formatEffectText(catOf(p), p.dicePool, p.flatBonus || 0, p.statMod || '');
-    var extra = [];
-    if (p.effect) extra.push('Efecto: ' + p.effect);
-    extra.push('Duración: ' + (p.duration || 'Instantánea'));
-    return (effText ? effText + ' ' : '') + '(' + extra.join(', ') + ')';
-  }
-
-  function getMatList(typeFilter) {
-    return Object.keys(state.catalog)
-      .map(function (id) { return Object.assign({ id: id }, state.catalog[id]); })
-      .filter(function (m) { return !typeFilter || m.type === typeFilter; })
-      .sort(function (a, b) { return a.name.localeCompare(b.name); });
-  }
-
-  function getPotionList() {
-    return Object.keys(state.potions)
-      .map(function (key) { return Object.assign({ key: key }, state.potions[key]); })
-      .filter(function (p) { return (p.qty || 0) > 0; })
-      .sort(function (a, b) { return a.name.localeCompare(b.name); });
-  }
-
-  // ---------- Render ----------
-  function render() {
-    renderHeader();
-    toggleMaxUsesField();
-    toggleDiceFields();
-    toggleEffectField();
-    updateMuteBtn();
-    renderInfo();
-    renderPotionCatalog();
-    renderInventario();
-    renderLootPotions();
-    renderCrafteo();
-  }
-
-  function renderHeader() {
-    document.getElementById('charName').value = state.character.name;
-    document.getElementById('charIntMod').value = state.character.intMod;
-    document.getElementById('charBonus').value = state.character.bonus;
-  }
-
-  function renderInfo() {
-    var list = document.getElementById('matList');
-    var mats = getMatList();
-    if (!mats.length) {
-      list.innerHTML = '<p class="muted">Todavía no hay materiales registrados.</p>';
-      return;
-    }
-    list.innerHTML = mats.map(function (m) {
-      var unknown = !!m.unknown;
-      var category = catOf(m);
-      var diffDisplay = unknown ? '???' : fmtSigned(m.difficulty);
-      var descDisplay = unknown ? '???' : esc(m.description);
-      var maxUsesNote = (m.type === 'Modificador' && m.maxUses) ? ' · límite ' + m.maxUses + '/poción' : '';
-      var unicoNote = (m.rarity === 'Único') ? ' · sin modificadores' : '';
-      var diceText = '';
-      if (!unknown && diceCapableCategory(category)) {
-        var pool = m.diceSides ? [{ sides: m.diceSides, count: m.diceCount || 0 }] : [];
-        diceText = formatEffectText(category, pool, m.flatBonus || 0, m.statMod || '');
-      }
-      var effectText = (!unknown && magicCapableCategory(category) && m.effect) ? 'Efecto: ' + esc(m.effect) : '';
-      var durationText = unknown ? '' : 'Duración: ' + esc(m.duration ? m.duration : 'Instantánea');
-      return '<div class="mat-row rarity-' + slug(m.rarity) + ' cat-' + slug(category) + '">' +
-        '<div class="mat-main">' +
-        '<strong>' + esc(m.name) + '</strong>' +
-        '<span class="tag tag-' + (m.type === 'Base' ? 'base' : 'mod') + '">' + esc(m.type) + '</span>' +
-        '<span class="rarity-badge">' + esc(m.rarity) + '</span>' +
-        '<span class="cat-badge cat-' + slug(category) + '">' + esc(category) + '</span>' +
-        (unknown ? '<span class="tag" style="background:#555;">❓ Desconocido</span>' : '') +
-        ' — Dificultad ' + diffDisplay + maxUsesNote + unicoNote + ' ' +
-        '<button class="btn btn-sm" data-action="edit-mat" data-id="' + m.id + '">✏️</button> ' +
-        '<button class="btn btn-danger btn-sm" data-action="del-mat" data-id="' + m.id + '">🗑</button>' +
-        '</div>' +
-        (diceText ? '<div class="mat-desc">' + esc(diceText) + '</div>' : '') +
-        (effectText ? '<div class="mat-desc">' + effectText + '</div>' : '') +
-        (durationText ? '<div class="mat-desc">' + durationText + '</div>' : '') +
-        '<div class="mat-desc">' + descDisplay + '</div>' +
-        '</div>';
-    }).join('');
-  }
-
-  function renderInventario() {
-    // --- sync subtab buttons ---
-    var subtabBtns = document.querySelectorAll('.inv-subtab-btn');
-    for (var si = 0; si < subtabBtns.length; si++) {
-      subtabBtns[si].classList.toggle('active', subtabBtns[si].dataset.id === invSubtab);
-    }
-    document.getElementById('invSubtabMateriales').style.display = (invSubtab === 'materiales') ? '' : 'none';
-    document.getElementById('invSubtabPociones').style.display = (invSubtab === 'pociones') ? '' : 'none';
-    document.getElementById('invSubtabLoot').style.display = (invSubtab === 'loot') ? '' : 'none';
-
-    // --- Materiales ---
-    var matBox = document.getElementById('invMatList');
-    var mats = getMatList();
-    if (!mats.length) {
-      matBox.innerHTML = '<p class="muted">No hay materiales en el catálogo todavía. Añádelos en la pestaña Info.</p>';
-    } else {
-      matBox.innerHTML = mats.map(function (m) {
-        var qty = state.inventory[m.id] || 0;
-        var category = catOf(m);
-        return '<div class="inv-row">' +
-          '<button class="btn btn-sm" data-action="inv-sub" data-id="' + m.id + '">➖</button> ' +
-          '<button class="btn btn-sm" data-action="inv-add" data-id="' + m.id + '">➕</button> ' +
-          '<span class="tag tag-' + (m.type === 'Base' ? 'base' : 'mod') + '">' + esc(m.type) + '</span> ' +
-          '<span class="cat-badge cat-' + slug(category) + '">' + esc(category) + '</span> ' +
-          '<strong>' + esc(m.name) + '</strong>' + (m.unknown ? ' <span class="tag" style="background:#555;">❓</span>' : '') +
-          ' — Tienes: <span class="qty">' + qty + '</span>' +
-          '</div>';
-      }).join('');
-    }
-
-    // --- Pociones crafteadas ---
-    var potBox = document.getElementById('invPotList');
-    var potKeys = Object.keys(state.potions).filter(function (k) { return state.potions[k].qty > 0; });
-    if (!potKeys.length) {
-      potBox.innerHTML = '<p class="muted">Todavía no tienes ninguna poción.</p>';
-    } else {
-      potBox.innerHTML = potKeys.map(function (key) {
-        var p = state.potions[key];
-        var badge = p.isMulti
-          ? '<span class="cat-badge cat-magica">🌀 Multipoción</span> '
-          : '<span class="cat-badge cat-' + slug(catOf(p)) + '">' + esc(catOf(p)) + '</span> ';
-        var aplBadge = p.aplicacion ? '<span class="aplic-badge">' + aplicacionLabel(p.aplicacion) + '</span>' : '';
-        var effectText = effectDisplayText(p);
-        var catalogEntry = state.potionCatalog[key];
-        var apodoText = (catalogEntry && catalogEntry.apodo) ? ' <em class="apodo-badge">"' + esc(catalogEntry.apodo) + '"</em>' : '';
-        return '<div class="inv-row">' +
-          '<button class="btn btn-sm" data-action="pot-drink" data-id="' + key + '">🧪 Beber</button> ' +
-          badge + aplBadge +
-          '<strong>' + esc(p.name) + '</strong>' + apodoText + ' — Tienes: <span class="qty">' + p.qty + '</span>' +
-          (effectText ? '<div class="mat-desc"><strong>' + esc(effectText) + '</strong></div>' : '') +
-          '<div class="mat-desc">' + esc(p.description) + '</div>' +
-          '</div>';
-      }).join('');
+  if(type==='Base'||sub==='Prolongador'){
+    data.durationInstant=document.getElementById('matDurationInstant').checked;
+    if(!data.durationInstant){
+      data.durationDice=getDiceRows('duration');
+      data.durationFlat=parseInt(document.getElementById('matDurationFlat').value)||0;
     }
   }
+  if(type==='Modificador') data.maxUses=parseInt(document.getElementById('matMaxUses').value)||0;
+  return data;
+}
+function resetForm() {
+  ['matName','matLugar','matDesc','matStatMod'].forEach(function(id){document.getElementById(id).value='';});
+  ['matDifficulty','matFlatBonus','matDurationFlat','matMaxUses'].forEach(function(id){document.getElementById(id).value='0';});
+  document.getElementById('matPenaltyValue').value='1';
+  document.getElementById('matCategory').value='Salutífera';
+  document.getElementById('matType').value='Base';
+  document.getElementById('matRarity').value='Común';
+  ['matUnknown','matDiscriminante','matNoPurificable','matDurationInstant'].forEach(function(id){document.getElementById(id).checked=false;});
+  clearDiceRows('pool');clearDiceRows('duration');
+  editingMatId=null;
+  document.getElementById('matFormTitle').textContent='➕ Identificar material';
+  document.getElementById('matSubmitBtn').textContent='➕ Añadir material';
+  document.getElementById('matCancelEditBtn').style.display='none';
+  updateMatForm();
+}
 
-  function switchInvSubtab(id) {
-    invSubtab = id;
-    renderInventario();
-    renderLootPotions();
+// ---- MATERIAL CRUD ----
+function addMat() {
+  var data=readFormData();
+  if(!data.name){alert('El material necesita un nombre.');return;}
+  if(editingMatId){
+    var m=state.catalog[editingMatId];
+    for(var k in data) m[k]=data[k];
+  } else {
+    var id=genId();
+    state.catalog[id]=data;
+    if(!(id in state.inventory)) state.inventory[id]=0;
   }
-
-  function renderCrafteo() {
-    document.getElementById('craftElaboracionPanels').style.display = (craftMode === 'elaboracion') ? '' : 'none';
-    document.getElementById('craftConcentracionPanels').style.display = (craftMode === 'concentracion') ? '' : 'none';
-    document.getElementById('craftMultipocionPanels').style.display = (craftMode === 'multipocion') ? '' : 'none';
-    // P7-3: mostrar panel de aplicación solo en Elaboración; en Concentración/Multipoción se calcula automáticamente
-    document.getElementById('craftAplicacionPanel').style.display = (craftMode === 'elaboracion') ? '' : 'none';
-    document.getElementById('craftStepLabel').textContent = (craftMode === 'elaboracion') ? '3. Craftea' : '2. Craftea';
-    var modeBtns = document.querySelectorAll('.mode-btn');
-    for (var k = 0; k < modeBtns.length; k++) {
-      modeBtns[k].classList.toggle('active', modeBtns[k].dataset.id === craftMode);
-    }
-    if (craftMode === 'elaboracion') {
-      document.getElementById('craftModeHint').textContent = 'Crea una poción a partir de un material Base y modificadores de su misma categoría. Las Bases de rareza Única no admiten modificadores.';
-    } else if (craftMode === 'concentracion') {
-      document.getElementById('craftModeHint').textContent = 'Concentra EXACTAMENTE 2 unidades de la MISMA poción base para intensificarla: los dados se suman, el bono fijo y el modificador de característica se aplican una sola vez. Resultado: Nivel de pureza. Para purezas más altas, encadena el proceso combinando el resultado con otra unidad en una nueva tirada (cada tirada arriesga todo lo invertido). Dificultad = 10 + suma de modificadores (mínimo 6).';
-    } else {
-      document.getElementById('craftModeHint').textContent = 'Combina EXACTAMENTE 2 pociones de bases DISTINTAS en una Multipoción con todos sus efectos. Prohibido mezclar Básica con Dañina. Para combinar más bases, encadena Multipociones en tiradas sucesivas (cada tirada arriesga todo lo invertido). Dificultad = 10 + suma de modificadores (mínimo 6).';
-    }
-
-    if (craftMode === 'elaboracion') {
-      renderCrafteoElaboracion();
-    } else if (craftMode === 'concentracion') {
-      renderCrafteoConcentracion();
-    } else {
-      renderCrafteoMultipocion();
-    }
+  saveState();resetForm();renderCatMateriales();renderInvMateriales();renderCrafteo();
+}
+function editMat(id) {
+  var m=state.catalog[id];if(!m) return;
+  editingMatId=id;
+  document.getElementById('matName').value=m.name||'';
+  document.getElementById('matLugar').value=m.lugar||'';
+  document.getElementById('matCategory').value=m.category||'Salutífera';
+  document.getElementById('matType').value=m.type||'Base';
+  document.getElementById('matRarity').value=m.rarity||'Común';
+  document.getElementById('matDifficulty').value=m.difficulty||0;
+  document.getElementById('matDesc').value=m.description||'';
+  document.getElementById('matUnknown').checked=!!m.unknown;
+  updateMatForm();
+  document.getElementById('matSubtipo').value=m.subtipo||'';
+  updateMatForm();
+  if(m.type==='Base'){
+    document.getElementById('matDiscriminante').checked=!!m.discriminante;
+    document.getElementById('matNoPurificable').checked=!!m.noPurificable;
   }
-
-  function renderCrafteoElaboracion() {
-    var baseBox = document.getElementById('craftBaseList');
-    var bases = getMatList('Base').filter(function (m) { return (state.inventory[m.id] || 0) > 0; });
-    if (!bases.length) {
-      baseBox.innerHTML = '<p class="muted">No tienes ningún material Base en tu inventario.</p>';
-    } else {
-      baseBox.innerHTML = bases.map(function (m) {
-        var selected = craftSelection.baseId === m.id;
-        var diffDisplay = m.unknown ? '???' : fmtSigned(m.difficulty);
-        var unicoNote = (m.rarity === 'Único') ? ', ÚNICA - sin mods' : '';
-        return '<button class="btn btn-pick' + (selected ? ' picked' : '') + '" data-action="craft-pick-base" data-id="' + m.id + '">' +
-          (selected ? '● ' : '○ ') + esc(m.name) + ' (x' + state.inventory[m.id] + ', Dif. ' + diffDisplay + ', ' + esc(catOf(m)) + unicoNote + ')</button>';
-      }).join('');
-    }
-
-    var modBox = document.getElementById('craftModList');
-    var selectedBase = craftSelection.baseId ? state.catalog[craftSelection.baseId] : null;
-    var baseIsUnico = !!(selectedBase && selectedBase.rarity === 'Único');
-    var baseCategory = selectedBase ? catOf(selectedBase) : null;
-
-    if (!craftSelection.baseId) {
-      modBox.innerHTML = '<p class="muted">Elige primero un material Base.</p>';
-    } else if (baseIsUnico) {
-      modBox.innerHTML = '<p class="muted">Esta Base es Única: no admite modificadores.</p>';
-    } else {
-      var mods = getMatList('Modificador').filter(function (m) {
-        return (state.inventory[m.id] || 0) > 0 && catOf(m) === baseCategory;
-      });
-      if (!mods.length) {
-        modBox.innerHTML = '<p class="muted">No tienes modificadores de la categoría "' + esc(baseCategory) + '" en tu inventario.</p>';
-      } else {
-        modBox.innerHTML = mods.map(function (m) {
-          var count = craftSelection.mods[m.id] || 0;
-          var invMax = state.inventory[m.id] || 0;
-          var max = m.maxUses ? Math.min(invMax, m.maxUses) : invMax;
-          var diffDisplay = m.unknown ? '???' : fmtSigned(m.difficulty);
-          var limitNote = m.maxUses ? ' · límite ' + m.maxUses + '/poción' : '';
-          return '<div class="mod-row' + (count > 0 ? ' has-count' : '') + '">' +
-            '<span class="mod-label">' + esc(m.name) + ' (Dif. ' + diffDisplay + ', tienes x' + invMax + limitNote + ')</span>' +
-            '<span class="stepper">' +
-            '<button class="btn btn-sm" data-action="craft-mod-dec" data-id="' + m.id + '"' + (count <= 0 ? ' disabled' : '') + '>➖</button>' +
-            '<span class="count">' + count + '</span>' +
-            '<button class="btn btn-sm" data-action="craft-mod-inc" data-id="' + m.id + '"' + (count >= max ? ' disabled' : '') + '>➕</button>' +
-            '</span>' +
-            '</div>';
-        }).join('');
-      }
-    }
-
-    var totalDiff = null;
-    var diffUnknown = false;
-    if (craftSelection.baseId && state.catalog[craftSelection.baseId]) {
-      var baseM = state.catalog[craftSelection.baseId];
-      totalDiff = 10 + baseM.difficulty;
-      if (baseM.unknown) diffUnknown = true;
-      Object.keys(craftSelection.mods).forEach(function (id) {
-        var count = craftSelection.mods[id] || 0;
-        if (state.catalog[id] && count > 0) {
-          totalDiff += state.catalog[id].difficulty * count;
-          if (state.catalog[id].unknown) diffUnknown = true;
-        }
-      });
-    }
-    document.getElementById('craftDifficulty').textContent = totalDiff === null ? '—' : (diffUnknown ? '???' : totalDiff);
-    document.getElementById('craftConfirmBtn').disabled = !craftSelection.baseId;
+  document.getElementById('matFlatBonus').value=m.flatBonus||0;
+  document.getElementById('matStatMod').value=m.statMod||'';
+  document.getElementById('matDurationInstant').checked=!!m.durationInstant;
+  document.getElementById('matDurationFlat').value=m.durationFlat||0;
+  document.getElementById('matMaxUses').value=m.maxUses||0;
+  document.getElementById('matPenaltyValue').value=m.penaltyValue||1;
+  if(m.penaltyType) document.getElementById('matPenaltyType').value=m.penaltyType;
+  populateDiceRows('pool',m.dicePool);
+  populateDiceRows('duration',m.durationDice);
+  if(m.damageType){populateDamageTypeSelect();document.getElementById('matDamageType').value=m.damageType;}
+  if(m.durationInstant) document.getElementById('durationDiceSection').style.display='none';
+  document.getElementById('matFormTitle').textContent='✏️ Editar material';
+  document.getElementById('matSubmitBtn').textContent='💾 Guardar cambios';
+  document.getElementById('matCancelEditBtn').style.display='inline-block';
+  showInfoSubtab('identificacion');
+}
+function deleteMat(id) {
+  if(deletePendingId===id){
+    delete state.catalog[id];delete state.inventory[id];
+    if(craftSelectedBase===id) craftSelectedBase=null;
+    delete craftSelectedMods[id];
+    deletePendingId=null;saveState();
+    renderCatMateriales();renderInvMateriales();renderCrafteo();
+  } else {
+    deletePendingId=id;renderCatMateriales();
   }
+}
 
-  function potionIdentityKey(key, p) {
-    if (p.isMulti) return 'multikey:' + key; // las multipociones solo "encajan" con más de sí mismas
-    return p.baseId || ('legacy:' + key);
+// ---- RENDER: CAT MATERIALES ----
+function buildMatDetail(m) {
+  var parts=[];
+  if(m.description) parts.push('<strong>Descripción:</strong> '+m.description);
+  if(m.type==='Base'){
+    if(m.discriminante) parts.push('⚠️ Base <em>Discriminante</em>');
+    if(m.noPurificable) parts.push('🚫 No purificable');
+    if(m.durationInstant) parts.push('⚡ Duración: Instantánea');
+    else if(m.durationDice&&m.durationDice.length){
+      parts.push('⏱️ Duración: '+m.durationDice.map(function(d){return d.count+'d'+d.sides;}).join('+')+
+        (m.durationFlat?' + '+m.durationFlat+' turno(s)':''));
+    } else if(m.durationFlat) parts.push('⏱️ Duración: '+m.durationFlat+' turno(s)');
   }
-
-  function lockedConcentracionIdentity() {
-    var locked = null;
-    Object.keys(craftSelection.potions).forEach(function (key) {
-      if ((craftSelection.potions[key] || 0) > 0 && state.potions[key]) {
-        locked = potionIdentityKey(key, state.potions[key]);
-      }
-    });
-    return locked;
+  if(m.dicePool&&m.dicePool.length) parts.push('🎲 Dados: '+m.dicePool.map(function(d){return d.count+'d'+d.sides;}).join('+')+
+    (m.flatBonus?' + '+m.flatBonus:'')+(m.statMod?' + mod.'+m.statMod:''));
+  if(m.damageType) parts.push('🛡️ Tipo de daño: '+m.damageType);
+  if(m.penaltyType) parts.push('⬇️ Penalización: '+m.penaltyType+(m.penaltyValue?' ('+m.penaltyValue+')':''));
+  if(m.type==='Modificador'&&m.maxUses) parts.push('🔢 Máx usos por poción: '+m.maxUses);
+  return parts.length?parts.join('<br>'):'<em class="muted">Sin detalles adicionales.</em>';
+}
+function makeMatCard(id,m) {
+  var dn=m.unknown?'<em>???</em>':m.name;
+  var lugar=m.lugar||'???';
+  var isPending=deletePendingId===id;
+  var delHtml=isPending?
+    '<button class="btn btn-sm btn-danger" data-action="delete-mat" data-id="'+id+'">⚠️ Confirmar</button>'+
+    '<button class="btn btn-sm" style="background:#777" data-action="cancel-delete">✖</button>':
+    '<button class="btn btn-sm btn-danger" data-action="delete-mat" data-id="'+id+'">🗑️</button>';
+  var div=document.createElement('div');
+  div.className='mat-card';
+  div.innerHTML=
+    '<div class="mat-card-header">'+
+      '<div>'+
+        '<div class="mat-card-title">'+dn+'</div>'+
+        '<div class="mat-card-meta">'+
+          catBadge(m.category)+' '+
+          '<span class="badge badge-'+(m.type==='Base'?'base':'mod')+'">'+m.type+'</span>'+
+          (m.subtipo?' <span class="badge badge-sub">'+m.subtipo+'</span>':'')+' '+
+          rarityBadge(m.rarity)+
+          ' · 📍 '+lugar+' · Dif: '+(m.difficulty>=0?'+':'')+m.difficulty+
+        '</div>'+
+      '</div>'+
+      '<div class="mat-card-actions">'+
+        '<button class="btn btn-sm btn-info" data-action="toggle-mat-detail" data-id="'+id+'">ℹ️</button>'+
+        '<button class="btn btn-sm btn-edit" data-action="edit-mat" data-id="'+id+'">✏️</button>'+
+        delHtml+
+      '</div>'+
+    '</div>'+
+    '<div class="mat-card-detail" id="matdetail_'+id+'" style="display:none">'+buildMatDetail(m)+'</div>';
+  return div;
+}
+function renderCatMateriales() {
+  var bases=[],mods=[];
+  for(var id in state.catalog){
+    var m=state.catalog[id];
+    (m.type==='Base'?bases:mods).push({id:id,m:m});
   }
-
-  function renderCrafteoConcentracion() {
-    var potBox = document.getElementById('craftPotionList');
-    var potions = getPotionList();
-    var lockedIdentity = lockedConcentracionIdentity();
-
-    var totalUnits = 0;
-    Object.keys(craftSelection.potions).forEach(function (key) {
-      var count = craftSelection.potions[key] || 0;
-      if (state.potions[key] && count > 0) totalUnits += count;
-    });
-    var atCap = totalUnits >= 2; // Concentración SIEMPRE combina exactamente 2 unidades por tirada
-
-    if (!potions.length) {
-      potBox.innerHTML = '<p class="muted">No tienes ninguna poción en el inventario todavía.</p>';
-    } else {
-      potBox.innerHTML = potions.map(function (p) {
-        var count = craftSelection.potions[p.key] || 0;
-        var max = state.potions[p.key].qty || 0;
-        var category = catOf(p);
-        var identity = potionIdentityKey(p.key, p);
-        var blocked = !!(lockedIdentity && identity !== lockedIdentity && count <= 0);
-        var effectText = effectDisplayText(p);
-        return '<div class="mod-row' + (count > 0 ? ' has-count' : '') + '">' +
-          '<span class="mod-label">' + esc(p.name) + ' (Mod. ' + fmtSigned(p.modDifficulty || 0) + ', ' + (p.isMulti ? 'Multipoción' : esc(category)) + ', tienes x' + max + ')' +
-          (effectText ? ' <em>' + esc(effectText) + '</em>' : '') +
-          (blocked ? ' <em>— poción base distinta a la seleccionada</em>' : '') +
-          '</span>' +
-          '<span class="stepper">' +
-          '<button class="btn btn-sm" data-action="craft-pot-dec" data-id="' + p.key + '"' + (count <= 0 ? ' disabled' : '') + '>➖</button>' +
-          '<span class="count">' + count + '</span>' +
-          '<button class="btn btn-sm" data-action="craft-pot-inc" data-id="' + p.key + '"' + ((count >= max || blocked || atCap) ? ' disabled' : '') + '>➕</button>' +
-          '</span>' +
-          '</div>';
-      }).join('');
-    }
-
-    var totalDiff = 0;
-    Object.keys(craftSelection.potions).forEach(function (key) {
-      var count = craftSelection.potions[key] || 0;
-      if (state.potions[key] && count > 0) {
-        totalDiff += (state.potions[key].modDifficulty || 0) * count;
-        totalDiff += getPotionBaseDifficulty(state.potions[key]) * count; // P7-2
-      }
-    });
-    var dc = totalUnits > 0 ? Math.max(6, 10 + totalDiff) : null;
-    document.getElementById('craftDifficulty').textContent = dc === null ? '—' : dc;
-    document.getElementById('craftConfirmBtn').disabled = totalUnits !== 2;
-  }
-
-  // Categorías ya presentes entre las pociones actualmente seleccionadas para Multipoción
-  function multipocionCategoriesPresent() {
-    var cats = {};
-    Object.keys(craftSelection.potions).forEach(function (key) {
-      if ((craftSelection.potions[key] || 0) > 0 && state.potions[key]) {
-        var p = state.potions[key];
-        if (p.isMulti && Array.isArray(p.effects)) {
-          p.effects.forEach(function (e) { cats[e.category] = true; });
-        } else {
-          cats[catOf(p)] = true;
-        }
-      }
-    });
-    return cats;
-  }
-
-  // Devuelve true si añadir esta poción haría coexistir Básica y Dañina (combinación prohibida)
-  function wouldConflictCategory(p, presentCats) {
-    var cats = [];
-    if (p.isMulti && Array.isArray(p.effects)) {
-      p.effects.forEach(function (e) { if (cats.indexOf(e.category) === -1) cats.push(e.category); });
-    } else {
-      cats.push(catOf(p));
-    }
-    var willHaveBasica = !!presentCats['Básica'] || cats.indexOf('Básica') !== -1;
-    var willHaveDanina = !!presentCats['Dañina'] || cats.indexOf('Dañina') !== -1;
-    return willHaveBasica && willHaveDanina;
-  }
-
-  function renderCrafteoMultipocion() {
-    var potBox = document.getElementById('craftMultiList');
-    var potions = getPotionList();
-    var presentCats = multipocionCategoriesPresent();
-
-    var totalUnits = 0;
-    Object.keys(craftSelection.potions).forEach(function (key) {
-      var count = craftSelection.potions[key] || 0;
-      if (state.potions[key] && count > 0) totalUnits += count;
-    });
-    var atCap = totalUnits >= 2; // Multipoción SIEMPRE combina exactamente 2 unidades por tirada
-
-    if (!potions.length) {
-      potBox.innerHTML = '<p class="muted">No tienes ninguna poción en el inventario todavía.</p>';
-    } else {
-      potBox.innerHTML = potions.map(function (p) {
-        var count = craftSelection.potions[p.key] || 0;
-        var max = state.potions[p.key].qty || 0;
-        var conflict = !!(wouldConflictCategory(p, presentCats) && count <= 0);
-        var effectText = effectDisplayText(p);
-        return '<div class="mod-row' + (count > 0 ? ' has-count' : '') + '">' +
-          '<span class="mod-label">' + esc(p.name) + ' (Mod. ' + fmtSigned(p.modDifficulty || 0) + ', ' + (p.isMulti ? 'Multipoción' : esc(catOf(p))) + ', tienes x' + max + ')' +
-          (effectText ? ' <em>' + esc(effectText) + '</em>' : '') +
-          (conflict ? ' <em>— no se puede combinar Básica con Dañina</em>' : '') +
-          '</span>' +
-          '<span class="stepper">' +
-          '<button class="btn btn-sm" data-action="craft-multi-dec" data-id="' + p.key + '"' + (count <= 0 ? ' disabled' : '') + '>➖</button> ' +
-          '<span class="count">' + count + '</span>' +
-          '<button class="btn btn-sm" data-action="craft-multi-inc" data-id="' + p.key + '"' + ((count >= max || conflict || atCap) ? ' disabled' : '') + '>➕</button>' +
-          '</span>' +
-          '</div>';
-      }).join('');
-    }
-
-    var totalDiff = 0;
-    var rawEffects = [];
-    Object.keys(craftSelection.potions).forEach(function (key) {
-      var count = craftSelection.potions[key] || 0;
-      if (state.potions[key] && count > 0) {
-        totalDiff += (state.potions[key].modDifficulty || 0) * count;
-        totalDiff += getPotionBaseDifficulty(state.potions[key]) * count; // P7-2
-        rawEffects = rawEffects.concat(expandPotionEffects(state.potions[key], count));
-      }
-    });
-    var groupedEffects = groupEffectsByBase(rawEffects);
-    var dc = totalUnits > 0 ? Math.max(6, 10 + totalDiff) : null;
-    document.getElementById('craftDifficulty').textContent = dc === null ? '—' : dc;
-    document.getElementById('craftConfirmBtn').disabled = (totalUnits !== 2 || groupedEffects.length < 2);
-  }
-
-  // ---------- Acciones: Info ----------
-  function toggleMaxUsesField() {
-    var typeEl = document.getElementById('matType');
-    var rowEl = document.getElementById('matMaxUsesRow');
-    if (!typeEl || !rowEl) return;
-    var isMod = typeEl.value === 'Modificador';
-    rowEl.style.display = isMod ? '' : 'none';
-    // P7-1: los Modificadores no pueden ser Únicos
-    var rarityEl = document.getElementById('matRarity');
-    if (rarityEl) {
-      for (var i = 0; i < rarityEl.options.length; i++) {
-        if (rarityEl.options[i].value === 'Único') {
-          rarityEl.options[i].disabled = isMod;
-          if (isMod && rarityEl.value === 'Único') rarityEl.value = 'Común';
-        }
-      }
-    }
-  }
-
-  function diceCapableCategory(category) {
-    return category === 'Básica' || category === 'Dañina';
-  }
-
-  function magicCapableCategory(category) {
-    return category === 'Mágica';
-  }
-
-  function toggleEffectField() {
-    var catEl = document.getElementById('matCategory');
-    var rowEl = document.getElementById('matEffectRow');
-    if (!catEl || !rowEl) return;
-    rowEl.style.display = magicCapableCategory(catEl.value) ? '' : 'none';
-  }
-
-  function toggleDiceFields() {
-    var catEl = document.getElementById('matCategory');
-    var diceRow = document.getElementById('matDiceRow');
-    var customRow = document.getElementById('matDiceCustomRow');
-    var sidesEl = document.getElementById('matDiceSides');
-    if (!catEl || !diceRow) return;
-    diceRow.style.display = diceCapableCategory(catEl.value) ? '' : 'none';
-    if (customRow && sidesEl) customRow.style.display = (sidesEl.value === 'custom') ? '' : 'none';
-  }
-
-  function readDiceFromForm() {
-    var category = document.getElementById('matCategory').value;
-    if (!diceCapableCategory(category)) {
-      return { diceCount: 0, diceSides: 0, flatBonus: 0, statMod: '' };
-    }
-    var diceCount = Math.max(0, parseInt(document.getElementById('matDiceCount').value, 10) || 0);
-    var sidesRaw = document.getElementById('matDiceSides').value;
-    var diceSides = 0;
-    if (sidesRaw === 'custom') {
-      diceSides = Math.max(1, parseInt(document.getElementById('matDiceCustom').value, 10) || 0);
-    } else {
-      diceSides = parseInt(sidesRaw, 10) || 0;
-    }
-    if (diceSides <= 0) diceCount = 0; // sin tipo de dado no hay dados
-    var flatBonus = parseInt(document.getElementById('matFlatBonus').value, 10) || 0;
-    var statMod = document.getElementById('matStatMod').value.trim();
-    return { diceCount: diceCount, diceSides: diceSides, flatBonus: flatBonus, statMod: statMod };
-  }
-
-  function readMaterialForm() {
-    var name = document.getElementById('matName').value.trim();
-    var rarity = document.getElementById('matRarity').value;
-    var type = document.getElementById('matType').value;
-    var category = document.getElementById('matCategory').value;
-    var difficulty = parseInt(document.getElementById('matDifficulty').value, 10) || 0;
-    var description = document.getElementById('matDesc').value.trim();
-    var unknown = document.getElementById('matUnknown').checked;
-    var maxUsesRaw = document.getElementById('matMaxUses').value;
-    var maxUses = (type === 'Modificador' && maxUsesRaw !== '') ? Math.max(0, parseInt(maxUsesRaw, 10) || 0) : 0;
-    var dice = readDiceFromForm();
-    var effect = magicCapableCategory(category) ? document.getElementById('matEffect').value.trim() : '';
-    var duration = document.getElementById('matDuration').value.trim();
-    return {
-      name: name, rarity: rarity, type: type, category: category,
-      difficulty: difficulty, description: description, unknown: unknown, maxUses: maxUses,
-      diceCount: dice.diceCount, diceSides: dice.diceSides, flatBonus: dice.flatBonus, statMod: dice.statMod,
-      effect: effect, duration: duration
-    };
-  }
-
-  function clearMaterialForm() {
-    document.getElementById('matName').value = '';
-    document.getElementById('matType').value = 'Base';
-    document.getElementById('matCategory').value = 'Básica';
-    document.getElementById('matRarity').value = 'Común';
-    document.getElementById('matDifficulty').value = 0;
-    document.getElementById('matDesc').value = '';
-    document.getElementById('matUnknown').checked = false;
-    document.getElementById('matMaxUses').value = '';
-    document.getElementById('matDiceCount').value = 0;
-    document.getElementById('matDiceSides').value = '0';
-    document.getElementById('matDiceCustom').value = '';
-    document.getElementById('matFlatBonus').value = 0;
-    document.getElementById('matStatMod').value = '';
-    document.getElementById('matEffect').value = '';
-    document.getElementById('matDuration').value = '';
-    toggleMaxUsesField();
-    toggleDiceFields();
-    toggleEffectField();
-  }
-
-  function addMaterial() {
-    var data = readMaterialForm();
-    if (!data.name) { alert('Ponle un nombre al material.'); return; }
-
-    if (editingMatId && state.catalog[editingMatId]) {
-      state.catalog[editingMatId] = Object.assign({}, state.catalog[editingMatId], data);
-      cancelEditMaterial();
-    } else {
-      var id = genId();
-      state.catalog[id] = data;
-      saveState();
-      clearMaterialForm();
-    }
-    saveState();
-    renderInfo();
-    renderInventario();
-    renderCrafteo();
-  }
-
-  function startEditMaterial(id) {
-    var m = state.catalog[id];
-    if (!m) return;
-    editingMatId = id;
-    document.getElementById('matName').value = m.name || '';
-    document.getElementById('matType').value = m.type || 'Base';
-    document.getElementById('matCategory').value = catOf(m);
-    document.getElementById('matRarity').value = m.rarity || 'Común';
-    document.getElementById('matDifficulty').value = m.difficulty || 0;
-    document.getElementById('matDesc').value = m.description || '';
-    document.getElementById('matUnknown').checked = !!m.unknown;
-    document.getElementById('matMaxUses').value = m.maxUses ? m.maxUses : '';
-    var sides = m.diceSides || 0;
-    var standardSides = [4, 6, 8, 10, 12, 20];
-    if (sides && standardSides.indexOf(sides) === -1) {
-      document.getElementById('matDiceSides').value = 'custom';
-      document.getElementById('matDiceCustom').value = sides;
-    } else {
-      document.getElementById('matDiceSides').value = String(sides);
-      document.getElementById('matDiceCustom').value = '';
-    }
-    document.getElementById('matDiceCount').value = m.diceCount || 0;
-    document.getElementById('matFlatBonus').value = m.flatBonus || 0;
-    document.getElementById('matStatMod').value = m.statMod || '';
-    document.getElementById('matEffect').value = m.effect || '';
-    document.getElementById('matDuration').value = m.duration || '';
-    toggleMaxUsesField();
-    toggleDiceFields();
-    toggleEffectField();
-    document.getElementById('matSubmitBtn').textContent = '💾 Guardar cambios';
-    document.getElementById('matCancelEditBtn').style.display = '';
-  }
-
-  function cancelEditMaterial() {
-    editingMatId = null;
-    document.getElementById('matSubmitBtn').textContent = '➕ Añadir material';
-    document.getElementById('matCancelEditBtn').style.display = 'none';
-    clearMaterialForm();
-  }
-
-  function deleteMaterial(id) {
-    if (!confirm('¿Eliminar este material del catálogo? Las pociones ya creadas no se ven afectadas.')) return;
-    delete state.catalog[id];
-    delete state.inventory[id];
-    if (editingMatId === id) cancelEditMaterial();
-    saveState();
-    renderInfo();
-    renderInventario();
-    renderCrafteo();
-  }
-
-  // ---------- Acciones: Inventario ----------
-  function adjustInventory(id, delta) {
-    var cur = state.inventory[id] || 0;
-    state.inventory[id] = Math.max(0, cur + delta);
-    saveState();
-    renderInventario();
-    renderCrafteo();
-  }
-
-  function adjustPotion(key, delta) {
-    if (!state.potions[key]) return;
-    state.potions[key].qty = Math.max(0, state.potions[key].qty + delta);
-    saveState();
-    renderInventario();
-  }
-
-  // Construye el bloque de resultado al beber un único efecto (poción normal o un componente de Multipoción)
-  function drinkEffectBlock(label, category, dicePool, flatBonus, statMod, effect, duration) {
-    var rolled = rollPool(dicePool);
-    var lines = [];
-    if (rolled.text || flatBonus) {
-      var formula = rolled.text || '0';
-      if (flatBonus) formula += ' ' + fmtSigned(flatBonus);
-      var total = rolled.sum + (flatBonus || 0);
-      var label2 = effectLabel(category) || 'Tirada';
-      lines.push(esc(label2) + ': ' + esc(formula) + (statMod ? ' + Mod. ' + esc(statMod) : '') + ' = <strong>' + total + '</strong>');
-    } else if (statMod) {
-      lines.push('Mod. ' + esc(statMod));
-    }
-    if (effect) lines.push('Efecto: ' + esc(effect));
-    lines.push('Duración: ' + esc(duration || 'Instantánea'));
-    return '<p><strong>' + esc(label) + '</strong></p>' + lines.map(function (l) { return '<p>' + l + '</p>'; }).join('');
-  }
-
-  function drinkPotion(key) {
-    var p = state.potions[key];
-    if (!p || (p.qty || 0) <= 0) return;
-
-    playSound('drink');
-
-    var blocksHtml;
-    if (p.isMulti && Array.isArray(p.effects)) {
-      blocksHtml = p.effects.map(function (e) {
-        var label = e.baseName + (e.pureUnits > 1 ? ' (Nivel de pureza ' + toRoman(e.pureUnits) + ')' : '');
-        return drinkEffectBlock(label, e.category, e.dicePool, e.flatBonus || 0, e.statMod || '', e.effect || '', e.duration || '');
-      }).join('');
-    } else {
-      blocksHtml = drinkEffectBlock(p.name, catOf(p), p.dicePool, p.flatBonus || 0, p.statMod || '', p.effect || '', p.duration || '');
-    }
-
-    document.getElementById('drinkResult').innerHTML =
-      '<div class="result-box success"><p>🧪 Bebes una unidad.</p>' + blocksHtml + '</div>';
-
-    state.potions[key].qty = Math.max(0, (state.potions[key].qty || 0) - 1);
-    saveState();
-    renderInventario();
-  }
-
-  // ---------- Acciones: Crafteo ----------
-  function pickBase(id) {
-    if ((state.inventory[id] || 0) <= 0) return;
-    craftSelection.baseId = (craftSelection.baseId === id) ? null : id;
-    craftSelection.mods = {};
-    renderCrafteo();
-  }
-
-  function incMod(id) {
-    if (!craftSelection.baseId) return;
-    var base = state.catalog[craftSelection.baseId];
-    if (!base || base.rarity === 'Único') return;
-    var m = state.catalog[id];
-    if (!m || catOf(m) !== catOf(base)) return;
-    var invMax = state.inventory[id] || 0;
-    var max = m.maxUses ? Math.min(invMax, m.maxUses) : invMax;
-    var count = craftSelection.mods[id] || 0;
-    if (count >= max) return;
-    craftSelection.mods[id] = count + 1;
-    renderCrafteo();
-  }
-
-  function decMod(id) {
-    if (!craftSelection.baseId) return;
-    var count = craftSelection.mods[id] || 0;
-    if (count <= 0) return;
-    if (count === 1) delete craftSelection.mods[id];
-    else craftSelection.mods[id] = count - 1;
-    renderCrafteo();
-  }
-
-  function setCraftMode(mode) {
-    if (mode !== 'elaboracion' && mode !== 'concentracion' && mode !== 'multipocion') return;
-    craftMode = mode;
-    craftSelection = { baseId: null, mods: {}, potions: {} };
-    document.getElementById('craftResult').innerHTML = '';
-    renderCrafteo();
-  }
-
-  function totalCraftSelectionUnits() {
-    var total = 0;
-    Object.keys(craftSelection.potions).forEach(function (k) {
-      total += craftSelection.potions[k] || 0;
-    });
-    return total;
-  }
-
-  function incPotionComp(key) {
-    if (!state.potions[key]) return;
-    var identity = potionIdentityKey(key, state.potions[key]);
-    var lockedIdentity = lockedConcentracionIdentity();
-    if (lockedIdentity && identity !== lockedIdentity) return;
-    if (totalCraftSelectionUnits() >= 2) return; // Concentración: exactamente 2 unidades por tirada
-    var max = state.potions[key].qty || 0;
-    var count = craftSelection.potions[key] || 0;
-    if (count >= max) return;
-    craftSelection.potions[key] = count + 1;
-    renderCrafteo();
-  }
-
-  function decPotionComp(key) {
-    var count = craftSelection.potions[key] || 0;
-    if (count <= 0) return;
-    if (count === 1) delete craftSelection.potions[key];
-    else craftSelection.potions[key] = count - 1;
-    renderCrafteo();
-  }
-
-  function incMultiComp(key) {
-    if (!state.potions[key]) return;
-    var count = craftSelection.potions[key] || 0;
-    var presentCats = multipocionCategoriesPresent();
-    if (wouldConflictCategory(state.potions[key], presentCats) && count <= 0) return;
-    if (totalCraftSelectionUnits() >= 2) return; // Multipoción: exactamente 2 unidades por tirada
-    var max = state.potions[key].qty || 0;
-    if (count >= max) return;
-    craftSelection.potions[key] = count + 1;
-    renderCrafteo();
-  }
-
-  function resetCraft() {
-    craftSelection = { baseId: null, mods: {}, potions: {} };
-    document.getElementById('craftResult').innerHTML = '';
-    renderCrafteo();
-  }
-
-  function confirmCraft() {
-    if (craftMode === 'concentracion') { confirmCraftConcentracion(); return; }
-    if (craftMode === 'multipocion') { confirmCraftMultipocion(); return; }
-    confirmCraftElaboracion();
-  }
-
-  function confirmCraftElaboracion() {
-    if (!craftSelection.baseId || !state.catalog[craftSelection.baseId]) return;
-    var base = state.catalog[craftSelection.baseId];
-    if ((state.inventory[craftSelection.baseId] || 0) <= 0) { resetCraft(); return; }
-
-    var baseIsUnico = base.rarity === 'Único';
-    var baseCategory = catOf(base);
-
-    // ids de modificadores válidos: misma categoría que la base (si no es Única), cantidad > 0,
-    // limitados por inventario disponible y por el límite de usos por poción del modificador
-    var validModIds = baseIsUnico ? [] : Object.keys(craftSelection.mods).filter(function (id) {
-      var m = state.catalog[id];
-      return m && catOf(m) === baseCategory && (craftSelection.mods[id] || 0) > 0;
-    }).sort();
-
-    var modDiffSum = 0; // suma SOLO de la dificultad aportada por modificadores (sin base ni +10)
-    var difficulty = 10 + base.difficulty;
-    var modParts = [];   // ej. "Nombre x3"
-    var modDescs = [];
-    var modNames = [];   // nombres únicos de modificadores usados (para "Modificadores:")
-    var dicePool = (base.diceSides ? [{ sides: base.diceSides, count: base.diceCount || 0 }] : []);
-    var flatBonus = base.flatBonus || 0;
-    var statModParts = base.statMod ? [base.statMod] : [];
-    validModIds.forEach(function (id) {
-      var m = state.catalog[id];
-      var count = Math.min(craftSelection.mods[id] || 0, state.inventory[id] || 0, m.maxUses ? m.maxUses : Infinity);
-      if (count <= 0) return;
-      difficulty += m.difficulty * count;
-      modDiffSum += m.difficulty * count;
-      modParts.push(m.name + (count > 1 ? ' x' + count : ''));
-      if (modNames.indexOf(m.name) === -1) modNames.push(m.name);
-      for (var i = 0; i < count; i++) modDescs.push(m.description);
-      if (m.diceSides && m.diceCount) addToPool(dicePool, m.diceSides, m.diceCount * count);
-      flatBonus += (m.flatBonus || 0) * count;
-      if (m.statMod && statModParts.indexOf(m.statMod) === -1) statModParts.push(m.statMod);
-    });
-    var statMod = statModParts.join(', ');
-
-    var situational = parseInt(document.getElementById('craftBonus').value, 10) || 0;
-    var intMod = parseInt(state.character.intMod, 10) || 0;
-    var permanent = parseInt(state.character.bonus, 10) || 0;
-
-    var roll = Math.floor(Math.random() * 20) + 1;
-    var total = roll + intMod + permanent + situational;
-    var puterio = (roll === 1);
-    var success = puterio ? false : (total >= difficulty);
-
-    playSound('craft');
-    setTimeout(function () { playSound(puterio ? 'pifia' : (success ? 'success' : 'fail')); }, 500);
-
-    // Los materiales se consumen SIEMPRE, haya éxito o fallo
-    state.inventory[craftSelection.baseId] = Math.max(0, (state.inventory[craftSelection.baseId] || 0) - 1);
-    validModIds.forEach(function (id) {
-      var m = state.catalog[id];
-      var count = Math.min(craftSelection.mods[id] || 0, state.inventory[id] || 0, m.maxUses ? m.maxUses : Infinity);
-      state.inventory[id] = Math.max(0, (state.inventory[id] || 0) - count);
-    });
-
-    var resultHtml = '<div class="result-box ' + (success ? 'success' : 'fail') + '">' +
-      '<p><strong>' + esc(base.name) + '</strong>' + (modParts.length ? ' + ' + modParts.map(esc).join(' + ') : '') + '</p>' +
-      '<p>Tirada: 1d20 (' + roll + ') + Int (' + intMod + ') + Bono alquimista (' + permanent + ') + Bono situacional (' + situational + ') = <strong>' + total + '</strong></p>' +
-      '<p>Dificultad: <strong>' + difficulty + '</strong></p>' +
-      (puterio ? '<p class="puterio">☠️ PUTERIO ☠️</p>' : '') +
-      '<p class="verdict">' + (success ? '✅ ÉXITO' : '❌ FALLO') + '</p>' +
-      '</div>';
-
-    var aplicacion = (document.getElementById('craftAplicacion') || {}).value || 'al beber'; // P7-3
-
-    if (success) {
-      // la clave incluye la cantidad de cada modificador, para que combinaciones distintas no se mezclen
-      var key = [craftSelection.baseId].concat(validModIds.map(function (id) {
-        return id + ':' + (craftSelection.mods[id] || 0);
-      })).join('-');
-
-      var isNewDiscovery = !state.potions[key];
-      if (isNewDiscovery) {
-        state.potions[key] = {
-          qty: 0,
-          name: 'Poción de ' + base.name + (modParts.length ? ' (' + modParts.join(', ') + ')' : ''),
-          description: [base.description].concat(modDescs).filter(Boolean).join(' + '),
-          modDifficulty: modDiffSum,
-          baseDifficulty: base.difficulty || 0, // P7-2
-          aplicacion: aplicacion,               // P7-3
-          category: baseCategory,
-          baseId: craftSelection.baseId,
-          baseName: base.name,
-          pureUnits: 1,
-          dicePool: dicePool,
-          flatBonus: flatBonus,
-          statMod: statMod,
-          effect: base.effect || '',
-          duration: base.duration || '',
-          modifiersUsed: modNames
-        };
-      }
-      state.potions[key].qty += 1;
-
-      // P7-4: nueva poción descubierta → pedir apodo
-      if (isNewDiscovery && !state.potionCatalog[key]) {
-        var apodo = prompt('🆕 ¡Nueva poción descubierta!\n"' + state.potions[key].name + '"\n\n¿Quieres darle un apodo? (Puedes dejarlo en blanco y cambiarlo después.)');
-        state.potionCatalog[key] = { apodo: (apodo != null ? apodo.trim() : '') };
-      }
-    }
-
-    document.getElementById('craftResult').innerHTML = resultHtml;
-    craftSelection = { baseId: null, mods: {}, potions: {} };
-    saveState();
-    renderInventario();
-    renderPotionCatalog();
-    renderCrafteo();
-  }
-
-  function confirmCraftConcentracion() {
-    var compKeys = Object.keys(craftSelection.potions).filter(function (key) {
-      return state.potions[key] && (craftSelection.potions[key] || 0) > 0;
-    }).sort();
-
-    var totalUnits = 0;
-    compKeys.forEach(function (key) { totalUnits += craftSelection.potions[key] || 0; });
-    if (totalUnits !== 2) return; // Concentración SIEMPRE combina exactamente 2 unidades por tirada
-
-    // todas las pociones combinadas deben ser la MISMA poción base (Nivel de pureza); por
-    // seguridad, si hubiera alguna inconsistencia se conserva solo la identidad de la primera
-    var firstPotion = state.potions[compKeys[0]];
-    var lockedIdentity = potionIdentityKey(compKeys[0], firstPotion);
-    compKeys = compKeys.filter(function (key) { return potionIdentityKey(key, state.potions[key]) === lockedIdentity; });
-    totalUnits = 0;
-    compKeys.forEach(function (key) { totalUnits += craftSelection.potions[key] || 0; });
-    if (totalUnits !== 2) return;
-
-    var modDiffSum = 0; // suma SOLO de los modificadores aportados por cada poción componente
-    var baseDiffSum = 0; // P7-2: suma de dificultades de bases
-    var rawEffects = [];
-    var descParts = [];
-    compKeys.forEach(function (key) {
-      var p = state.potions[key];
-      var count = Math.min(craftSelection.potions[key] || 0, p.qty || 0);
-      if (count <= 0) return;
-      modDiffSum += (p.modDifficulty || 0) * count;
-      baseDiffSum += getPotionBaseDifficulty(p) * count; // P7-2
-      rawEffects = rawEffects.concat(expandPotionEffects(p, count));
-      for (var i = 0; i < count; i++) descParts.push(p.description);
-    });
-    var groupedEffects = groupEffectsByBase(rawEffects);
-    var aplicacionResult = resolveAplicacion(compKeys, craftSelection.potions); // P7-3
-
-    var difficulty = Math.max(6, 10 + modDiffSum + baseDiffSum); // P7-2: incluye bases
-
-    var situational = parseInt(document.getElementById('craftBonus').value, 10) || 0;
-    var intMod = parseInt(state.character.intMod, 10) || 0;
-    var permanent = parseInt(state.character.bonus, 10) || 0;
-
-    var roll = Math.floor(Math.random() * 20) + 1;
-    var total = roll + intMod + permanent + situational;
-    var puterio = (roll === 1);
-    var success = puterio ? false : (total >= difficulty);
-
-    playSound('craft');
-    setTimeout(function () { playSound(puterio ? 'pifia' : (success ? 'success' : 'fail')); }, 500);
-
-    // Las pociones componentes se consumen SIEMPRE, haya éxito o fallo
-    compKeys.forEach(function (key) {
-      var count = Math.min(craftSelection.potions[key] || 0, state.potions[key].qty || 0);
-      state.potions[key].qty = Math.max(0, (state.potions[key].qty || 0) - count);
-    });
-
-    // Identidad de base única → poción normal con Nivel de pureza. Identidad de Multipoción
-    // (varias unidades de la MISMA combinación) → se mantiene Multipoción, cada efecto interno
-    // sube su propio nivel de pureza, pero la lista de efectos sigue plana (nunca anidada).
-    var isMultiResult = groupedEffects.length > 1;
-    var purityName, effectText, modNames, newRecord;
-
-    if (!isMultiResult) {
-      var eff = groupedEffects[0] || {
-        baseId: null, baseName: firstPotion.name, category: catOf(firstPotion),
-        pureUnits: totalUnits, dicePool: [], flatBonus: 0, statMod: '', effect: '', duration: '', modifiersUsed: []
-      };
-      purityName = eff.baseName + '. Nivel de pureza ' + toRoman(eff.pureUnits) + '.';
-      effectText = formatEffectText(eff.category, eff.dicePool, eff.flatBonus, eff.statMod);
-      modNames = eff.modifiersUsed || [];
-      newRecord = {
-        qty: 0,
-        name: purityName,
-        description: descParts.filter(Boolean).join(' + '),
-        modDifficulty: modDiffSum,
-        baseDifficulty: eff.baseId && state.catalog[eff.baseId] ? (state.catalog[eff.baseId].difficulty || 0) : (getPotionBaseDifficulty(firstPotion)), // P7-2
-        aplicacion: aplicacionResult, // P7-3
-        category: eff.category,
-        baseId: eff.baseId,
-        baseName: eff.baseName,
-        pureUnits: eff.pureUnits,
-        dicePool: eff.dicePool,
-        flatBonus: eff.flatBonus,
-        statMod: eff.statMod,
-        effect: eff.effect || '',
-        duration: eff.duration || '',
-        modifiersUsed: modNames
-      };
-    } else {
-      purityName = groupedEffects.map(function (e) {
-        return e.baseName + '. Nivel de pureza ' + toRoman(e.pureUnits) + '.';
-      }).join(' + ');
-      effectText = formatMultiEffectsText(groupedEffects);
-      modNames = [];
-      groupedEffects.forEach(function (e) { (e.modifiersUsed || []).forEach(function (n) { if (modNames.indexOf(n) === -1) modNames.push(n); }); });
-      var totalBaseDiff = groupedEffects.reduce(function (s, e) {
-        return s + (e.baseId && state.catalog[e.baseId] ? (state.catalog[e.baseId].difficulty || 0) : 0);
-      }, 0);
-      newRecord = {
-        qty: 0,
-        name: purityName,
-        description: descParts.filter(Boolean).join(' + '),
-        modDifficulty: modDiffSum,
-        baseDifficulty: totalBaseDiff, // P7-2
-        aplicacion: aplicacionResult,  // P7-3
-        category: 'Mágica',
-        isMulti: true,
-        effects: groupedEffects,
-        pureUnits: groupedEffects.reduce(function (s, e) { return s + e.pureUnits; }, 0),
-        modifiersUsed: modNames
-      };
-    }
-
-    var resultHtml = '<div class="result-box ' + (success ? 'success' : 'fail') + '">' +
-      '<p><strong>Concentración:</strong> ' + esc(purityName) + '</p>' +
-      (modNames.length ? '<p>Modificadores: ' + esc(modNames.join(', ')) + '</p>' : '') +
-      (effectText ? '<p>' + esc(effectText) + '</p>' : '') +
-      '<p>Tirada: 1d20 (' + roll + ') + Int (' + intMod + ') + Bono alquimista (' + permanent + ') + Bono situacional (' + situational + ') = <strong>' + total + '</strong></p>' +
-      '<p>Dificultad: <strong>' + difficulty + '</strong></p>' +
-      (puterio ? '<p class="puterio">☠️ PUTERIO ☠️</p>' : '') +
-      '<p class="verdict">' + (success ? '✅ ÉXITO' : '❌ FALLO') + '</p>' +
-      '</div>';
-
-    if (success) {
-      // la clave incluye cada poción componente y su cantidad, para no mezclar combinaciones distintas
-      var key = 'C-' + compKeys.map(function (key) {
-        return key + ':' + (craftSelection.potions[key] || 0);
-      }).join('-');
-
-      var isNewDiscovery = !state.potions[key];
-      if (isNewDiscovery) state.potions[key] = newRecord;
-      state.potions[key].qty += 1;
-
-      if (isNewDiscovery && !state.potionCatalog[key]) { // P7-4
-        var apodo = prompt('🆕 ¡Nueva poción descubierta!\n"' + newRecord.name + '"\n\n¿Quieres darle un apodo? (Puedes dejarlo en blanco y cambiarlo después.)');
-        state.potionCatalog[key] = { apodo: (apodo != null ? apodo.trim() : '') };
-      }
-    }
-
-    document.getElementById('craftResult').innerHTML = resultHtml;
-    craftSelection = { baseId: null, mods: {}, potions: {} };
-    saveState();
-    renderInventario();
-    renderPotionCatalog();
-    renderCrafteo();
-  }
-
-  function confirmCraftMultipocion() {
-    var compKeys = Object.keys(craftSelection.potions).filter(function (key) {
-      return state.potions[key] && (craftSelection.potions[key] || 0) > 0;
-    }).sort();
-
-    var totalUnits = 0;
-    compKeys.forEach(function (key) { totalUnits += craftSelection.potions[key] || 0; });
-    if (totalUnits !== 2) return; // Multipoción SIEMPRE combina exactamente 2 unidades por tirada
-
-    // Básica + Dañina nunca se pueden combinar en una Multipoción
-    var catsPresent = {};
-    compKeys.forEach(function (key) {
-      var p = state.potions[key];
-      if (p.isMulti && Array.isArray(p.effects)) {
-        p.effects.forEach(function (e) { catsPresent[e.category] = true; });
-      } else {
-        catsPresent[catOf(p)] = true;
-      }
-    });
-    if (catsPresent['Básica'] && catsPresent['Dañina']) return;
-    var modDiffSum = 0;
-    var baseDiffSumM = 0; // P7-2
-    var rawEffects = [];
-    var descParts = [];
-    compKeys.forEach(function (key) {
-      var p = state.potions[key];
-      var count = Math.min(craftSelection.potions[key] || 0, p.qty || 0);
-      if (count <= 0) return;
-      modDiffSum += (p.modDifficulty || 0) * count;
-      baseDiffSumM += getPotionBaseDifficulty(p) * count; // P7-2
-      rawEffects = rawEffects.concat(expandPotionEffects(p, count));
-      for (var i = 0; i < count; i++) descParts.push(p.description);
-    });
-    var aplicacionResultM = resolveAplicacion(compKeys, craftSelection.potions); // P7-3
-
-    var groupedEffects = groupEffectsByBase(rawEffects);
-    if (groupedEffects.length < 2) return;
-
-    var difficulty = Math.max(6, 10 + modDiffSum + baseDiffSumM); // P7-2
-
-    var situational = parseInt(document.getElementById("craftBonus").value, 10) || 0;
-    var intMod = parseInt(state.character.intMod, 10) || 0;
-    var permanent = parseInt(state.character.bonus, 10) || 0;
-
-    var roll = Math.floor(Math.random() * 20) + 1;
-    var total = roll + intMod + permanent + situational;
-    var puterio = (roll === 1);
-    var success = puterio ? false : (total >= difficulty);
-
-    playSound("craft");
-    setTimeout(function () { playSound(puterio ? "pifia" : (success ? "success" : "fail")); }, 500);
-
-    // Las pociones componentes se consumen SIEMPRE, haya éxito o fallo
-    compKeys.forEach(function (key) {
-      var count = Math.min(craftSelection.potions[key] || 0, state.potions[key].qty || 0);
-      state.potions[key].qty = Math.max(0, (state.potions[key].qty || 0) - count);
-    });
-
-    var effectNames = groupedEffects.map(function (e) {
-      return e.baseName + (e.pureUnits > 1 ? " (Nivel de pureza " + toRoman(e.pureUnits) + ")" : "");
-    });
-    var multiName = "Multipoción: " + effectNames.join(" + ");
-    var multiEffectText = formatMultiEffectsText(groupedEffects);
-    var totalPureUnits = groupedEffects.reduce(function (s, e) { return s + e.pureUnits; }, 0);
-    var allModNames = [];
-    groupedEffects.forEach(function (e) { (e.modifiersUsed || []).forEach(function (n) { if (allModNames.indexOf(n) === -1) allModNames.push(n); }); });
-
-    var resultHtml = '<div class="result-box ' + (success ? 'success' : 'fail') + '">' +
-      '<p><strong>Multipoción:</strong> ' + esc(multiName) + '</p>' +
-      (multiEffectText ? '<p>' + esc(multiEffectText) + '</p>' : '') +
-      '<p>Tirada: 1d20 (' + roll + ') + Int (' + intMod + ') + Bono alquimista (' + permanent + ') + Bono situacional (' + situational + ') = <strong>' + total + '</strong></p>' +
-      '<p>Dificultad: <strong>' + difficulty + '</strong></p>' +
-      (puterio ? '<p class="puterio">☠️ PUTERIO ☠️</p>' : '') +
-      '<p class="verdict">' + (success ? '✅ ÉXITO' : '❌ FALLO') + '</p>' +
-      '</div>';
-
-    if (success) {
-      var key = "X-" + compKeys.map(function (key) {
-        return key + ":" + (craftSelection.potions[key] || 0);
-      }).join("-");
-
-      var totalMultiBaseDiff = groupedEffects.reduce(function (s, e) {
-        return s + (e.baseId && state.catalog[e.baseId] ? (state.catalog[e.baseId].difficulty || 0) : 0);
-      }, 0);
-      var isNewDiscoveryM = !state.potions[key];
-      if (isNewDiscoveryM) {
-        state.potions[key] = {
-          qty: 0,
-          name: multiName,
-          description: descParts.filter(Boolean).join(" + "),
-          modDifficulty: modDiffSum,
-          baseDifficulty: totalMultiBaseDiff,
-          aplicacion: aplicacionResultM,
-          category: "Mágica",
-          isMulti: true,
-          effects: groupedEffects,
-          pureUnits: totalPureUnits,
-          modifiersUsed: allModNames
-        };
-      }
-      state.potions[key].qty += 1;
-      if (isNewDiscoveryM && !state.potionCatalog[key]) {
-        var apodoM = prompt('🆕 ¡Nueva poción descubierta!\n"' + multiName + '"\n\n¿Quieres darle un apodo? (Puedes dejarlo en blanco y cambiarlo después.)');
-        state.potionCatalog[key] = { apodo: (apodoM != null ? apodoM.trim() : '') };
-      }
-    }
-
-    document.getElementById("craftResult").innerHTML = resultHtml;
-    craftSelection = { baseId: null, mods: {}, potions: {} };
-    saveState();
-    renderInventario();
-    renderPotionCatalog();
-    renderCrafteo();
-  }
-
-  // ---------- Exportar / Importar / Reset ----------
-  function exportData() {
-    var blob = new Blob([JSON.stringify(state, null, 2)], { type: "application/json" });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement("a");
-    a.href = url;
-    a.download = "alquimia-" + (state.character.name || "personaje").replace(/s+/g, "_") + ".json";
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  }
-
-  function handleImportFile(file) {
-    var reader = new FileReader();
-    reader.onload = function (e) {
-      var data;
-      try { data = JSON.parse(e.target.result); } catch (err) { alert("El archivo no es un JSON válido."); return; }
-
-      var mergeOnly = confirm('¿Quieres FUSIONAR solo los materiales nuevos del catálogo (manteniendo tu personaje, inventario y pociones)?\n\nAceptar = fusionar catálogo.\nCancelar = ver más opciones.');
-      if (mergeOnly) {
-        if (data.catalog) {
-          Object.keys(data.catalog).forEach(function (id) {
-            if (!state.catalog[id]) state.catalog[id] = data.catalog[id];
-          });
-        }
-        saveState();
-        render();
-        alert("Catálogo fusionado correctamente.");
-        return;
-      }
-
-      var replaceAll = confirm('¿Reemplazar TODOS tus datos (personaje, inventario, pociones y catálogo) por los del archivo importado?\n\nEsta acción no se puede deshacer.');
-      if (replaceAll) {
-        var merged = defaultState();
-        merged.character = Object.assign(merged.character, data.character || {});
-        merged.catalog = data.catalog || {};
-        merged.inventory = data.inventory || {};
-        merged.potions = data.potions || {};
-        merged.potionCatalog = data.potionCatalog || {};
-        merged.lootPotions = data.lootPotions || {};
-        state = merged;
-        saveState();
-        render();
-        alert("Datos reemplazados correctamente.");
-      }
-    };
-    reader.readAsText(file);
-  }
-
-  function resetAll() {
-    if (!confirm("¿Borrar TODOS los datos (personaje, catálogo, inventario y pociones)? Esta acción no se puede deshacer.")) return;
-    state = defaultState();
-    saveState();
-    craftMode = "elaboracion";
-    craftSelection = { baseId: null, mods: {}, potions: {} };
-    editingMatId = null;
-    invSubtab = "materiales";
-    document.getElementById("matSubmitBtn").textContent = "➕ Añadir material";
-    document.getElementById("matCancelEditBtn").style.display = "none";
-    render();
-  }
-
-  // ---------- Catálogo de pociones (P7-4) ----------
-  function renderPotionCatalog() {
-    var box = document.getElementById('potionCatalogList');
-    if (!box) return;
-    var keys = Object.keys(state.potions);
-    if (!keys.length) {
-      box.innerHTML = '<p class="muted">Todavía no has creado ninguna poción.</p>';
-      return;
-    }
-    var groups = {};
-    keys.forEach(function (key) {
-      var p = state.potions[key];
-      var cat = p.isMulti ? 'Multipoción' : (catOf(p) || 'Básica');
-      var baseName = p.isMulti ? 'Multipoción' : (p.baseName || p.name);
-      if (!groups[cat]) groups[cat] = {};
-      if (!groups[cat][baseName]) groups[cat][baseName] = [];
-      groups[cat][baseName].push(key);
-    });
-    var catOrder = ['Básica', 'Dañina', 'Mágica', 'Multipoción'];
-    var html = '';
-    catOrder.forEach(function (cat) {
-      if (!groups[cat]) return;
-      html += '<div class="pot-cat-section"><h3>' + esc(cat) + '</h3>';
-      Object.keys(groups[cat]).sort().forEach(function (baseName) {
-        html += '<h4>Base: ' + esc(baseName) + '</h4>';
-        groups[cat][baseName].forEach(function (key) {
-          var p = state.potions[key];
-          var entry = state.potionCatalog[key] || {};
-          var apodo = entry.apodo || '';
-          var aplBadge = p.aplicacion ? '<span class="aplic-badge" style="font-size:0.75em;">' + aplicacionLabel(p.aplicacion) + '</span> ' : '';
-          html += '<div class="pot-cat-entry">' +
-            aplBadge +
-            '<strong>' + esc(p.name) + '</strong>' +
-            (apodo ? ' <em class="apodo-badge">"' + esc(apodo) + '"</em>' : '') +
-            ' <button class="btn btn-sm" style="background:#777;" data-action="edit-apodo" data-id="' + key + '">✏️ Apodo</button>' +
-            '</div>';
+  var bEl=document.getElementById('catBaseList');
+  var mEl=document.getElementById('catModList');
+  if(!bEl||!mEl) return;
+  if(!bases.length){bEl.innerHTML='<p class="muted">No hay bases registradas.</p>';}
+  else{bEl.innerHTML='';bases.forEach(function(x){bEl.appendChild(makeMatCard(x.id,x.m));});}
+  if(!mods.length){mEl.innerHTML='<p class="muted">No hay modificadores registrados.</p>';}
+  else{mEl.innerHTML='';mods.forEach(function(x){mEl.appendChild(makeMatCard(x.id,x.m));});}
+}
+
+// ---- RENDER: CAT POCIONES ----
+function togglePotCatEntry(id) {
+  var el=document.getElementById(id);
+  if(el) el.style.display=el.style.display==='none'?'block':'none';
+}
+function renderCatPociones() {
+  var el=document.getElementById('potionCatalogList');
+  if(!el) return;
+  var catKeys=Object.keys(state.potionCatalog);
+  if(!catKeys.length){el.innerHTML='<p class="muted">Todavía no has creado ninguna poción.</p>';return;}
+  var groups={};
+  catKeys.forEach(function(ck){
+    var parsed=parseCatKey(ck);if(!parsed) return;
+    var base=state.catalog[parsed.baseId];if(!base) return;
+    var cat=base.category||'Mágica';
+    var sub=base.subtipo||'(Sin subtipo)';
+    if(!groups[cat]) groups[cat]={};
+    if(!groups[cat][sub]) groups[cat][sub]=[];
+    groups[cat][sub].push({ck:ck,parsed:parsed,base:base});
+  });
+  var html='';
+  ['Salutífera','Maliciosa','Mágica'].forEach(function(cat){
+    if(!groups[cat]) return;
+    html+='<div class="pot-cat-group"><div class="pot-cat-title">'+catBadge(cat)+' '+cat+'</div>';
+    for(var sub in groups[cat]){
+      html+='<div style="font-size:.85em;color:#666;margin:6px 0 2px"><strong>'+sub+'</strong></div>';
+      groups[cat][sub].forEach(function(item){
+        var info=state.potionCatalog[item.ck]||{};
+        var bn=item.base.unknown?'???':item.base.name;
+        var modNames=[];
+        if(item.parsed.mods) item.parsed.mods.split(',').forEach(function(mid){
+          if(mid&&state.catalog[mid]) modNames.push(state.catalog[mid].unknown?'???':state.catalog[mid].name);
         });
+        var formula=bn+(modNames.length?' ('+modNames.join(', ')+')':'');
+        var apodo=info.apodo?' <em class="apodo-badge">"'+info.apodo+'"</em>':'';
+        var listId='potcl_'+item.ck.replace(/[^a-z0-9]/gi,'_');
+        var purities=[1];
+        for(var pk in state.potions){
+          var pp=parsePotKey(pk);
+          if(pp&&pp.baseId===item.parsed.baseId&&pp.mods===item.parsed.mods&&purities.indexOf(pp.purity)<0)
+            purities.push(pp.purity);
+        }
+        purities.sort(function(a,b){return a-b;});
+        html+='<div class="pot-base-block">'+
+          '<button class="pot-base-toggle" onclick="togglePotCatEntry(\''+listId+'\')">▶ <strong>'+formula+'</strong>'+apodo+'</button>'+
+          '<div id="'+listId+'" class="pot-purity-list" style="display:none">';
+        purities.forEach(function(p){
+          var totalQty=0;
+          for(var pk2 in state.potions){
+            var pp2=parsePotKey(pk2);
+            if(pp2&&pp2.baseId===item.parsed.baseId&&pp2.mods===item.parsed.mods&&pp2.purity===p)
+              totalQty+=(state.potions[pk2].qty||0);
+          }
+          var pLabel=p===0?'Sin purificar':'Nivel de Pureza '+purityRoman(p)+'.';
+          html+='<div class="pot-purity-item">'+pLabel+' <span class="muted">(x'+totalQty+' en inv.)</span></div>';
+        });
+        html+='</div></div>';
       });
-      html += '</div>';
+    }
+    html+='</div>';
+  });
+  el.innerHTML=html||'<p class="muted">Sin resultados.</p>';
+}
+
+// ---- RENDER: INVENTARIO ----
+function renderInvMateriales() {
+  var el=document.getElementById('invMatList');if(!el) return;
+  var ids=Object.keys(state.catalog);
+  if(!ids.length){el.innerHTML='<p class="muted">No hay materiales. Ve a Info → Identificación.</p>';return;}
+  var html='';
+  ids.forEach(function(id){
+    var m=state.catalog[id];
+    var qty=state.inventory[id]||0;
+    var dn=m.unknown?'???':m.name;
+    var cc=m.category==='Salutífera'?'sal':m.category==='Maliciosa'?'mal':'mag';
+    html+='<div class="inv-row">'+
+      '<div class="inv-name"><span class="badge badge-'+cc+'" style="margin-right:4px">'+m.type[0]+'</span>'+dn+' '+rarityBadge(m.rarity)+'</div>'+
+      '<div class="inv-stepper">'+
+        '<button class="btn btn-sm" data-action="inv-dec" data-id="'+id+'">−</button>'+
+        '<span class="stepper-count">'+qty+'</span>'+
+        '<button class="btn btn-sm" data-action="inv-inc" data-id="'+id+'">+</button>'+
+      '</div>'+
+    '</div>';
+  });
+  el.innerHTML=html;
+}
+function buildCompSummary(c){
+  var parts=[];
+  if(c.dicePool&&c.dicePool.length){
+    var s=c.dicePool.map(function(d){return d.count+'d'+d.sides;}).join('+');
+    if(c.flatBonus) s+=' + '+c.flatBonus;
+    if(c.statMod) s+=' + mod.'+c.statMod;
+    parts.push('🎲 '+s);
+  } else if(c.flatBonus){
+    parts.push('🎲 '+c.flatBonus+(c.statMod?' + mod.'+c.statMod:''));
+  }
+  if(c.damageType) parts.push('🛡️ '+c.damageType);
+  if(c.penaltyType) parts.push('⬇️ '+c.penaltyType+(c.penaltyValue?' ('+c.penaltyValue+')':'')); 
+  return parts;
+}
+function buildCompDur(c){
+  if(c.durationInstant) return '⚡ Instantánea';
+  if(c.durationDice&&c.durationDice.length){
+    var d=c.durationDice.map(function(x){return x.count+'d'+x.sides;}).join('+');
+    if(c.durationFlat) d+=' + '+c.durationFlat;
+    return '⏱️ '+d+' turno(s)';
+  }
+  if(c.durationFlat) return '⏱️ '+c.durationFlat+' turno(s)';
+  return '';
+}
+function buildPotDetail(pot){
+  if(pot.isMulti&&pot.components&&pot.components.length){
+    var h='<table class="multi-detail-table"><thead><tr><th>Componente</th><th>Efecto</th><th>Duración</th></tr></thead><tbody>';
+    pot.components.forEach(function(c){
+      var eff=buildCompSummary(c).join(' | ')||'—';
+      var dur=buildCompDur(c)||'—';
+      h+='<tr><td><strong>'+c.name+'</strong>'+catBadge(c.category||'')+'</td><td>'+eff+'</td><td>'+dur+'</td></tr>';
     });
-    box.innerHTML = html;
+    h+='</tbody></table>';
+    // Summary row
+    var allEff=[],allDur=[];
+    pot.components.forEach(function(c){
+      buildCompSummary(c).forEach(function(e){ if(allEff.indexOf(e)<0) allEff.push(e); });
+      var d=buildCompDur(c); if(d&&allDur.indexOf(d)<0) allDur.push(d);
+    });
+    h+='<div class=multi-summary><strong>📋 Resumen:</strong> '+
+       (allEff.length?allEff.join(' + '):'Sin efecto directo')+
+       (allDur.length?' &nbsp;|' +allDur.join(' / '):'')+'</div>';
+    if(pot.aplicacion&&pot.aplicacion.length&&Array.isArray(pot.aplicacion))
+      h+='<br>💊 '+pot.aplicacion.map(function(a){var o=getAplicOption(a);return o?o.label:a;}).join(', ');
+    return h;
   }
-
-  function editApodo(key) {
-    var entry = state.potionCatalog[key] || {};
-    var p = state.potions[key];
-    if (!p) return;
-    var actual = entry.apodo || '';
-    var nuevo = prompt('Apodo para "' + p.name + '":\n(Deja en blanco para quitar el apodo.)', actual);
-    if (nuevo === null) return;
-    state.potionCatalog[key] = { apodo: nuevo.trim() };
-    saveState();
-    renderPotionCatalog();
-    renderInventario();
+  var parts=[];
+  if(pot.description) parts.push('<strong>Descripción:</strong> '+pot.description);
+  if(pot.dicePool&&pot.dicePool.length){
+    var diceStr=pot.dicePool.map(function(d){return d.count+'d'+d.sides;}).join('+');
+    if(pot.flatBonus) diceStr+=' + '+pot.flatBonus;
+    if(pot.statMod) diceStr+=' + mod.'+pot.statMod;
+    parts.push('🎲 Dados: '+diceStr);
+  } else if(pot.flatBonus){
+    parts.push('🎲 Bono fijo: '+pot.flatBonus+(pot.statMod?' + mod.'+pot.statMod:''));
   }
-
-  // ---------- Pociones Loot (P7-6) ----------
-  function addLootPotion() {
-    var nameEl = document.getElementById('lootName');
-    var qtyEl = document.getElementById('lootQty');
-    if (!nameEl || !qtyEl) return;
-    var name = nameEl.value.trim() || 'Poción desconocida';
-    var qty = Math.max(1, parseInt(qtyEl.value, 10) || 1);
-    var id = genLootId();
-    state.lootPotions[id] = { name: name, qty: qty, descripcion: '', tipo: '', identificada: false };
-    nameEl.value = '';
-    qtyEl.value = 1;
-    saveState();
-    renderLootPotions();
-  }
-
-  function renderLootPotions() {
-    var box = document.getElementById('lootPotList');
-    if (!box) return;
-    var ids = Object.keys(state.lootPotions).filter(function (id) { return state.lootPotions[id].qty > 0; });
-    if (!ids.length) {
-      box.innerHTML = '<p class="muted">No tienes pociones Loot todavía.</p>';
-      return;
+  if(pot.damageType) parts.push('🛡️ Tipo de daño: '+pot.damageType);
+  if(pot.penaltyType) parts.push('⬇️ Penalización: '+pot.penaltyType+(pot.penaltyValue?' ('+pot.penaltyValue+')':'')); 
+  if(pot.durationInstant) parts.push('⚡ Duración: Instantánea');
+  else if(pot.durationDice&&pot.durationDice.length){
+    var durStr=pot.durationDice.map(function(d){return d.count+'d'+d.sides;}).join('+');
+    if(pot.durationFlat) durStr+=' + '+pot.durationFlat;
+    parts.push('⏱️ Duración: '+durStr+' turno(s)');
+  } else if(pot.durationFlat) parts.push('⏱️ Duración: '+pot.durationFlat+' turno(s)');
+  if(pot.noPurificable) parts.push('🚫 No purificable');
+  if(pot.aplicacion&&pot.aplicacion.length&&Array.isArray(pot.aplicacion))
+    parts.push('💊 Aplicación: '+pot.aplicacion.map(function(a){var o=getAplicOption(a);return o?o.label:a;}).join(', '));
+  return parts.length?parts.join('<br>'):'<em class="muted">Sin detalles adicionales.</em>';
+}
+function renderInvPociones() {
+  var el=document.getElementById('invPotList');if(!el) return;
+  var keys=Object.keys(state.potions);
+  var html='',hasPots=false;
+  keys.forEach(function(pk){
+    var pot=state.potions[pk];
+    if(!pot||pot.qty<=0) return;
+    hasPots=true;
+    var parsed=parsePotKey(pk);
+    var purityN=parsed?parsed.purity:0;
+    var purity=purityN>0?purityRoman(purityN):'Sin purificar';
+    var catKey=parsedToCatKey(parsed);
+    var catInfo=state.potionCatalog[catKey]||{};
+    var apodo=catInfo.apodo?' <em class="apodo-badge">"'+catInfo.apodo+'"</em>':'';
+    var cat=pot.category||'';
+    var cc=cat==='Salutífera'?'sal':cat==='Maliciosa'?'mal':'mag';
+    var isSalMag=cat==='Salutífera'||cat==='Mágica';
+    var actionLabel=isSalMag?'🍵 Beber':'⚔️ Aplicar';
+    var aplicLabel='';
+    if(pot.aplicacion&&pot.aplicacion.length){
+      aplicLabel=' ['+pot.aplicacion.map(function(a){var o=getAplicOption(a);return o?o.label.split(' ')[0]:a;}).join(', ')+']';
     }
-    box.innerHTML = ids.map(function (id) {
-      var lp = state.lootPotions[id];
-      var tipoText = lp.identificada
-        ? (lp.tipo ? '<span class="loot-tipo-label">Tipo: ' + esc(lp.tipo) + '</span>' : '<span class="loot-tipo-label">Identificada</span>')
-        : '<span class="loot-tipo-label">Sin identificar</span>';
-      return '<div class="loot-row">' +
-        '<button class="btn btn-sm" data-action="loot-drink" data-id="' + id + '">🧪 Beber</button> ' +
-        '<button class="btn btn-sm" style="background:#5a6fa0;" data-action="loot-reverse" data-id="' + id + '">🔬 Ing. inversa</button> ' +
-        '<button class="btn btn-sm" style="background:#6b3a8a;" data-action="loot-identify" data-id="' + id + '">🔎 Identificar</button> ' +
-        '<button class="btn btn-sm" data-action="loot-sub" data-id="' + id + '">➖</button> ' +
-        '<button class="btn btn-sm" data-action="loot-add" data-id="' + id + '">➕</button> ' +
-        '<button class="btn btn-danger btn-sm" data-action="loot-del" data-id="' + id + '">🗑</button>' +
-        '<br><strong>' + esc(lp.name) + '</strong> — x<span class="qty">' + lp.qty + '</span> · ' + tipoText +
-        '<div><textarea class="loot-desc-area" data-action="loot-desc-change" data-id="' + id + '" placeholder="Notas / efectos observados...">' + esc(lp.descripcion) + '</textarea></div>' +
-        '</div>';
-    }).join('');
+    var pkEsc=pk.replace(/[^a-z0-9]/gi,'_');
+    html+='<div class="pot-card">'+
+      '<div class="pot-card-header">'+
+        '<div>'+
+          '<div class="pot-name">'+(pot.name||'Poción')+apodo+'</div>'+
+          '<div class="pot-meta">'+catBadge(cat)+(purityN>0?' Pureza '+purity:' Sin purificar')+aplicLabel+' · x'+pot.qty+'</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:4px;flex-wrap:wrap">'+
+          '<button class="btn btn-sm" data-action="use-pot" data-id="'+pk+'">'+actionLabel+'</button>'+
+          '<button class="btn btn-sm btn-edit" data-action="set-apodo" data-id="'+pk+'">🏷️</button>'+
+          '<button class="btn btn-sm btn-danger" data-action="del-pot" data-id="'+pk+'">🗑️</button>'+
+          '<button class="btn btn-sm btn-info" data-action="toggle-pot-detail" data-id="'+pk+'">ℹ️</button>'+
+        '</div>'+
+      '</div>'+
+      '<div class="mat-card-detail" id="potdetail_'+pkEsc+'" style="display:none">'+buildPotDetail(pot)+'</div>'+
+    '</div>';
+  });
+  el.innerHTML=hasPots?html:'<p class="muted">No tienes pociones. Ve a Crafteo para elaborar.</p>';
+}
+function usePotion(pk) {
+  var pot=state.potions[pk];
+  if(!pot||pot.qty<=0) return;
+  var cat=pot.category||'';
+  var isSalMag=cat==='Salutífera'||cat==='Mágica';
+  var effectRoll=rollDice(pot.dicePool||[]);
+  var effectTotal=effectRoll+(pot.flatBonus||0);
+  var hasEffect=pot.dicePool&&pot.dicePool.length>0;
+  var hasDur=!pot.durationInstant&&((pot.durationDice&&pot.durationDice.length>0)||pot.durationFlat>0);
+  var durStr='';
+  if(pot.durationInstant) durStr='Instantánea';
+  else if(hasDur){var dr=rollDice(pot.durationDice||[]);durStr=(dr+(pot.durationFlat||0))+' turno(s)';}
+  var effectDesc='';
+  if(hasEffect){
+    if(cat==='Salutífera'&&pot.subtipo==='Vitalidad')
+      effectDesc='<p>❤️ Curación: <strong>'+effectTotal+'</strong>'+(pot.statMod?' + mod.'+pot.statMod:'')+'</p>';
+    else if(cat==='Maliciosa'){
+      if(pot.subtipo==='Dañina') effectDesc='<p>⚔️ Daño: <strong>'+effectTotal+'</strong>'+(pot.damageType?' ('+pot.damageType+')':'')+(pot.statMod?' + mod.'+pot.statMod:'')+'</p>';
+      else if(pot.subtipo==='Incapacitante') effectDesc='<p>⬇️ Penalización: '+pot.penaltyType+(pot.penaltyValue?' ('+pot.penaltyValue+')':'')+'</p>';
+      else if(pot.subtipo==='Debilitante') effectDesc='<p>🛡️ Tipo de daño: '+(pot.damageType||'???')+'</p>';
+    } else effectDesc='<p>✨ Efecto: <strong>'+effectTotal+'</strong>'+(pot.statMod?' + mod.'+pot.statMod:'')+'</p>';
+  } else {
+    if(pot.damageType) effectDesc='<p>🛡️ Resistencia a: '+pot.damageType+'</p>';
+    if(pot.penaltyType) effectDesc='<p>⬇️ Penalización: '+pot.penaltyType+'</p>';
   }
+  var durDesc=hasDur?'<p>⏱️ Duración: <strong>'+durStr+'</strong></p>':pot.durationInstant?'<p>⚡ Instantánea</p>':'';
+  var desc=pot.description?'<p class="muted-i">'+pot.description+'</p>':'';
+  var resultEl=document.getElementById('drinkResult');
+  var name=pot.name||'esta poción';
+  resultEl.innerHTML='<div class="result-box success"><div class="verdict">✅ '+(isSalMag?'Bebida':'Aplicada')+': '+name+'</div>'+desc+effectDesc+durDesc+'</div>';
+  pot.qty--;
+  if(pot.qty<=0) delete state.potions[pk];
+  saveState();renderInvPociones();
+}
+function setApodo(pk) {
+  var ck=parsedToCatKey(parsePotKey(pk));
+  if(!ck) return;
+  if(!state.potionCatalog[ck]) state.potionCatalog[ck]={apodo:''};
+  var cur=state.potionCatalog[ck].apodo||'';
+  var r=prompt('Apodo para esta poción (vacío = quitar):',cur);
+  if(r!=null){state.potionCatalog[ck].apodo=r.trim();saveState();renderInvPociones();renderCatPociones();}
+}
+function delPotion(pk) {
+  if(!confirm('¿Eliminar toda la pila de esta poción?')) return;
+  delete state.potions[pk];saveState();renderInvPociones();
+}
 
-  function drinkLootPotion(id) {
-    var lp = state.lootPotions[id];
-    if (!lp || lp.qty <= 0) return;
-    playSound('drink');
-    lp.qty = Math.max(0, lp.qty - 1);
-    saveState();
-    renderLootPotions();
-    document.getElementById('lootResult').innerHTML =
-      '<div class="result-box success"><p>🧪 Bebes <strong>' + esc(lp.name) + '</strong> a ciegas.</p>' +
-      '<p class="muted">Anota abajo lo que ocurre.</p></div>';
-  }
+// ---- RENDER: LOOT ----
+function renderLoot() {
+  var el=document.getElementById('lootPotList');if(!el) return;
+  var ids=Object.keys(state.lootPotions);
+  if(!ids.length){el.innerHTML='<p class="muted">No hay pociones loot.</p>';return;}
+  var html='';
+  ids.forEach(function(id){
+    var loot=state.lootPotions[id];
+    var tipoLabel=loot.identificada?'<span class="loot-tipo">'+loot.tipo+'</span>':'<span class="loot-tipo" style="color:#888">Sin identificar</span>';
+    html+='<div class="loot-card">'+
+      '<div class="loot-card-header">'+
+        '<div><div class="loot-name">'+(loot.name||'Poción')+(loot.qty>1?' (x'+loot.qty+')':'')+'</div>'+tipoLabel+'</div>'+
+        '<div style="display:flex;gap:4px">'+
+          (!loot.identificada?'<button class="btn btn-sm btn-info" data-action="identify-loot" data-id="'+id+'">🔍 Inv. inversa</button>':'<button class="btn btn-sm" data-action="use-loot" data-id="'+id+'">🧪 Usar</button>')+
+          '<button class="btn btn-sm btn-danger" data-action="del-loot" data-id="'+id+'">🗑️</button>'+
+        '</div>'+
+      '</div>'+
+      '<div style="margin-top:6px"><textarea rows="2" style="width:100%;font-size:.85em;border:1px solid #ccc;border-radius:4px;padding:4px;font-family:inherit" data-action="loot-desc" data-id="'+id+'">'+(loot.descripcion||'')+'</textarea></div>'+
+    '</div>';
+  });
+  el.innerHTML=html;
+}
+function addLoot() {
+  var name=document.getElementById('lootName').value.trim();
+  var qty=parseInt(document.getElementById('lootQty').value)||1;
+  if(!name){alert('La poción loot necesita un nombre.');return;}
+  var id=genId();
+  state.lootPotions[id]={name:name,qty:qty,descripcion:'',tipo:'',identificada:false};
+  document.getElementById('lootName').value='';document.getElementById('lootQty').value='1';
+  saveState();renderLoot();
+}
+function deleteLoot(id) {
+  if(!confirm('¿Eliminar esta poción loot?')) return;
+  delete state.lootPotions[id];saveState();renderLoot();
+}
+function identifyLoot(id) {
+  var loot=state.lootPotions[id];if(!loot) return;
+  if(loot.qty<1){alert('No quedan unidades.');return;}
+  var bases=[];
+  for(var bid in state.catalog) if(state.catalog[bid].type==='Base') bases.push({id:bid,m:state.catalog[bid]});
+  if(!bases.length){alert('No tienes bases identificadas para comparar.');return;}
+  var opts=bases.map(function(b,i){return (i+1)+'. '+(b.m.unknown?'???':b.m.name)+' ('+b.m.category+')';});
+  var choice=prompt('Ingeniería inversa: consume 1 unidad.\n\n'+opts.join('\n')+'\n\nNúmero:');
+  if(choice==null) return;
+  var idx=parseInt(choice)-1;
+  if(isNaN(idx)||idx<0||idx>=bases.length){alert('Opción no válida.');return;}
+  var base=bases[idx];
+  loot.tipo=(base.m.unknown?'???':base.m.name)+' ('+base.m.category+')';
+  loot.identificada=true;
+  loot.qty--;
+  if(loot.qty<=0) delete state.lootPotions[id];
+  saveState();renderLoot();
+  document.getElementById('lootResult').innerHTML='<div class="result-box success"><p>✅ Identificada como: <strong>'+loot.tipo+'</strong> (consumida 1 unidad)</p></div>';
+}
 
-  function reverseLootPotion(id) {
-    var lp = state.lootPotions[id];
-    if (!lp) return;
-    var dcStr = prompt('🔬 Ingeniería inversa: "' + lp.name + '"\n\n¿Cuál es la dificultad (DC)?');
-    if (dcStr === null) return;
-    var dc = parseInt(dcStr, 10);
-    if (isNaN(dc)) { alert('Dificultad inválida.'); return; }
-    var modStr = prompt('¿Modificador de la tirada? (ej. 0, +3, -2)');
-    if (modStr === null) return;
-    var mod = parseInt(modStr, 10) || 0;
-    var intMod = parseInt(state.character.intMod, 10) || 0;
-    var bonus = parseInt(state.character.bonus, 10) || 0;
-    var roll = Math.floor(Math.random() * 20) + 1;
-    var total = roll + intMod + bonus + mod;
-    var success = total >= dc;
-    playSound('craft');
-    setTimeout(function () { playSound(success ? 'success' : 'fail'); }, 500);
-    document.getElementById('lootResult').innerHTML =
-      '<div class="result-box ' + (success ? 'success' : 'fail') + '">' +
-      '<p>🔬 Ingeniería inversa: <strong>' + esc(lp.name) + '</strong></p>' +
-      '<p>Tirada: 1d20 (' + roll + ') + Int (' + intMod + ') + Bono (' + bonus + ') + Mod (' + mod + ') = <strong>' + total + '</strong></p>' +
-      '<p>Dificultad: <strong>' + dc + '</strong></p>' +
-      '<p class="verdict">' + (success ? '✅ ÉXITO — has descifrado la poción.' : '❌ FALLO — no logras descubrir sus componentes.') + '</p>' +
-      '</div>';
-  }
-
-  function identifyLootPotion(id) {
-    var lp = state.lootPotions[id];
-    if (!lp) return;
-    var tipo = prompt('🔎 Identificar "' + lp.name + '"\n\n¿De qué tipo es?', lp.tipo || '');
-    if (tipo === null) return;
-    lp.tipo = tipo.trim();
-    lp.identificada = true;
-    saveState();
-    renderLootPotions();
-  }
-
-  function adjustLootPotion(id, delta) {
-    var lp = state.lootPotions[id];
-    if (!lp) return;
-    lp.qty = Math.max(0, lp.qty + delta);
-    saveState();
-    renderLootPotions();
-  }
-
-  function deleteLootPotion(id) {
-    if (!confirm('¿Eliminar esta poción Loot del inventario?')) return;
-    delete state.lootPotions[id];
-    saveState();
-    renderLootPotions();
-  }
-
-  function switchInvSubtab(id) {
-    invSubtab = id;
-    renderInventario();
-    renderLootPotions();
-  }
-
-  // ---------- Tabs ----------
-  function switchTab(tab) {
-    var contents = document.querySelectorAll('.tab-content');
-    for (var i = 0; i < contents.length; i++) contents[i].classList.remove('active');
-    var btns = document.querySelectorAll('.tab-btn');
-    for (var j = 0; j < btns.length; j++) btns[j].classList.remove('active');
-    document.getElementById('tab-' + tab).classList.add('active');
-    document.querySelector('.tab-btn[data-id="' + tab + '"]').classList.add('active');
-  }
-
-  // ---------- Listeners ----------
-  document.addEventListener('click', function (e) {
-    var el = e.target.closest('[data-action]');
-    if (!el) return;
-    var action = el.dataset.action;
-    var id = el.dataset.id;
-    switch (action) {
-      case 'toggle-mute':
-        soundMuted = !soundMuted;
-        localStorage.setItem('alquimiaSoundMuted', soundMuted);
-        updateMuteBtn();
-        break;
-      case 'switch-tab': switchTab(id); break;
-      case 'add-mat': addMaterial(); break;
-      case 'edit-mat': startEditMaterial(id); break;
-      case 'cancel-edit-mat': cancelEditMaterial(); break;
-      case 'del-mat': deleteMaterial(id); break;
-      case 'inv-subtab': switchInvSubtab(id); break;
-      case 'inv-add': adjustInventory(id, 1); break;
-      case 'inv-sub': adjustInventory(id, -1); break;
-      case 'pot-drink': drinkPotion(id); break;
-      case 'edit-apodo': editApodo(id); break;
-      case 'add-loot': addLootPotion(); break;
-      case 'loot-drink': drinkLootPotion(id); break;
-      case 'loot-reverse': reverseLootPotion(id); break;
-      case 'loot-identify': identifyLootPotion(id); break;
-      case 'loot-add': adjustLootPotion(id, 1); break;
-      case 'loot-sub': adjustLootPotion(id, -1); break;
-      case 'loot-del': deleteLootPotion(id); break;
-      case 'craft-set-mode': setCraftMode(id); break;
-      case 'craft-pick-base': pickBase(id); break;
-      case 'craft-mod-inc': incMod(id); break;
-      case 'craft-mod-dec': decMod(id); break;
-      case 'craft-pot-inc': incPotionComp(id); break;
-      case 'craft-pot-dec': decPotionComp(id); break;
-      case 'craft-multi-inc': incMultiComp(id); break;
-      case 'craft-multi-dec': decPotionComp(id); break;
-      case 'craft-confirm': confirmCraft(); break;
-      case 'craft-reset': resetCraft(); break;
-      case 'export-data': exportData(); break;
-      case 'trigger-import': document.getElementById('importFile').click(); break;
-      case 'reset-all': resetAll(); break;
-      default: break;
+// ---- CRAFTEO ----
+function craftSetMode(mode) {
+  craftMode=mode;craftSelectedBase=null;craftSelectedMods={};craftPotionPicks=[];
+  document.getElementById('craftResult').innerHTML='';
+  renderCrafteo();
+}
+function getCheckedAplics() {
+  var cbs=document.querySelectorAll('[name="craftAplic"]:checked'),arr=[];
+  for(var i=0;i<cbs.length;i++) arr.push(cbs[i].value);
+  return arr;
+}
+function getAplicDiff() {
+  var aplics=getCheckedAplics(),t=0;
+  aplics.forEach(function(a){var o=getAplicOption(a);if(o) t+=o.diffMod;});
+  return t;
+}
+function updateAplicacionPanel() {
+  var show=craftSelectedBase!==null||(craftPotionPicks.length===2);
+  document.getElementById('craftAplicacionPanel').style.display=show?'block':'none';
+  var inh=document.getElementById('aplicInhalable');
+  var fum=document.getElementById('aplicFumigena');
+  var conflict=inh&&fum&&inh.checked&&fum.checked;
+  document.getElementById('aplicConflictWarn').style.display=conflict?'block':'none';
+  var checked=getCheckedAplics();
+  APLICACION_OPTIONS.forEach(function(opt){
+    var el=document.getElementById('ad-'+opt.id);
+    if(!el) return;
+    el.textContent=(opt.diffMod>=0?'+':'')+opt.diffMod;
+    el.className='aplic-diff'+(checked.indexOf(opt.id)>=0?' selected':'');
+  });
+  var tot=getAplicDiff();
+  document.getElementById('aplicDiffTotal').textContent=(tot>=0?'+':'')+tot;
+}
+function updateCraftSummary() {
+  var dc='—',canCraft=false;
+  var checkedAplics=getCheckedAplics();
+  var conflict=checkedAplics.indexOf('inhalable')>=0&&checkedAplics.indexOf('fumigena')>=0;
+  if(craftMode==='elaboracion'&&craftSelectedBase){
+    var base=state.catalog[craftSelectedBase];
+    var baseDiff=base?(base.difficulty||0):0;
+    var modDiff=0;
+    for(var mid in craftSelectedMods) if(state.catalog[mid]) modDiff+=(state.catalog[mid].difficulty||0)*craftSelectedMods[mid];
+    var ad=getAplicDiff();
+    dc=Math.max(6,10+baseDiff+modDiff+ad);
+    canCraft=checkedAplics.length>0&&!conflict;
+  } else if(craftPotionPicks.length===2&&(craftMode==='concentracion'||craftMode==='multipocion')){
+    var p1=state.potions[craftPotionPicks[0]];
+    var p2=state.potions[craftPotionPicks[1]];
+    if(p1&&p2){
+      var pp1=parsePotKey(craftPotionPicks[0]);
+      var pp2=parsePotKey(craftPotionPicks[1]);
+      var sameBase=pp1&&pp2&&pp1.baseId===pp2.baseId;
+      if(craftMode==='concentracion'&&!sameBase) dc='⚠️ Bases distintas';
+      else if(craftMode==='multipocion'&&sameBase) dc='⚠️ Misma base';
+      else{
+        var ad2=getAplicDiff();
+        dc=Math.max(6,10+(p1.baseDifficulty||0)+(p1.modDifficulty||0)+(p2.baseDifficulty||0)+(p2.modDifficulty||0)+ad2);
+        canCraft=checkedAplics.length>0&&!conflict;
+      }
     }
+  }
+  document.getElementById('craftDifficulty').textContent=dc;
+  document.getElementById('craftConfirmBtn').disabled=!canCraft;
+}
+function renderCrafteo() {
+  ['elaboracion','concentracion','multipocion'].forEach(function(m){
+    var btn=document.querySelector('[data-action="craft-set-mode"][data-id="'+m+'"]');
+    if(btn) btn.className='btn mode-btn'+(craftMode===m?' active':'');
   });
+  var hints={elaboracion:'Combina una base con modificadores opcionales.',concentracion:'2 pociones de la misma base → sube de pureza (consume ambas). Sin purificar + sin purificar = Pureza I.',multipocion:'2 pociones de bases distintas → multipoción (consume ambas).'};
+  document.getElementById('craftModeHint').textContent=hints[craftMode]||'';
+  document.getElementById('craftElaboracionPanels').style.display=craftMode==='elaboracion'?'block':'none';
+  document.getElementById('craftConcentracionPanels').style.display=craftMode==='concentracion'?'block':'none';
+  document.getElementById('craftMultipocionPanels').style.display=craftMode==='multipocion'?'block':'none';
+  if(craftMode==='elaboracion') renderElaboracion();
+  else if(craftMode==='concentracion') renderConcentracion();
+  else renderMultipocion();
+  updateAplicacionPanel();updateCraftSummary();
+}
+function renderElaboracion() {
+  var bases=[];
+  for(var id in state.catalog) if(state.catalog[id].type==='Base'&&(state.inventory[id]||0)>0) bases.push({id:id,m:state.catalog[id]});
+  var bEl=document.getElementById('craftBaseList');
+  if(!bases.length){bEl.innerHTML='<p class="muted">No tienes bases en el inventario.</p>';document.getElementById('craftModPanel').style.display='none';return;}
+  var html='';
+  bases.forEach(function(item){
+    var picked=craftSelectedBase===item.id;
+    html+='<div class="craft-pot-row">'+
+      '<span>'+(item.m.unknown?'???':item.m.name)+' '+catBadge(item.m.category)+' '+rarityBadge(item.m.rarity)+' (x'+state.inventory[item.id]+')</span>'+
+      '<button class="btn btn-sm btn-pick'+(picked?' picked':'')+'" data-action="craft-pick-base" data-id="'+item.id+'">'+(picked?'✅ Elegida':'Elegir')+'</button>'+
+    '</div>';
+  });
+  bEl.innerHTML=html;
+  if(!craftSelectedBase){document.getElementById('craftModPanel').style.display='none';return;}
+  var base=state.catalog[craftSelectedBase];
+  document.getElementById('craftModPanel').style.display='block';
+  if(base&&base.discriminante){document.getElementById('craftModList').innerHTML='<p class="muted-i">Base discriminante: sin modificadores.</p>';return;}
+  var mods=[];
+  for(var mid in state.catalog) if(state.catalog[mid].type==='Modificador'&&(state.inventory[mid]||0)>0) mods.push({id:mid,m:state.catalog[mid]});
+  if(!mods.length){document.getElementById('craftModList').innerHTML='<p class="muted">No tienes modificadores en el inventario.</p>';return;}
+  var mhtml='';
+  mods.forEach(function(item){
+    var used=craftSelectedMods[item.id]||0;
+    var maxU=item.m.maxUses||99;
+    var baseUnique=base&&base.rarity==='Única';
+    var modUnique=item.m.rarity==='Única';
+    var otherModsPicked=Object.keys(craftSelectedMods).filter(function(k){return craftSelectedMods[k]>0&&k!==item.id;}).length>0;
+    var blocked=baseUnique||(modUnique&&used===0&&otherModsPicked);
+    var canAdd=!blocked&&used<maxU&&used<(state.inventory[item.id]||0);
+    var blockedNote=baseUnique?' <span class="muted">(base única)</span>':modUnique&&blocked?' <span class="muted">(única: va sola)</span>':'';
+    mhtml+='<div class="mod-row">'+
+      '<span class="mod-label">'+(item.m.unknown?'???':item.m.name)+' '+rarityBadge(item.m.rarity)+' dif:'+(item.m.difficulty>=0?'+':'')+item.m.difficulty+' (x'+state.inventory[item.id]+')'+blockedNote+'</span>'+
+      '<div class="stepper">'+
+        '<button class="btn btn-sm" data-action="craft-mod-dec" data-id="'+item.id+'" '+(used<=0?'disabled':'')+'>−</button>'+
+        '<span class="count">'+used+'</span>'+
+        '<button class="btn btn-sm" data-action="craft-mod-inc" data-id="'+item.id+'" '+(!canAdd?'disabled':'')+'>+</button>'+
+      '</div>'+
+    '</div>';
+  });
+  document.getElementById('craftModList').innerHTML=mhtml;
+}
+function renderConcentracion() { renderPotPicker(document.getElementById('craftPotionList')); }
+function renderMultipocion() { renderPotPicker(document.getElementById('craftMultiList')); }
+function renderPotPicker(el) {
+  if(!el) return;
+  var pots=[];
+  for(var pk in state.potions) if(state.potions[pk]&&state.potions[pk].qty>0) pots.push({pk:pk,pot:state.potions[pk]});
+  if(!pots.length){el.innerHTML='<p class="muted">No tienes pociones.</p>';return;}
+  var html='';
+  pots.forEach(function(item){
+    var parsed=parsePotKey(item.pk);
+    var purityN=parsed?parsed.purity:0;
+    var purity=purityN>0?purityRoman(purityN):'sin purif.';
+    var pickCount=craftPotionPicks.filter(function(x){return x===item.pk;}).length;
+    var isPicked=pickCount>0;
+    var pickLabel=pickCount>=2?'✅ ×2':isPicked?'✅ (1)':'Elegir';
+    html+='<div class="craft-pot-row">'+ 
+      '<span>'+(item.pot.name||'Poción')+' ['+(purityN>0?'Pureza '+purity:'sin purif.')+'] (x'+item.pot.qty+') '+catBadge(item.pot.category||'')+'</span>'+
+      '<button class="btn btn-sm btn-pick'+(isPicked?' picked':'')+'" data-action="craft-pick-pot" data-id="'+item.pk+'">'+pickLabel+'</button>'+
+    '</div>';
+  });
+  el.innerHTML=html;
+}
 
-  document.getElementById('matType').addEventListener('change', toggleMaxUsesField);
-  document.getElementById('matCategory').addEventListener('change', function () { toggleDiceFields(); toggleEffectField(); });
-  document.getElementById('matDiceSides').addEventListener('change', toggleDiceFields);
-
-  document.getElementById('charName').addEventListener('input', function (e) {
-    state.character.name = e.target.value;
+// ---- CRAFT CONFIRM ----
+function craftConfirm() {
+  if(craftMode==='elaboracion') confirmCraftElab();
+  else if(craftMode==='concentracion') confirmCraftConc();
+  else confirmCraftMulti();
+}
+function confirmCraftElab() {
+  if(!craftSelectedBase) return;
+  var aplics=getCheckedAplics();
+  if(!aplics.length){alert('Elige al menos un método de aplicación.');return;}
+  if(aplics.indexOf('inhalable')>=0&&aplics.indexOf('fumigena')>=0){alert('Inhalable y Fumígena no son compatibles.');return;}
+  var base=state.catalog[craftSelectedBase];
+  var baseDiff=base.difficulty||0;
+  var modDiff=0;
+  var modsObj={};
+  for(var mid in craftSelectedMods){
+    if(craftSelectedMods[mid]>0){
+      modsObj[mid]=craftSelectedMods[mid];
+      if(state.catalog[mid]) modDiff+=(state.catalog[mid].difficulty||0)*craftSelectedMods[mid];
+    }
+  }
+  var ad=getAplicDiff();
+  var dc=Math.max(6,10+baseDiff+modDiff+ad);
+  var bonus=calcBonus();var roll=roll20();var total=roll+bonus;var success=total>=dc;
+  var desc='d20('+roll+')+bono('+bonus+')='+total+' vs CD '+dc;
+  var resultEl=document.getElementById('craftResult');
+  state.inventory[craftSelectedBase]--;
+  for(var mid2 in modsObj) state.inventory[mid2]-=modsObj[mid2];
+  if(success){
+    var modDiceExtra=[],modFlatExtra=0,modStatMod='',modDurDice=[],modDurFlat=0;
+    for(var mid3 in modsObj){
+      var mm=state.catalog[mid3];if(!mm) continue;
+      if(mm.subtipo==='Potenciador'){
+        if(mm.dicePool) modDiceExtra=modDiceExtra.concat(mm.dicePool);
+        modFlatExtra+=mm.flatBonus||0;
+        if(mm.statMod&&!modStatMod) modStatMod=mm.statMod;
+      }
+      if(mm.subtipo==='Prolongador'){
+        if(mm.durationDice) modDurDice=modDurDice.concat(mm.durationDice);
+        modDurFlat+=mm.durationFlat||0;
+      }
+    }
+    var finalPool=(base.dicePool||[]).concat(modDiceExtra);
+    var finalFlat=(base.flatBonus||0)+modFlatExtra;
+    var finalStat=base.statMod||modStatMod;
+    var finalDurDice=(base.durationDice||[]).concat(modDurDice);
+    var finalDurFlat=(base.durationFlat||0)+modDurFlat;
+    var finalDurInst=base.durationInstant&&!modDurDice.length&&!modDurFlat;
+    var ck=potCatKey(craftSelectedBase,modsObj);
+    if(!state.potionCatalog[ck]){
+      var apodo=prompt('Primera vez creando esta poción. ¿Quieres darle un apodo? (deja vacío para omitir)');
+      state.potionCatalog[ck]={apodo:apodo!=null?apodo.trim():''};
+    }
+    var modNames=[];
+    for(var mid4 in modsObj) if(state.catalog[mid4]) modNames.push(state.catalog[mid4].unknown?'???':state.catalog[mid4].name);
+    var bn=base.unknown?'???':base.name;
+    var potName=bn+(modNames.length?' ('+modNames.join(', ')+')':'')+'.';
+    var pk=potKey(craftSelectedBase,modsObj,aplics,0);
+    if(state.potions[pk]) state.potions[pk].qty++;
+    else state.potions[pk]={
+      qty:1,name:potName,category:base.category,subtipo:base.subtipo||'',
+      baseId:craftSelectedBase,baseName:bn,pureUnits:0,
+      dicePool:finalPool,flatBonus:finalFlat,statMod:finalStat,
+      damageType:base.damageType||'',penaltyType:base.penaltyType||'',penaltyValue:base.penaltyValue||0,
+      modDifficulty:modDiff,baseDifficulty:baseDiff,aplicacion:aplics,
+      durationInstant:finalDurInst,durationDice:finalDurDice,durationFlat:finalDurFlat,
+      noPurificable:base.noPurificable||false,description:base.description||'',isMulti:false
+    };
     saveState();
-  });
-  document.getElementById('charIntMod').addEventListener('input', function (e) {
-    state.character.intMod = parseInt(e.target.value, 10) || 0;
+    var ai=state.potionCatalog[ck];
+    var al=ai&&ai.apodo?' "'+ai.apodo+'"':'';
+    resultEl.innerHTML='<div class="result-box success"><div class="verdict">✅ ¡Éxito! '+desc+'</div><p>Elaborada: <strong>'+potName+'</strong>'+al+'</p></div>';
+  } else {
     saveState();
+    resultEl.innerHTML='<div class="result-box fail"><div class="verdict puterio">❌ Fallido. '+desc+'</div><p>Se pierden los materiales.</p></div>';
+  }
+  craftSelectedBase=null;craftSelectedMods={};craftPotionPicks=[];
+  renderCrafteo();renderInvMateriales();renderInvPociones();
+}
+function mergeDice(pool1,pool2){
+  var res=(pool1||[]).map(function(d){return {count:d.count,sides:d.sides};});
+  (pool2||[]).forEach(function(d){
+    var hit=false;
+    for(var i=0;i<res.length;i++){if(res[i].sides===d.sides){res[i].count+=d.count;hit=true;break;}}
+    if(!hit) res.push({count:d.count,sides:d.sides});
   });
-  document.getElementById('charBonus').addEventListener('input', function (e) {
-    state.character.bonus = parseInt(e.target.value, 10) || 0;
+  return res;
+}
+function confirmCraftConc() {
+  if(craftPotionPicks.length<2) return;
+  var pk1=craftPotionPicks[0],pk2=craftPotionPicks[1];
+  var pot1=state.potions[pk1],pot2=state.potions[pk2];
+  if(!pot1||!pot2) return;
+  var pp1=parsePotKey(pk1),pp2=parsePotKey(pk2);
+  if(!pp1||!pp2||pp1.baseId!==pp2.baseId){alert('Concentración: misma base requerida.');return;}
+  var aplics=getCheckedAplics();
+  if(!aplics.length){alert('Elige al menos un método de aplicación.');return;}
+  if(aplics.indexOf('inhalable')>=0&&aplics.indexOf('fumigena')>=0){alert('Inhalable y Fumígena no son compatibles.');return;}
+  var ad=getAplicDiff();
+  var dc=Math.max(6,10+(pot1.baseDifficulty||0)+(pot1.modDifficulty||0)+(pot2.baseDifficulty||0)+(pot2.modDifficulty||0)+ad);
+  var bonus=calcBonus();var roll=roll20();var total=roll+bonus;var success=total>=dc;
+  var desc='d20('+roll+')+bono('+bonus+')='+total+' vs CD '+dc;
+  var resultEl=document.getElementById('craftResult');
+  pot1.qty--;if(pot1.qty<=0) delete state.potions[pk1];
+  pot2.qty--;if(pot2.qty<=0) delete state.potions[pk2];
+  if(success){
+    var newPurity=Math.max(pp1.purity,pp2.purity)+1;
+    var modsObj2={};
+    [pp1.mods,pp2.mods].forEach(function(ms){if(ms) ms.split(',').forEach(function(m){if(m) modsObj2[m]=(modsObj2[m]||0)+1;});});
+    var ck=potCatKey(pp1.baseId,modsObj2);
+    if(!state.potionCatalog[ck]) state.potionCatalog[ck]={apodo:''};
+    var bn=pot1.baseName||'???';
+    var mns=[];for(var m2 in modsObj2) if(state.catalog[m2]) mns.push(state.catalog[m2].unknown?'???':state.catalog[m2].name);
+    var potName=bn+(mns.length?' ('+mns.join(', ')+')':'')+'. Nivel de Pureza '+purityRoman(newPurity)+'.';
+    var npk=potKey(pp1.baseId,modsObj2,aplics,newPurity);
+    var hasDice=(pot1.dicePool&&pot1.dicePool.length)||(pot2.dicePool&&pot2.dicePool.length);
+    var concDicePool=hasDice?mergeDice(pot1.dicePool,pot2.dicePool):[];
+    var concDurDice=hasDice?(pot1.durationDice||[]):mergeDice(pot1.durationDice,pot2.durationDice);
+    if(state.potions[npk]) state.potions[npk].qty++;
+    else state.potions[npk]={
+      qty:1,name:potName,category:pot1.category,subtipo:pot1.subtipo||'',
+      baseId:pp1.baseId,baseName:bn,pureUnits:newPurity,
+      dicePool:concDicePool,flatBonus:pot1.flatBonus||0,statMod:pot1.statMod||pot2.statMod||'',
+      damageType:pot1.damageType||'',penaltyType:pot1.penaltyType||'',penaltyValue:pot1.penaltyValue||0,
+      modDifficulty:Math.max(pot1.modDifficulty||0,pot2.modDifficulty||0),
+      baseDifficulty:Math.max(pot1.baseDifficulty||0,pot2.baseDifficulty||0),
+      aplicacion:aplics,durationInstant:pot1.durationInstant,
+      durationDice:concDurDice,durationFlat:pot1.durationFlat||0,
+      noPurificable:pot1.noPurificable,description:pot1.description||'',isMulti:false
+    };
     saveState();
-  });
-
-  document.getElementById('importFile').addEventListener('change', function (e) {
-    if (e.target.files.length) handleImportFile(e.target.files[0]);
-    e.target.value = '';
-  });
-
-  document.addEventListener('input', function (e) {
-    var el = e.target.closest('[data-action="loot-desc-change"]');
-    if (!el) return;
-    var id = el.dataset.id;
-    if (state.lootPotions[id]) {
-      state.lootPotions[id].descripcion = el.value;
+    resultEl.innerHTML='<div class="result-box success"><div class="verdict">✅ ¡Éxito! '+desc+'</div><p>Concentrada: <strong>'+potName+'</strong></p></div>';
+  } else {
+    saveState();
+    resultEl.innerHTML='<div class="result-box fail"><div class="verdict puterio">❌ Fallido. '+desc+'</div><p>Se pierden las pociones.</p></div>';
+  }
+  craftPotionPicks=[];renderCrafteo();renderInvPociones();
+}
+function confirmCraftMulti(){
+  if(craftPotionPicks.length<2) return;
+  var pk1=craftPotionPicks[0],pk2=craftPotionPicks[1];
+  var pot1=state.potions[pk1],pot2=state.potions[pk2];
+  if(!pot1||!pot2) return;
+  var pp1=parsePotKey(pk1),pp2=parsePotKey(pk2);
+  if(!pp1||!pp2) return;
+  var aplics=getCheckedAplics();
+  if(!aplics.length){alert('Elige al menos un método de aplicación.');return;}
+  if(aplics.indexOf('inhalable')>=0&&aplics.indexOf('fumigena')>=0){alert('Inhalable y Fumígena no son compatibles.');return;}
+  var ad=getAplicDiff();
+  var bonus=calcBonus();
+  var resultEl=document.getElementById('craftResult');
+  var sameBase=pp1.baseId===pp2.baseId;
+  var desc='';
+  pot1.qty--;if(pot1.qty<=0) delete state.potions[pk1];
+  pot2.qty--;if(pot2.qty<=0) delete state.potions[pk2];
+  if(sameBase){
+    var dcPur=Math.max(6,10+(pot1.baseDifficulty||0)+(pot1.modDifficulty||0)+(pot2.baseDifficulty||0)+(pot2.modDifficulty||0)+ad);
+    var rollPur=roll20();var totalPur=rollPur+bonus;
+    desc+='🔮 Purificación: d20('+rollPur+')+bono('+bonus+')='+totalPur+' vs CD '+dcPur;
+    if(totalPur<dcPur){
       saveState();
+      resultEl.innerHTML='<div class="result-box fail"><div class="verdict puterio">❌ Fallo en purificación. '+desc+'</div><p>Se pierden las pociones.</p></div>';
+      craftPotionPicks=[];renderCrafteo();renderInvPociones();return;
+    }
+    desc+=' ✅<br>';
+  }
+  var dc=Math.max(6,10+(pot1.baseDifficulty||0)+(pot1.modDifficulty||0)+(pot2.baseDifficulty||0)+(pot2.modDifficulty||0)+ad);
+  var roll=roll20();var total=roll+bonus;var success=total>=dc;
+  desc+=(sameBase?'⚗️ Multipoción: ':'')+'d20('+roll+')+bono('+bonus+')='+total+' vs CD '+dc;
+  if(success){
+    var apodoM=prompt('¿Apodo para esta multipoción? (deja vacío para omitir)');
+    var n1=pot1.name||'???',n2=pot2.name||'???';
+    var multiName='[Multi] '+n1+' + '+n2+'.';
+    var multiPk='multi_'+pp1.baseId+'_'+pp2.baseId+'_'+genId()+'_p1';
+    var multiCk='multi_'+[pp1.baseId,pp2.baseId].sort().join('_');
+    if(!state.potionCatalog[multiCk]) state.potionCatalog[multiCk]={apodo:apodoM!=null?apodoM.trim():''};
+    var durInst=pot1.durationInstant&&pot2.durationInstant;
+    var comp1={name:n1,category:pot1.category||'',dicePool:pot1.dicePool||[],flatBonus:pot1.flatBonus||0,statMod:pot1.statMod||'',damageType:pot1.damageType||'',penaltyType:pot1.penaltyType||'',penaltyValue:pot1.penaltyValue||0,durationInstant:!!pot1.durationInstant,durationDice:pot1.durationDice||[],durationFlat:pot1.durationFlat||0,description:pot1.description||''};
+    var comp2={name:n2,category:pot2.category||'',dicePool:pot2.dicePool||[],flatBonus:pot2.flatBonus||0,statMod:pot2.statMod||'',damageType:pot2.damageType||'',penaltyType:pot2.penaltyType||'',penaltyValue:pot2.penaltyValue||0,durationInstant:!!pot2.durationInstant,durationDice:pot2.durationDice||[],durationFlat:pot2.durationFlat||0,description:pot2.description||''};
+    state.potions[multiPk]={
+      qty:1,name:multiName,category:pot1.category||pot2.category||'Mágica',subtipo:'',
+      baseId:pp1.baseId,baseName:(pot1.baseName||'???')+' + '+(pot2.baseName||'???'),pureUnits:0,
+      dicePool:(pot1.dicePool||[]).concat(pot2.dicePool||[]),
+      flatBonus:(pot1.flatBonus||0)+(pot2.flatBonus||0),
+      statMod:pot1.statMod||pot2.statMod||'',
+      damageType:pot1.damageType||pot2.damageType||'',
+      modDifficulty:(pot1.modDifficulty||0)+(pot2.modDifficulty||0),
+      baseDifficulty:(pot1.baseDifficulty||0)+(pot2.baseDifficulty||0),
+      aplicacion:aplics,durationInstant:durInst,
+      durationDice:(pot1.durationDice||[]).concat(pot2.durationDice||[]),
+      durationFlat:(pot1.durationFlat||0)+(pot2.durationFlat||0),
+      noPurificable:pot1.noPurificable&&pot2.noPurificable,
+      description:[pot1.description,pot2.description].filter(Boolean).join(' / '),
+      isMulti:true,components:[comp1,comp2]
+    };
+    saveState();
+    var al=apodoM&&apodoM.trim()?' "'+apodoM.trim()+'"':'';
+    resultEl.innerHTML='<div class="result-box success"><div class="verdict">✅ ¡Éxito! '+desc+'</div><p>Multipoción: <strong>'+multiName+'</strong>'+al+'</p></div>';
+  } else {
+    saveState();
+    resultEl.innerHTML='<div class="result-box fail"><div class="verdict puterio">❌ Fallido. '+desc+'</div><p>Se pierden las pociones.</p></div>';
+  }
+  craftPotionPicks=[];renderCrafteo();renderInvPociones();
+}
+
+// ---- NAVIGATION ----
+function showInfoSubtab(id) {
+  ['identificacion','catalogo','pociones'].forEach(function(s){
+    var el=document.getElementById('infoSub-'+s);
+    if(el) el.style.display=s===id?'block':'none';
+  });
+  document.querySelectorAll('[data-action="info-subtab"]').forEach(function(b){
+    b.className='subtab-btn'+(b.getAttribute('data-id')===id?' active':'');
+  });
+  if(id==='catalogo') renderCatMateriales();
+  if(id==='pociones') renderCatPociones();
+}
+function showInvSubtab(id) {
+  ['materiales','pociones','loot'].forEach(function(s){
+    var el=document.getElementById('invSub-'+s);
+    if(el) el.style.display=s===id?'block':'none';
+  });
+  document.querySelectorAll('[data-action="inv-subtab"]').forEach(function(b){
+    b.className='subtab-btn'+(b.getAttribute('data-id')===id?' active':'');
+  });
+  if(id==='pociones') renderInvPociones();
+  if(id==='loot') renderLoot();
+}
+function switchTab(id) {
+  ['info','inventario','crafteo'].forEach(function(t){
+    var el=document.getElementById('tab-'+t);
+    if(el) el.className='tab-content'+(t===id?' active':'');
+  });
+  document.querySelectorAll('[data-action="switch-tab"]').forEach(function(b){
+    b.className=b.getAttribute('data-id')===id?'active':'';
+  });
+  if(id==='inventario'){renderInvMateriales();renderInvPociones();}
+  if(id==='crafteo') renderCrafteo();
+}
+function syncCharacter() {
+  state.character.name=document.getElementById('charName').value;
+  state.character.intMod=parseInt(document.getElementById('charInt').value)||0;
+  state.character.bonus=parseInt(document.getElementById('charBonus').value)||0;
+  saveState();
+}
+function loadCharacterUI() {
+  document.getElementById('charName').value=state.character.name||'';
+  document.getElementById('charInt').value=state.character.intMod||0;
+  document.getElementById('charBonus').value=state.character.bonus||0;
+}
+function exportData() {
+  var blob=new Blob([JSON.stringify(state,null,2)],{type:'application/json'});
+  var url=URL.createObjectURL(blob);
+  var a=document.createElement('a');a.href=url;
+  a.download='alquimia_v2_'+new Date().toISOString().slice(0,10)+'.json';
+  a.click();URL.revokeObjectURL(url);
+}
+function renderAll() {
+  renderCatMateriales();renderCatPociones();
+  renderInvMateriales();renderInvPociones();renderLoot();renderCrafteo();
+}
+
+// ---- INIT ----
+document.addEventListener('DOMContentLoaded', function() {
+  loadState();loadCharacterUI();updateMatForm();renderAll();
+
+  ['charName','charInt','charBonus'].forEach(function(id){
+    document.getElementById(id).addEventListener('change',syncCharacter);
+  });
+  document.getElementById('matCategory').addEventListener('change',updateMatForm);
+  document.getElementById('matType').addEventListener('change',updateMatForm);
+  document.getElementById('matSubtipo').addEventListener('change',updateMatForm);
+  document.getElementById('matDurationInstant').addEventListener('change',function(){
+    document.getElementById('durationDiceSection').style.display=this.checked?'none':'block';
+    updateNoPurificable();
+  });
+  document.getElementById('matPenaltyType').addEventListener('change',function(){
+    document.getElementById('penaltyValueRow').style.display=this.value==='disadvantage'?'none':'block';
+  });
+  document.querySelectorAll('[name="craftAplic"]').forEach(function(cb){
+    cb.addEventListener('change',function(){updateAplicacionPanel();updateCraftSummary();});
+  });
+  document.getElementById('importFile').addEventListener('change',function(){
+    if(this.files&&this.files[0]){
+      var reader=new FileReader();
+      reader.onload=function(e){
+        try{
+          state=JSON.parse(e.target.result);
+          if(!state.damageTypes) state.damageTypes=getDefaultState().damageTypes;
+          if(!state.lootPotions) state.lootPotions={};
+          if(!state.potionCatalog) state.potionCatalog={};
+          saveState();loadCharacterUI();resetForm();renderAll();
+          alert('Datos importados.');
+        }catch(err){alert('Error al importar: '+err.message);}
+      };
+      reader.readAsText(this.files[0]);
     }
   });
 
-  // ---------- Init ----------
-  render();
+  document.addEventListener('click',function(e){
+    var target=e.target.closest('[data-action]');
+    if(!target) return;
+    var action=target.getAttribute('data-action');
+    var id=target.getAttribute('data-id');
+    switch(action){
+      case 'switch-tab': switchTab(id); break;
+      case 'info-subtab': showInfoSubtab(id); break;
+      case 'inv-subtab': showInvSubtab(id); break;
+      case 'craft-set-mode': craftSetMode(id); break;
+      case 'add-mat': addMat(); break;
+      case 'cancel-edit-mat': resetForm(); break;
+      case 'edit-mat': editMat(id); break;
+      case 'delete-mat': deleteMat(id); break;
+      case 'cancel-delete': deletePendingId=null; renderCatMateriales(); break;
+      case 'toggle-mat-detail':
+        var dd=document.getElementById('matdetail_'+id);
+        if(dd) dd.style.display=dd.style.display==='none'?'block':'none';
+        break;
+      case 'inv-inc': state.inventory[id]=(state.inventory[id]||0)+1; saveState();renderInvMateriales();renderCrafteo(); break;
+      case 'inv-dec':
+        if((state.inventory[id]||0)>0){state.inventory[id]--;saveState();renderInvMateriales();renderCrafteo();}
+        break;
+      case 'craft-pick-base':
+        craftSelectedBase=craftSelectedBase===id?null:id;
+        craftSelectedMods={};renderCrafteo(); break;
+      case 'craft-mod-inc':
+        craftSelectedMods[id]=(craftSelectedMods[id]||0)+1; renderCrafteo(); break;
+      case 'craft-mod-dec':
+        if((craftSelectedMods[id]||0)>0){craftSelectedMods[id]--;if(!craftSelectedMods[id]) delete craftSelectedMods[id];}
+        renderCrafteo(); break;
+      case 'craft-pick-pot':
+        var pickCount2=craftPotionPicks.filter(function(x){return x===id;}).length;
+        var pickQty=state.potions[id]?(state.potions[id].qty||0):0;
+        if(pickCount2>=2||(pickCount2>=1&&pickQty<2)){
+          craftPotionPicks=craftPotionPicks.filter(function(x){return x!==id;});
+        } else if(craftPotionPicks.length>=2&&pickCount2===0){
+          craftPotionPicks=[craftPotionPicks[1],id];
+        } else {
+          craftPotionPicks=craftPotionPicks.concat([id]);
+        }
+        renderCrafteo(); break;
+      case 'craft-confirm': craftConfirm(); break;
+      case 'craft-reset':
+        craftSelectedBase=null;craftSelectedMods={};craftPotionPicks=[];
+        document.getElementById('craftResult').innerHTML='';renderCrafteo(); break;
+      case 'use-pot': usePotion(id); break;
+      case 'set-apodo': setApodo(id); break;
+      case 'del-pot': delPotion(id); break;
+      case 'toggle-pot-detail':
+        var pdEl=document.getElementById('potdetail_'+id.replace(/[^a-z0-9]/gi,'_'));
+        if(pdEl) pdEl.style.display=pdEl.style.display==='none'?'block':'none'; break;
+      case 'add-loot': addLoot(); break;
+      case 'identify-loot': identifyLoot(id); break;
+      case 'use-loot':
+        var li=state.lootPotions[id];
+        if(li){alert('Usando: '+li.name+'\n'+(li.descripcion||'Sin descripción'));li.qty--;if(li.qty<=0) delete state.lootPotions[id];saveState();renderLoot();}
+        break;
+      case 'del-loot': deleteLoot(id); break;
+      case 'add-damage-type':
+        var nt=prompt('Nuevo tipo de daño:');
+        if(nt&&nt.trim()){nt=nt.trim();if(state.damageTypes.indexOf(nt)<0){state.damageTypes.push(nt);saveState();}
+          populateDamageTypeSelect();document.getElementById('matDamageType').value=nt;}
+        break;
+      case 'toggle-sound':
+        SOUND_ENABLED=!SOUND_ENABLED;
+        document.getElementById('muteBtn').textContent=SOUND_ENABLED?'🔊':'🔇'; break;
+      case 'export-data': exportData(); break;
+      case 'import-data': document.getElementById('importFile').click(); break;
+      case 'reset-all':
+        if(confirm('¿Borrar TODOS los datos? Esta acción no se puede deshacer.')){
+          state=getDefaultState();saveState();loadCharacterUI();resetForm();renderAll();
+        } break;
+    }
+  });
 
-})();
+  document.addEventListener('blur',function(e){
+    if(e.target&&e.target.getAttribute('data-action')==='loot-desc'){
+      var lid=e.target.getAttribute('data-id');
+      if(state.lootPotions[lid]){state.lootPotions[lid].descripcion=e.target.value;saveState();}
+    }
+  },true);
+});
 </script>
 </body>
 </html>
