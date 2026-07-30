@@ -176,6 +176,9 @@
   <div id="infoSub-identificacion">
     <div class="panel">
       <h2 id="matFormTitle">➕ Identificar material</h2>
+      <label class="check-label" style="margin-bottom:10px;padding:8px 10px;background:#faf6ef;border:1px solid #d8cdb4;border-radius:6px">
+        <input type="checkbox" id="matUnknown"> <strong>Estado desconocido (???)</strong> — solo nombre y lugar
+      </label>
       <div class="form-row-2">
         <div class="form-row">
           <label>Nombre *</label>
@@ -186,6 +189,7 @@
           <input type="text" id="matLugar" placeholder="Bosque, Cueva... (??? si vacío)">
         </div>
       </div>
+      <div id="matKnownFields">
       <div class="form-row-2">
         <div>
           <label>Categoría</label>
@@ -304,10 +308,7 @@
         <label>Descripción / Notas</label>
         <textarea id="matDesc" rows="2" placeholder="Efecto, aspecto, sabor..."></textarea>
       </div>
-      <label class="check-label" style="margin-bottom:10px">
-        <input type="checkbox" id="matUnknown"> Estado desconocido (???)
-      </label>
-
+      </div><!-- /matKnownFields -->
       <div class="btn-row">
         <button class="btn" data-action="add-mat" id="matSubmitBtn">➕ Añadir material</button>
         <button class="btn" style="display:none;background:#777" id="matCancelEditBtn" data-action="cancel-edit-mat">✖ Cancelar edición</button>
@@ -612,6 +613,10 @@ function getSubtipos(cat,type) {
   return SUBTIPOS[cat+'_'+type]||[];
 }
 function updateMatForm() {
+  var isUnknown=document.getElementById('matUnknown').checked;
+  var knownFields=document.getElementById('matKnownFields');
+  if(knownFields) knownFields.style.display=isUnknown?'none':'block';
+  if(isUnknown) return;
   var cat=document.getElementById('matCategory').value;
   var type=document.getElementById('matType').value;
   var subSel=document.getElementById('matSubtipo');
@@ -1554,6 +1559,7 @@ document.addEventListener('DOMContentLoaded', function() {
     document.getElementById(id).addEventListener('change',syncCharacter);
   });
   document.getElementById('matCategory').addEventListener('change',updateMatForm);
+  document.getElementById('matUnknown').addEventListener('change',updateMatForm);
   document.getElementById('matType').addEventListener('change',updateMatForm);
   document.getElementById('matSubtipo').addEventListener('change',updateMatForm);
   document.getElementById('matDurationInstant').addEventListener('change',function(){

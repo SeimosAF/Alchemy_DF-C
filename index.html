@@ -1,0 +1,341 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1.0">
+  <title>Alquimia v2</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <div class="header-title-row">
+    <h1>⚗️ Alquimia</h1>
+    <button class="mute-btn" data-action="toggle-sound" id="muteBtn" title="Silenciar/Activar sonidos">🔊</button>
+  </div>
+  <div class="char-bar">
+    <label>Personaje: <input type="text" id="charName" value="Mi personaje"></label>
+    <label>Mod. INT: <input type="number" id="charInt" value="0" min="-5" max="10"></label>
+    <label>Bono alquimista: <input type="number" id="charBonus" value="0" min="0" max="20"></label>
+    <button class="btn btn-sm" data-action="export-data">💾 Exportar</button>
+    <button class="btn btn-sm" data-action="import-data">📂 Importar</button>
+    <button class="btn btn-sm" style="background:#8a2a2a" data-action="reset-all">🗑️ Borrar todo</button>
+    <input type="file" id="importFile" accept=".json" style="display:none">
+  </div>
+</header>
+
+<nav class="tab-bar">
+  <button class="active" data-action="switch-tab" data-id="info">📋 Info</button>
+  <button data-action="switch-tab" data-id="inventario">🎒 Inventario</button>
+  <button data-action="switch-tab" data-id="crafteo">⚗️ Crafteo</button>
+</nav>
+
+<!-- ====== INFO TAB ====== -->
+<section id="tab-info" class="tab-content active">
+  <div class="subtab-bar">
+    <button class="subtab-btn active" data-action="info-subtab" data-id="identificacion">📋 Identificación</button>
+    <button class="subtab-btn" data-action="info-subtab" data-id="catalogo">🗃️ Catálogo Materiales</button>
+    <button class="subtab-btn" data-action="info-subtab" data-id="pociones">🧪 Catálogo Pociones</button>
+  </div>
+
+  <!-- Identificación -->
+  <div id="infoSub-identificacion">
+    <div class="panel">
+      <h2 id="matFormTitle">➕ Identificar material</h2>
+      <label class="check-label" style="margin-bottom:10px;padding:8px 10px;background:#faf6ef;border:1px solid #d8cdb4;border-radius:6px">
+        <input type="checkbox" id="matUnknown"> <strong>Estado desconocido (???)</strong> — solo nombre y lugar
+      </label>
+      <div class="form-row-2">
+        <div class="form-row">
+          <label>Nombre *</label>
+          <input type="text" id="matName">
+        </div>
+        <div class="form-row">
+          <label>Lugar de cosecha</label>
+          <input type="text" id="matLugar" placeholder="Bosque, Cueva... (??? si vacío)">
+        </div>
+      </div>
+      <div id="matKnownFields">
+        <div class="form-row-2">
+          <div>
+            <label>Categoría</label>
+            <select id="matCategory">
+              <option value="Salutífera">Salutífera</option>
+              <option value="Maliciosa">Maliciosa</option>
+              <option value="Mágica">Mágica</option>
+            </select>
+          </div>
+          <div>
+            <label>Tipo</label>
+            <select id="matType">
+              <option value="Base">Base</option>
+              <option value="Modificador">Modificador</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row-2">
+          <div>
+            <label>Subtipo</label>
+            <select id="matSubtipo"></select>
+          </div>
+          <div>
+            <label>Rareza</label>
+            <select id="matRarity">
+              <option>Común</option>
+              <option>Poco Común</option>
+              <option>Rara</option>
+              <option>Muy Rara</option>
+              <option>Única</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-row">
+          <label>Dificultad <span id="diffHint" class="muted">(modificador a la CD de crafteo)</span></label>
+          <input type="number" id="matDifficulty" value="0">
+        </div>
+
+        <!-- Base flags -->
+        <div id="baseFlagsSection" class="flags-row" style="display:none">
+          <label class="check-label">
+            <input type="checkbox" id="matDiscriminante"> Base Discriminante (sin modificadores)
+          </label>
+          <label class="check-label">
+            <input type="checkbox" id="matNoPurificable"> No purificable
+          </label>
+        </div>
+
+        <!-- Dice pool -->
+        <div id="dicePoolSection" class="dice-section" style="display:none">
+          <div class="dice-section-label" id="dicePoolLabel">Dados de curación</div>
+          <div id="dicePoolRows"></div>
+          <button type="button" class="btn btn-sm" onclick="window.addDiceRow('pool')">+ Añadir dado</button>
+          <div class="form-row" style="margin-top:8px">
+            <label>Bono plano</label>
+            <input type="number" id="matFlatBonus" value="0" style="width:90px">
+          </div>
+        </div>
+
+        <!-- Stat mod -->
+        <div id="statModSection" style="display:none" class="form-row">
+          <label>Modificador de característica (opcional)</label>
+          <input type="text" id="matStatMod" placeholder="ej. Constitución, Fuerza...">
+        </div>
+
+        <!-- Damage type -->
+        <div id="damageTypeSection" style="display:none" class="form-row">
+          <label id="damageTypeLabel">Tipo de daño</label>
+          <div class="damage-type-row">
+            <select id="matDamageType">
+              <option value="">-- Elige o añade un tipo --</option>
+            </select>
+            <button type="button" class="btn btn-sm" data-action="add-damage-type">+ Nuevo tipo</button>
+          </div>
+        </div>
+
+        <!-- Incapacitante -->
+        <div id="incapacitanteSection" style="display:none">
+          <div class="form-row">
+            <label>Tipo de penalización</label>
+            <select id="matPenaltyType">
+              <option value="flat">Penalización fija (número)</option>
+              <option value="disadvantage">Desventaja en tiradas</option>
+              <option value="both">Ambas</option>
+            </select>
+          </div>
+          <div id="penaltyValueRow" class="form-row">
+            <label>Valor de penalización</label>
+            <input type="number" id="matPenaltyValue" value="1" min="1" style="width:90px">
+          </div>
+        </div>
+
+        <!-- Duration -->
+        <div id="durationSection" class="dice-section" style="display:none">
+          <div class="dice-section-label">Duración del efecto</div>
+          <label class="check-label">
+            <input type="checkbox" id="matDurationInstant"> Instantánea
+          </label>
+          <div id="durationDiceSection">
+            <div id="durationDiceRows"></div>
+            <button type="button" class="btn btn-sm" onclick="window.addDiceRow('duration')">+ Añadir dado de duración</button>
+            <div class="form-row" style="margin-top:8px">
+              <label>Duración base (turnos fijos)</label>
+              <input type="number" id="matDurationFlat" value="0" min="0" style="width:90px">
+            </div>
+          </div>
+        </div>
+
+        <!-- Max uses (modifier only) -->
+        <div id="maxUsesSection" style="display:none" class="form-row">
+          <label>Límite de usos por poción (0 = sin límite)</label>
+          <input type="number" id="matMaxUses" value="0" min="0" style="width:90px">
+        </div>
+
+        <div class="form-row">
+          <label>Descripción / Notas</label>
+          <textarea id="matDesc" rows="2" placeholder="Efecto, aspecto, sabor..."></textarea>
+        </div>
+      </div><!-- /matKnownFields -->
+
+      <div class="btn-row">
+        <button class="btn" data-action="add-mat" id="matSubmitBtn">➕ Añadir material</button>
+        <button class="btn" style="display:none;background:#777" id="matCancelEditBtn" data-action="cancel-edit-mat">✖ Cancelar edición</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Catálogo Materiales -->
+  <div id="infoSub-catalogo" style="display:none">
+    <div class="panel">
+      <h2>🌿 Bases</h2>
+      <div id="catBaseList"><p class="muted">No hay bases registradas.</p></div>
+    </div>
+    <div class="panel">
+      <h2>🧪 Modificadores</h2>
+      <div id="catModList"><p class="muted">No hay modificadores registrados.</p></div>
+    </div>
+  </div>
+
+  <!-- Catálogo Pociones -->
+  <div id="infoSub-pociones" style="display:none">
+    <div class="panel">
+      <h2>📚 Pociones descubiertas</h2>
+      <div id="potionCatalogList"><p class="muted">Todavía no has creado ninguna poción.</p></div>
+    </div>
+  </div>
+</section>
+
+<!-- ====== INVENTARIO TAB ====== -->
+<section id="tab-inventario" class="tab-content">
+  <div class="panel">
+    <div class="subtab-bar">
+      <button class="subtab-btn active" data-action="inv-subtab" data-id="materiales">📦 Materiales</button>
+      <button class="subtab-btn" data-action="inv-subtab" data-id="pociones">🧪 Pociones</button>
+      <button class="subtab-btn" data-action="inv-subtab" data-id="loot">🔍 Loot</button>
+    </div>
+    <div id="invSub-materiales"><div id="invMatList"></div></div>
+    <div id="invSub-pociones" style="display:none">
+      <div id="invPotList"></div>
+      <div id="drinkResult"></div>
+    </div>
+    <div id="invSub-loot" style="display:none">
+      <div class="form-row-2">
+        <div class="form-row">
+          <label>Nombre de la poción loot</label>
+          <input type="text" id="lootName" placeholder="Poción sin identificar...">
+        </div>
+        <div class="form-row">
+          <label>Cantidad</label>
+          <input type="number" id="lootQty" value="1" min="1" style="width:80px">
+        </div>
+      </div>
+      <button class="btn" data-action="add-loot">➕ Añadir poción loot</button>
+      <div id="lootPotList" style="margin-top:12px"></div>
+      <div id="lootResult"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ====== CRAFTEO TAB ====== -->
+<section id="tab-crafteo" class="tab-content">
+  <div class="panel">
+    <h2>Tipo de crafteo</h2>
+    <div class="mode-btn-bar">
+      <button class="btn mode-btn active" data-action="craft-set-mode" data-id="elaboracion">🧪 Elaboración</button>
+      <button class="btn mode-btn" data-action="craft-set-mode" data-id="concentracion">✨ Concentración</button>
+      <button class="btn mode-btn" data-action="craft-set-mode" data-id="multipocion">🌀 Multipoción</button>
+    </div>
+    <p class="muted" id="craftModeHint"></p>
+    <!-- Toggle: only visible in elaboración mode -->
+    <div class="caul-toggle-bar" id="caulToggleBar">
+      <button class="btn btn-sm caul-toggle-btn" id="caulToggleBtn" data-action="toggle-cauldron">
+        🫧 Vista Caldero
+      </button>
+      <span class="muted" style="font-size:.8em">Interfaz visual con arrastrar y soltar</span>
+    </div>
+  </div>
+
+  <!-- Cauldron visual panel (hidden by default) -->
+  <div id="craftCalderoPanel" class="panel" style="display:none;padding:0"></div>
+
+  <!-- Elaboración -->
+  <div id="craftElaboracionPanels">
+    <div class="panel">
+      <h2>1. Elige la Base</h2>
+      <div id="craftBaseList"></div>
+    </div>
+    <div class="panel" id="craftModPanel" style="display:none">
+      <h2>2. Elige los Modificadores</h2>
+      <div id="craftModList"></div>
+    </div>
+  </div>
+
+  <!-- Concentración -->
+  <div id="craftConcentracionPanels" style="display:none">
+    <div class="panel">
+      <h2>1. Elige las 2 pociones a concentrar (misma base)</h2>
+      <div id="craftPotionList"></div>
+    </div>
+  </div>
+
+  <!-- Multipoción -->
+  <div id="craftMultipocionPanels" style="display:none">
+    <div class="panel">
+      <h2>1. Elige las 2 pociones a combinar (bases distintas)</h2>
+      <div id="craftMultiList"></div>
+    </div>
+  </div>
+
+  <!-- Aplicación -->
+  <div id="craftAplicacionPanel" class="panel" style="display:none">
+    <h2 id="craftAplicStep">2. Método de aplicación</h2>
+    <p class="muted">Elige uno o más métodos. Cada tipo añade dificultad a la tirada.</p>
+    <div class="aplicacion-grid" id="aplicacionGrid">
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="brebaje" checked>
+        🍵 <strong>Brebaje</strong> — Al Beber
+        <span class="aplic-diff" id="ad-brebaje">+0</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="hemica">
+        🩸 <strong>Hémica</strong> — Contacto con Sangre
+        <span class="aplic-diff" id="ad-hemica">+1</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="corrosiva">
+        🖐️ <strong>Corrosiva</strong> — Contacto con Piel
+        <span class="aplic-diff" id="ad-corrosiva">+2</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="inhalable" id="aplicInhalable">
+        💨 <strong>Inhalable</strong> — Al oler (1m×1m)
+        <span class="aplic-diff" id="ad-inhalable">+3</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="fumigena" id="aplicFumigena">
+        💨 <strong>Fumígena</strong> — Nube inhalable (3m×3m)
+        <span class="aplic-diff" id="ad-fumigena">+4</span>
+      </label>
+    </div>
+    <p class="muted" id="aplicConflictWarn" style="display:none;color:#a00">⚠️ Inhalable y Fumígena no pueden combinarse.</p>
+    <p style="margin-top:6px">Penalización de aplicación: <strong id="aplicDiffTotal">+0</strong></p>
+  </div>
+
+  <!-- Craftea -->
+  <div class="panel" id="craftConfirmPanel">
+    <h2 id="craftStepLabel">3. Craftea</h2>
+    <p>Dificultad total: <strong id="craftDifficulty">—</strong></p>
+    <div class="form-row" style="max-width:260px">
+      <label>Bono situacional de esta tirada</label>
+      <input type="number" id="craftBonus" value="0">
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="craftConfirmBtn" data-action="craft-confirm" disabled>🎲 Craftear</button>
+      <button class="btn" style="background:#777" data-action="craft-reset">❌ Reiniciar</button>
+    </div>
+    <div id="craftResult"></div>
+  </div>
+</section>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
