@@ -225,6 +225,13 @@ function confirmCraftConc() {
       if (o && o.kind === e.kind && (e.dice?.length || o.dice?.length)) c.dice = mergePools(e.dice, o.dice);
       return c;
     });
+    // Keep blocks of the second potion that have no counterpart in the first
+    eff2.forEach((o, i) => {
+      const e = eff1[i];
+      if (!e || e.kind !== o.kind || !(e.dice?.length || o.dice?.length)) {
+        if (!(e && JSON.stringify(e) === JSON.stringify(o))) concEffects.push(JSON.parse(JSON.stringify(o)));
+      }
+    });
     const concDurDice = hasDice ? (pot1.durationDice || []) : mergePools(pot1.durationDice, pot2.durationDice);
     if (state.potions[npk]) state.potions[npk].qty++;
     else state.potions[npk] = {

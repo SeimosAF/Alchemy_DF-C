@@ -159,11 +159,11 @@ export function applyModifiers(reactivo, modsObj, catalog) {
           break;
         case 'Concentrador':
           out.durationMult /= (m.tradeFactor || 2);
-          if (main) addDice(main, m.tradeDice || 1);
+          if (main) addDice(main, m.tradeDice ?? 1);
           break;
         case 'Diluyente':
           out.durationMult *= (m.tradeFactor || 2);
-          if (main) addDice(main, -(m.tradeDice || 1));
+          if (main) addDice(main, -(m.tradeDice ?? 1));
           break;
         case 'Añadir efecto':
           (m.effects || []).forEach(e => out.effects.push(JSON.parse(JSON.stringify(e))));
