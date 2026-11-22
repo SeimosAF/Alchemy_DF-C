@@ -1,6 +1,9 @@
 // form.js — material identification form management
 import { state, saveState, genId } from './state.js';
-import { SUBTIPOS } from './data.js';
+import {
+  CAMPOS, ALL_STATS, ROLL_KINDS, EFFECT_KINDS, MOD_KINDS, MOD_KIND_ICONS, effectKindsFor,
+} from './data.js';
+import { parseDice, formatDice, getDisolvente, hasMaleficio } from './model.js';
 import { renderCatMateriales, renderInvMateriales } from './render.js';
 
 // Form state
@@ -65,30 +68,122 @@ function populateDiceRows(which, rows) {
 }
 
 export function updateNoPurificable() {
-  if (document.getElementById('matType').value !== 'Base') return;
-  const hasDice = getDiceRows('pool').length > 0 || getDiceRows('duration').length > 0;
+  if (document.getElementById('matType').value !== 'Reactivo') return;
+  const hasDice = formEffects.some(e => e.dice?.length) || getDiceRows('duration').length > 0;
   const cb = document.getElementById('matNoPurificable');
   if (!hasDice) { cb.checked = true; cb.disabled = true; }
-  else { cb.disabled = false; }
+  else if (cb.disabled) { cb.disabled = false; cb.checked = false; }
 }
 
-// ---- Damage type select ----
+// ---- Effect blocks editor ----
+let formEffects = [];
+
+function esc(v) { return String(v ?? '').replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;'); }
+
+function optionList(values, cur, emptyLabel) {
+  const opts = emptyLabel != null ? [`<option value="">${emptyLabel}</option>`] : [];
+  values.forEach(v => opts.push(`<option value="${esc(v)}"${v === cur ? ' selected' : ''}>${esc(v)}</option>`));
+  if (cur && !values.includes(cur)) opts.push(`<option value="${esc(cur)}" selected>${esc(cur)}</option>`);
+  return opts.join('');
+}
+
+function fieldHtml(e, f, idx, campo) {
+  const c = CAMPOS[campo] || CAMPOS['Mágico'];
+  const d = `data-eidx="${idx}" data-field="${f}"`;
+  switch (f) {
+    case 'dice':       return `<label>Dados <input type="text" ${d} value="${esc(formatDice(e.dice))}" placeholder="2d6+1d4" style="width:100px"></label>`;
+    case 'flat':       return `<label>Bono <input type="number" ${d} value="${e.flat || 0}" style="width:60px"></label>`;
+    case 'statMod':    return `<label>+ mod. <select ${d}>${optionList(ALL_STATS, e.statMod, '—')}</select></label>`;
+    case 'damageType': return `<label>Tipo <select ${d}>${optionList(state.damageTypes || [], e.damageType, '— tipo de daño —')}</select></label>`;
+    case 'stat':       return `<label>Característica <select ${d}>${optionList(c.stats, e.stat, 'Cualquiera')}</select></label>`;
+    case 'rollKind':   return `<label>Tiradas <select ${d}>${optionList(ROLL_KINDS, e.rollKind || ROLL_KINDS[0])}</select></label>`;
+    case 'value':      return `<label>Valor <input type="number" ${d} value="${e.value || 1}" min="0" style="width:60px"></label>`;
+    case 'condition':  return `<label>Estado <select ${d}>${optionList(c.conditions, e.condition, '— estado —')}</select></label>`;
+    case 'text':       return `<label class="effect-text">Descripción <input type="text" ${d} value="${esc(e.text)}" placeholder="Brilla en la oscuridad..."></label>`;
+    case 'spellName':  return `<label>Hechizo <input type="text" ${d} value="${esc(e.spellName)}" placeholder="Bola de fuego" style="width:140px"></label>`;
+    case 'spellLevel': return `<label>Nivel <input type="number" ${d} value="${e.spellLevel || 1}" min="0" max="9" style="width:55px"></label>`;
+  }
+  return '';
+}
+
+function currentCampoPol() {
+  return {
+    campo: document.getElementById('matCampo').value,
+    polaridad: document.getElementById('matPolaridad').value,
+  };
+}
+
+export function renderEffectsEditor() {
+  const { campo, polaridad } = currentCampoPol();
+  const rowsEl = document.getElementById('effectRows');
+  const sel = document.getElementById('effectKindSelect');
+  if (!rowsEl || !sel) return;
+  const kinds = effectKindsFor(campo, polaridad);
+  const prev = sel.value;
+  sel.innerHTML = kinds.map(k => `<option value="${k.id}">${k.icon} ${k.label}</option>`).join('');
+  if (kinds.some(k => k.id === prev)) sel.value = prev;
+
+  if (!formEffects.length) {
+    rowsEl.innerHTML = '<p class="muted" style="margin:4px 0 8px">Sin efectos todavía. Elige uno abajo y pulsa «Añadir efecto».</p>';
+  } else {
+    rowsEl.innerHTML = formEffects.map((e, idx) => {
+      const k = EFFECT_KINDS[e.kind] || { label: e.kind, icon: '•', fields: [] };
+      const fits = kinds.some(x => x.id === e.kind);
+      return `<div class="effect-row${fits ? '' : ' effect-row-warn'}">
+        <div class="effect-row-head">
+          <strong>${k.icon} ${k.label}</strong>
+          ${fits ? '' : '<span class="muted" title="No encaja con el campo o la polaridad elegidos">⚠️ no encaja</span>'}
+          <button type="button" class="btn btn-sm btn-danger" data-action="remove-effect" data-id="${idx}">✕</button>
+        </div>
+        <div class="effect-row-fields">${k.fields.map(f => fieldHtml(e, f, idx, campo)).join('')}</div>
+      </div>`;
+    }).join('');
+  }
+  updateSaveSection();
+}
+
+export function addEffect() {
+  const kind = document.getElementById('effectKindSelect').value;
+  if (!kind) return;
+  const e = { kind };
+  if (EFFECT_KINDS[kind].fields.includes('rollKind')) e.rollKind = ROLL_KINDS[0];
+  if (EFFECT_KINDS[kind].fields.includes('value')) e.value = 1;
+  if (kind === 'hechizo') e.spellLevel = 1;
+  formEffects.push(e);
+  renderEffectsEditor();
+  updateNoPurificable();
+}
+
+export function removeEffect(idx) {
+  formEffects.splice(parseInt(idx), 1);
+  renderEffectsEditor();
+  updateNoPurificable();
+}
+
+export function onEffectFieldChange(el) {
+  const idx = parseInt(el.dataset.eidx), f = el.dataset.field;
+  const e = formEffects[idx]; if (!e) return;
+  if (f === 'dice') e.dice = parseDice(el.value);
+  else if (['flat', 'value', 'spellLevel'].includes(f)) e[f] = parseInt(el.value) || 0;
+  else e[f] = el.value;
+  if (f === 'dice') updateNoPurificable();
+}
+
+function updateSaveSection() {
+  const type = document.getElementById('matType').value;
+  const show = type === 'Reactivo' && hasMaleficio(formEffects);
+  const sec = document.getElementById('saveSection');
+  sec.style.display = show ? 'grid' : 'none';
+  const { campo } = currentCampoPol();
+  const statSel = document.getElementById('matSaveStat');
+  const cur = statSel.value;
+  const stats = (CAMPOS[campo] || CAMPOS['Mágico']).stats;
+  statSel.innerHTML = optionList(stats, stats.includes(cur) ? cur : stats[0]);
+}
+
+// ---- Damage type list (used by effect rows) ----
 export function populateDamageTypeSelect() {
-  const sel = document.getElementById('matDamageType');
-  if (!sel) return;
-  const cur = sel.value;
-  sel.innerHTML = '<option value="">-- Elige o añade --</option>';
-  (state.damageTypes || []).forEach(t => {
-    const o = document.createElement('option');
-    o.value = t; o.textContent = t;
-    sel.appendChild(o);
-  });
-  if (cur) sel.value = cur;
-}
-
-function getSubtipos(cat, type) {
-  if (type === 'Modificador') return SUBTIPOS['_Modificador'];
-  return SUBTIPOS[`${cat}_${type}`] || [];
+  renderEffectsEditor();
 }
 
 // ---- Main form update ----
@@ -98,48 +193,48 @@ export function updateMatForm() {
   if (knownFields) knownFields.style.display = isUnknown ? 'none' : 'block';
   if (isUnknown) return;
 
-  const cat = document.getElementById('matCategory').value;
   const type = document.getElementById('matType').value;
-  const subSel = document.getElementById('matSubtipo');
-  const subs = getSubtipos(cat, type);
-  const curSub = subSel.value;
-  subSel.innerHTML = '';
-  if (!subs.length) {
-    subSel.innerHTML = '<option value="">(ninguno)</option>';
-    subSel.disabled = true;
-  } else {
-    subSel.disabled = false;
-    subs.forEach(s => { const o = document.createElement('option'); o.value = s; o.textContent = s; subSel.appendChild(o); });
-    if (subs.includes(curSub)) subSel.value = curSub;
-  }
-  const sub = subSel.value;
-  const isBase = type === 'Base', isMod = type === 'Modificador';
+  const { campo, polaridad } = currentCampoPol();
+  const isBase = type === 'Reactivo', isMod = type === 'Modificador';
+
+  // Mod kind select
+  const mkSel = document.getElementById('matModKind');
+  if (!mkSel.options.length) mkSel.innerHTML = Object.keys(MOD_KINDS).map(k => `<option value="${k}">${MOD_KIND_ICONS[k]} ${k}</option>`).join('');
+  document.getElementById('modKindWrap').style.visibility = isMod ? 'visible' : 'hidden';
+  const modKind = isMod ? mkSel.value : '';
+  const mkHint = document.getElementById('modKindHint');
+  mkHint.style.display = isMod ? 'block' : 'none';
+  mkHint.textContent = isMod ? MOD_KINDS[modKind] || '' : '';
+
+  // Campo hint: disolvente + características
+  const solv = getDisolvente(state.settings, campo);
+  const c = CAMPOS[campo];
+  let hint = `Disolvente: <strong>${solv.name}</strong> (${solv.difficulty >= 0 ? '+' : ''}${solv.difficulty} CD) · Características: ${c.stats.length === 6 ? 'todas' : c.stats.join(' y ')}`;
+  if (campo === 'Mágico') hint += ' · Las pociones mágicas no admiten modificadores, concentración ni multipoción.';
+  if (isMod) hint = `Se puede usar con reactivos de campo ${campo}${campo === 'Mágico' ? '' : ' (o desde cualquier campo si el modificador es Mágico)'}. ${polaridad === 'Maleficioso' ? 'Con un reactivo beneficioso' : 'Con un reactivo maleficioso'} suma +${state.settings?.polaridadOpuestaDiff ?? 2} a la CD.`;
+  document.getElementById('campoHint').innerHTML = hint;
 
   document.getElementById('baseFlagsSection').style.display = isBase ? 'flex' : 'none';
-  const showPool = (isBase && (sub === 'Vitalidad' || sub === 'Dañina')) || sub === 'Potenciador';
+
+  const showEffects = isBase || modKind === 'Añadir efecto';
+  document.getElementById('effectsSection').style.display = showEffects ? 'block' : 'none';
+  document.getElementById('effectsLabel').textContent = isBase ? 'Efectos del reactivo' : 'Efectos que añade el modificador';
+  if (showEffects) renderEffectsEditor();
+  else document.getElementById('saveSection').style.display = 'none';
+
+  const showPool = modKind === 'Potenciador';
   document.getElementById('dicePoolSection').style.display = showPool ? 'block' : 'none';
-  if (showPool) {
-    document.getElementById('dicePoolLabel').textContent =
-      sub === 'Potenciador' ? 'Dados de bonificación' : sub === 'Dañina' ? 'Dados de daño' : 'Dados de curación';
-  }
   document.getElementById('statModSection').style.display = showPool ? 'block' : 'none';
 
-  const showDmg = isBase && (sub === 'Resistencia' || sub === 'Debilitante');
-  document.getElementById('damageTypeSection').style.display = showDmg ? 'block' : 'none';
-  if (showDmg) {
-    document.getElementById('damageTypeLabel').textContent =
-      sub === 'Resistencia' ? 'Resistencia a tipo de daño' : 'Tipo de daño que inflige';
-    populateDamageTypeSelect();
+  const showTrade = modKind === 'Concentrador' || modKind === 'Diluyente';
+  document.getElementById('tradeSection').style.display = showTrade ? 'block' : 'none';
+  if (showTrade) {
+    const conc = modKind === 'Concentrador';
+    document.getElementById('tradeFactorLabel').textContent = conc ? 'Divide la duración entre' : 'Multiplica la duración por';
+    document.getElementById('tradeDiceLabel').textContent = conc ? 'Dados que suma al efecto principal' : 'Dados que resta al efecto principal (mín. 1)';
   }
 
-  const showIncap = isBase && sub === 'Incapacitante';
-  document.getElementById('incapacitanteSection').style.display = showIncap ? 'block' : 'none';
-  if (showIncap) {
-    const pt = document.getElementById('matPenaltyType').value;
-    document.getElementById('penaltyValueRow').style.display = pt === 'disadvantage' ? 'none' : 'block';
-  }
-
-  const showDur = isBase || sub === 'Prolongador';
+  const showDur = isBase || modKind === 'Prolongador';
   document.getElementById('durationSection').style.display = showDur ? 'block' : 'none';
   if (showDur) {
     const inst = document.getElementById('matDurationInstant').checked;
@@ -148,46 +243,48 @@ export function updateMatForm() {
 
   document.getElementById('maxUsesSection').style.display = isMod ? 'block' : 'none';
   document.getElementById('diffHint').textContent =
-    sub === 'Economizador' ? '(debe ser negativo)' : '(modificador a la CD)';
+    modKind === 'Economizador' ? '(debe ser negativo)' : '(modificador a la CD; el disolvente se suma aparte)';
 
   if (isBase) updateNoPurificable();
 }
 
 // ---- Read form ----
 function readFormData() {
-  const cat = document.getElementById('matCategory').value;
   const type = document.getElementById('matType').value;
-  const sub = document.getElementById('matSubtipo').value;
+  const { campo, polaridad } = currentCampoPol();
+  const modKind = type === 'Modificador' ? document.getElementById('matModKind').value : '';
   const data = {
     name: document.getElementById('matName').value.trim(),
     lugar: document.getElementById('matLugar').value.trim(),
-    category: cat, type, subtipo: sub,
+    type, campo, polaridad, modKind,
     rarity: document.getElementById('matRarity').value,
     difficulty: parseInt(document.getElementById('matDifficulty').value) || 0,
     description: document.getElementById('matDesc').value.trim(),
     unknown: document.getElementById('matUnknown').checked,
     discriminante: false, noPurificable: false,
+    effects: [], save: null,
     dicePool: [], flatBonus: 0, statMod: '',
-    damageType: '', penaltyType: '', penaltyValue: 0,
+    tradeFactor: 2, tradeDice: 1,
     durationInstant: false, durationDice: [], durationFlat: 0, maxUses: 0,
   };
-  if (type === 'Base') {
+  if (type === 'Reactivo') {
     data.discriminante = document.getElementById('matDiscriminante').checked;
     data.noPurificable = document.getElementById('matNoPurificable').checked;
   }
-  const showPool = (type === 'Base' && (sub === 'Vitalidad' || sub === 'Dañina')) || sub === 'Potenciador';
-  if (showPool) {
+  if (type === 'Reactivo' || modKind === 'Añadir efecto')
+    data.effects = JSON.parse(JSON.stringify(formEffects));
+  if (type === 'Reactivo' && hasMaleficio(data.effects))
+    data.save = { stat: document.getElementById('matSaveStat').value, onSuccess: document.getElementById('matSaveOn').value };
+  if (modKind === 'Potenciador') {
     data.dicePool = getDiceRows('pool');
     data.flatBonus = parseInt(document.getElementById('matFlatBonus').value) || 0;
     data.statMod = document.getElementById('matStatMod').value.trim();
   }
-  if (type === 'Base' && (sub === 'Resistencia' || sub === 'Debilitante'))
-    data.damageType = document.getElementById('matDamageType').value;
-  if (type === 'Base' && sub === 'Incapacitante') {
-    data.penaltyType = document.getElementById('matPenaltyType').value;
-    data.penaltyValue = parseInt(document.getElementById('matPenaltyValue').value) || 1;
+  if (modKind === 'Concentrador' || modKind === 'Diluyente') {
+    data.tradeFactor = parseFloat(document.getElementById('matTradeFactor').value) || 2;
+    data.tradeDice = parseInt(document.getElementById('matTradeDice').value) || 0;
   }
-  if (type === 'Base' || sub === 'Prolongador') {
+  if (type === 'Reactivo' || modKind === 'Prolongador') {
     data.durationInstant = document.getElementById('matDurationInstant').checked;
     if (!data.durationInstant) {
       data.durationDice = getDiceRows('duration');
@@ -202,15 +299,19 @@ function readFormData() {
 export function resetForm() {
   ['matName','matLugar','matDesc','matStatMod'].forEach(id => { document.getElementById(id).value = ''; });
   ['matDifficulty','matFlatBonus','matDurationFlat','matMaxUses'].forEach(id => { document.getElementById(id).value = '0'; });
-  document.getElementById('matPenaltyValue').value = '1';
-  document.getElementById('matCategory').value = 'Salutífera';
-  document.getElementById('matType').value = 'Base';
+  document.getElementById('matTradeFactor').value = '2';
+  document.getElementById('matTradeDice').value = '1';
+  document.getElementById('matCampo').value = 'Cuerpo';
+  document.getElementById('matPolaridad').value = 'Beneficioso';
+  document.getElementById('matType').value = 'Reactivo';
   document.getElementById('matRarity').value = 'Común';
+  document.getElementById('matSaveOn').value = 'anula';
   ['matUnknown','matDiscriminante','matNoPurificable','matDurationInstant'].forEach(id => { document.getElementById(id).checked = false; });
   clearDiceRows('pool'); clearDiceRows('duration');
+  formEffects = [];
   editingMatId = null;
-  document.getElementById('matFormTitle').textContent = '➕ Identificar material';
-  document.getElementById('matSubmitBtn').textContent = '➕ Añadir material';
+  document.getElementById('matFormTitle').textContent = '➕ Identificar componente';
+  document.getElementById('matSubmitBtn').textContent = '➕ Añadir componente';
   document.getElementById('matCancelEditBtn').style.display = 'none';
   updateMatForm();
 }
@@ -219,7 +320,7 @@ export function resetForm() {
 // renderCrafteo is passed as a callback to avoid circular imports (crafting.js → form.js)
 export function addMat(renderCrafteo) {
   const data = readFormData();
-  if (!data.name) { alert('El material necesita un nombre.'); return; }
+  if (!data.name) { alert('El componente necesita un nombre.'); return; }
   if (editingMatId) {
     const m = state.catalog[editingMatId];
     for (const k in data) m[k] = data[k];
@@ -236,31 +337,36 @@ export function editMat(id) {
   editingMatId = id;
   document.getElementById('matName').value = m.name || '';
   document.getElementById('matLugar').value = m.lugar || '';
-  document.getElementById('matCategory').value = m.category || 'Salutífera';
-  document.getElementById('matType').value = m.type || 'Base';
+  document.getElementById('matType').value = m.type || 'Reactivo';
+  document.getElementById('matCampo').value = m.campo || 'Cuerpo';
+  document.getElementById('matPolaridad').value = m.polaridad || 'Beneficioso';
   document.getElementById('matRarity').value = m.rarity || 'Común';
   document.getElementById('matDifficulty').value = m.difficulty || 0;
   document.getElementById('matDesc').value = m.description || '';
   document.getElementById('matUnknown').checked = !!m.unknown;
+  formEffects = JSON.parse(JSON.stringify(m.effects || []));
   updateMatForm();
-  document.getElementById('matSubtipo').value = m.subtipo || '';
+  if (m.type === 'Modificador') document.getElementById('matModKind').value = m.modKind || 'Otro';
+  document.getElementById('matDurationInstant').checked = !!m.durationInstant;
   updateMatForm(); // second pass to update conditional sections
-  if (m.type === 'Base') {
+  if (m.type === 'Reactivo') {
     document.getElementById('matDiscriminante').checked = !!m.discriminante;
     document.getElementById('matNoPurificable').checked = !!m.noPurificable;
   }
+  if (m.save) {
+    document.getElementById('matSaveStat').value = m.save.stat || '';
+    document.getElementById('matSaveOn').value = m.save.onSuccess ?? 'anula';
+  }
   document.getElementById('matFlatBonus').value = m.flatBonus || 0;
   document.getElementById('matStatMod').value = m.statMod || '';
-  document.getElementById('matDurationInstant').checked = !!m.durationInstant;
+  document.getElementById('matTradeFactor').value = m.tradeFactor || 2;
+  document.getElementById('matTradeDice').value = m.tradeDice ?? 1;
   document.getElementById('matDurationFlat').value = m.durationFlat || 0;
   document.getElementById('matMaxUses').value = m.maxUses || 0;
-  document.getElementById('matPenaltyValue').value = m.penaltyValue || 1;
-  if (m.penaltyType) document.getElementById('matPenaltyType').value = m.penaltyType;
   populateDiceRows('pool', m.dicePool);
   populateDiceRows('duration', m.durationDice);
-  if (m.damageType) { populateDamageTypeSelect(); document.getElementById('matDamageType').value = m.damageType; }
   if (m.durationInstant) document.getElementById('durationDiceSection').style.display = 'none';
-  document.getElementById('matFormTitle').textContent = '✏️ Editar material';
+  document.getElementById('matFormTitle').textContent = '✏️ Editar componente';
   document.getElementById('matSubmitBtn').textContent = '💾 Guardar cambios';
   document.getElementById('matCancelEditBtn').style.display = 'inline-block';
   // Caller (app.js) is responsible for switching to the identificación subtab
@@ -304,15 +410,15 @@ export function identifyLoot(id) {
   const loot = state.lootPotions[id]; if (!loot) return;
   if (loot.qty < 1) { alert('No quedan unidades.'); return; }
   const bases = [];
-  for (const bid in state.catalog) if (state.catalog[bid].type === 'Base') bases.push({ id: bid, m: state.catalog[bid] });
-  if (!bases.length) { alert('No tienes bases identificadas para comparar.'); return; }
-  const opts = bases.map((b, i) => `${i + 1}. ${b.m.unknown ? '???' : b.m.name} (${b.m.category})`);
+  for (const bid in state.catalog) if (state.catalog[bid].type === 'Reactivo') bases.push({ id: bid, m: state.catalog[bid] });
+  if (!bases.length) { alert('No tienes reactivos identificados para comparar.'); return; }
+  const opts = bases.map((b, i) => `${i + 1}. ${b.m.unknown ? '???' : b.m.name} (${b.m.campo} · ${b.m.polaridad})`);
   const choice = prompt('Ingeniería inversa: consume 1 unidad.\n\n' + opts.join('\n') + '\n\nNúmero:');
   if (choice == null) return;
   const idx = parseInt(choice) - 1;
   if (isNaN(idx) || idx < 0 || idx >= bases.length) { alert('Opción no válida.'); return; }
   const base = bases[idx];
-  loot.tipo = (base.m.unknown ? '???' : base.m.name) + ' (' + base.m.category + ')';
+  loot.tipo = (base.m.unknown ? '???' : base.m.name) + ' (' + base.m.campo + ' · ' + base.m.polaridad + ')';
   loot.identificada = true;
   loot.qty--;
   if (loot.qty <= 0) delete state.lootPotions[id];

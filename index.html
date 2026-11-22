@@ -36,12 +36,13 @@
     <button class="subtab-btn active" data-action="info-subtab" data-id="identificacion">📋 Identificación</button>
     <button class="subtab-btn" data-action="info-subtab" data-id="catalogo">🗃️ Catálogo Materiales</button>
     <button class="subtab-btn" data-action="info-subtab" data-id="pociones">🧪 Catálogo Pociones</button>
+    <button class="subtab-btn" data-action="info-subtab" data-id="parametros">⚙️ Parámetros</button>
   </div>
 
   <!-- Identificación -->
   <div id="infoSub-identificacion">
     <div class="panel">
-      <h2 id="matFormTitle">➕ Identificar material</h2>
+      <h2 id="matFormTitle">➕ Identificar componente</h2>
       <label class="check-label" style="margin-bottom:10px;padding:8px 10px;background:#faf6ef;border:1px solid #d8cdb4;border-radius:6px">
         <input type="checkbox" id="matUnknown"> <strong>Estado desconocido (???)</strong> — solo nombre y lugar
       </label>
@@ -56,27 +57,38 @@
         </div>
       </div>
       <div id="matKnownFields">
-        <div class="form-row-2">
-          <div>
-            <label>Categoría</label>
-            <select id="matCategory">
-              <option value="Salutífera">Salutífera</option>
-              <option value="Maliciosa">Maliciosa</option>
-              <option value="Mágica">Mágica</option>
-            </select>
-          </div>
+        <!-- Paso 1-3: tipo, campo y polaridad -->
+        <div class="form-row-3">
           <div>
             <label>Tipo</label>
             <select id="matType">
-              <option value="Base">Base</option>
+              <option value="Reactivo">Reactivo</option>
               <option value="Modificador">Modificador</option>
             </select>
           </div>
-        </div>
-        <div class="form-row-2">
           <div>
-            <label>Subtipo</label>
-            <select id="matSubtipo"></select>
+            <label>Campo</label>
+            <select id="matCampo">
+              <option value="Cuerpo">Cuerpo</option>
+              <option value="Mente">Mente</option>
+              <option value="Alma">Alma</option>
+              <option value="Mágico">Mágico</option>
+            </select>
+          </div>
+          <div>
+            <label>Polaridad</label>
+            <select id="matPolaridad">
+              <option value="Beneficioso">Beneficioso</option>
+              <option value="Maleficioso">Maleficioso</option>
+            </select>
+          </div>
+        </div>
+        <p class="muted campo-hint" id="campoHint"></p>
+
+        <div class="form-row-2">
+          <div id="modKindWrap">
+            <label>Clase de modificador</label>
+            <select id="matModKind"></select>
           </div>
           <div>
             <label>Rareza</label>
@@ -89,24 +101,52 @@
             </select>
           </div>
         </div>
+        <p class="muted" id="modKindHint" style="display:none"></p>
         <div class="form-row">
           <label>Dificultad <span id="diffHint" class="muted">(modificador a la CD de crafteo)</span></label>
           <input type="number" id="matDifficulty" value="0">
         </div>
 
-        <!-- Base flags -->
+        <!-- Reactivo flags -->
         <div id="baseFlagsSection" class="flags-row" style="display:none">
           <label class="check-label">
-            <input type="checkbox" id="matDiscriminante"> Base Discriminante (sin modificadores)
+            <input type="checkbox" id="matDiscriminante"> Reactivo discriminante (sin modificadores)
           </label>
           <label class="check-label">
             <input type="checkbox" id="matNoPurificable"> No purificable
           </label>
         </div>
 
-        <!-- Dice pool -->
+        <!-- Paso 4: bloques de efecto -->
+        <div id="effectsSection" class="dice-section" style="display:none">
+          <div class="dice-section-label" id="effectsLabel">Efectos</div>
+          <div id="effectRows"></div>
+          <div class="effect-add-row">
+            <select id="effectKindSelect"></select>
+            <button type="button" class="btn btn-sm" data-action="add-effect">+ Añadir efecto</button>
+            <button type="button" class="btn btn-sm" data-action="add-damage-type">+ Tipo de daño</button>
+          </div>
+        </div>
+
+        <!-- Salvación (reactivo con algún efecto maleficioso) -->
+        <div id="saveSection" class="form-row-2" style="display:none">
+          <div>
+            <label>Salvación del objetivo</label>
+            <select id="matSaveStat"></select>
+          </div>
+          <div>
+            <label>Si la supera</label>
+            <select id="matSaveOn">
+              <option value="anula">No le afecta</option>
+              <option value="mitad">Mitad de efecto</option>
+              <option value="">Sin regla</option>
+            </select>
+          </div>
+        </div>
+
+        <!-- Potenciador: dados extra -->
         <div id="dicePoolSection" class="dice-section" style="display:none">
-          <div class="dice-section-label" id="dicePoolLabel">Dados de curación</div>
+          <div class="dice-section-label" id="dicePoolLabel">Dados de bonificación</div>
           <div id="dicePoolRows"></div>
           <button type="button" class="btn btn-sm" onclick="window.addDiceRow('pool')">+ Añadir dado</button>
           <div class="form-row" style="margin-top:8px">
@@ -115,36 +155,24 @@
           </div>
         </div>
 
-        <!-- Stat mod -->
+        <!-- Stat mod (potenciador) -->
         <div id="statModSection" style="display:none" class="form-row">
           <label>Modificador de característica (opcional)</label>
           <input type="text" id="matStatMod" placeholder="ej. Constitución, Fuerza...">
         </div>
 
-        <!-- Damage type -->
-        <div id="damageTypeSection" style="display:none" class="form-row">
-          <label id="damageTypeLabel">Tipo de daño</label>
-          <div class="damage-type-row">
-            <select id="matDamageType">
-              <option value="">-- Elige o añade un tipo --</option>
-            </select>
-            <button type="button" class="btn btn-sm" data-action="add-damage-type">+ Nuevo tipo</button>
-          </div>
-        </div>
-
-        <!-- Incapacitante -->
-        <div id="incapacitanteSection" style="display:none">
-          <div class="form-row">
-            <label>Tipo de penalización</label>
-            <select id="matPenaltyType">
-              <option value="flat">Penalización fija (número)</option>
-              <option value="disadvantage">Desventaja en tiradas</option>
-              <option value="both">Ambas</option>
-            </select>
-          </div>
-          <div id="penaltyValueRow" class="form-row">
-            <label>Valor de penalización</label>
-            <input type="number" id="matPenaltyValue" value="1" min="1" style="width:90px">
+        <!-- Concentrador / Diluyente -->
+        <div id="tradeSection" class="dice-section" style="display:none">
+          <div class="dice-section-label" id="tradeLabel">Intercambio duración / potencia</div>
+          <div class="form-row-2">
+            <div class="form-row">
+              <label id="tradeFactorLabel">Divide la duración entre</label>
+              <input type="number" id="matTradeFactor" value="2" min="1" step="0.5" style="width:90px">
+            </div>
+            <div class="form-row">
+              <label id="tradeDiceLabel">Dados que suma al efecto principal</label>
+              <input type="number" id="matTradeDice" value="1" min="0" style="width:90px">
+            </div>
           </div>
         </div>
 
@@ -177,7 +205,7 @@
       </div><!-- /matKnownFields -->
 
       <div class="btn-row">
-        <button class="btn" data-action="add-mat" id="matSubmitBtn">➕ Añadir material</button>
+        <button class="btn" data-action="add-mat" id="matSubmitBtn">➕ Añadir componente</button>
         <button class="btn" style="display:none;background:#777" id="matCancelEditBtn" data-action="cancel-edit-mat">✖ Cancelar edición</button>
       </div>
     </div>
@@ -186,12 +214,21 @@
   <!-- Catálogo Materiales -->
   <div id="infoSub-catalogo" style="display:none">
     <div class="panel">
-      <h2>🌿 Bases</h2>
-      <div id="catBaseList"><p class="muted">No hay bases registradas.</p></div>
+      <h2>🌿 Reactivos</h2>
+      <div id="catBaseList"><p class="muted">No hay reactivos registrados.</p></div>
     </div>
     <div class="panel">
       <h2>🧪 Modificadores</h2>
       <div id="catModList"><p class="muted">No hay modificadores registrados.</p></div>
+    </div>
+  </div>
+
+  <!-- Parámetros -->
+  <div id="infoSub-parametros" style="display:none">
+    <div class="panel">
+      <h2>⚙️ Disolventes y dificultades</h2>
+      <p class="muted">El campo de cada componente fija su disolvente. Aquí puedes cambiar el nombre de cada disolvente y lo que suma a la CD.</p>
+      <div id="settingsPanel"></div>
     </div>
   </div>
 
@@ -260,7 +297,7 @@
   <!-- Elaboración -->
   <div id="craftElaboracionPanels">
     <div class="panel">
-      <h2>1. Elige la Base</h2>
+      <h2>1. Elige el Reactivo</h2>
       <div id="craftBaseList"></div>
     </div>
     <div class="panel" id="craftModPanel" style="display:none">
@@ -272,7 +309,7 @@
   <!-- Concentración -->
   <div id="craftConcentracionPanels" style="display:none">
     <div class="panel">
-      <h2>1. Elige las 2 pociones a concentrar (misma base)</h2>
+      <h2>1. Elige las 2 pociones a concentrar (mismo reactivo)</h2>
       <div id="craftPotionList"></div>
     </div>
   </div>
@@ -280,7 +317,7 @@
   <!-- Multipoción -->
   <div id="craftMultipocionPanels" style="display:none">
     <div class="panel">
-      <h2>1. Elige las 2 pociones a combinar (bases distintas)</h2>
+      <h2>1. Elige las 2 pociones a combinar</h2>
       <div id="craftMultiList"></div>
     </div>
   </div>
