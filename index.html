@@ -161,6 +161,7 @@
           <input type="text" id="matStatMod" placeholder="ej. Constitución, Fuerza...">
         </div>
 
+<<<<<<< Updated upstream
         <!-- Concentrador / Diluyente -->
         <div id="tradeSection" class="dice-section" style="display:none">
           <div class="dice-section-label" id="tradeLabel">Intercambio duración / potencia</div>
@@ -173,15 +174,49 @@
               <label id="tradeDiceLabel">Dados que suma al efecto principal</label>
               <input type="number" id="matTradeDice" value="1" min="0" style="width:90px">
             </div>
+=======
+        <!-- Potenciador: mejora de tier de dado -->
+        <div id="potenciadorSection" style="display:none" class="form-row">
+          <label>Mejora de tier de dado <span class="muted" style="font-size:.82em">(0 = sin mejora · d4→d6→d8→d10→d12→d20)</span></label>
+          <input type="number" id="matDieUpgrade" value="0" min="0" max="5" style="width:90px">
+        </div>
+
+        <!-- Damage type -->
+        <div id="damageTypeSection" style="display:none" class="form-row">
+          <label id="damageTypeLabel">Tipo de daño</label>
+          <div class="damage-type-row">
+            <select id="matDamageType">
+              <option value="">-- Elige o añade un tipo --</option>
+            </select>
+            <button type="button" class="btn btn-sm" data-action="add-damage-type">+ Nuevo tipo</button>
+          </div>
+        </div>
+
+        <!-- Incapacitante -->
+        <div id="incapacitanteSection" style="display:none">
+          <div class="form-row">
+            <label>Tipo de penalización</label>
+            <select id="matPenaltyType">
+              <option value="flat">Penalización fija (número)</option>
+              <option value="disadvantage">Desventaja en tiradas</option>
+              <option value="both">Ambas</option>
+            </select>
+          </div>
+          <div id="penaltyValueRow" class="form-row">
+            <label>Valor de penalización</label>
+            <input type="number" id="matPenaltyValue" value="1" min="1" style="width:90px">
+>>>>>>> Stashed changes
           </div>
         </div>
 
         <!-- Duration -->
         <div id="durationSection" class="dice-section" style="display:none">
           <div class="dice-section-label">Duración del efecto</div>
-          <label class="check-label">
-            <input type="checkbox" id="matDurationInstant"> Instantánea
-          </label>
+          <div id="durationInstantRow">
+            <label class="check-label">
+              <input type="checkbox" id="matDurationInstant"> Instantánea
+            </label>
+          </div>
           <div id="durationDiceSection">
             <div id="durationDiceRows"></div>
             <button type="button" class="btn btn-sm" onclick="window.addDiceRow('duration')">+ Añadir dado de duración</button>
@@ -196,6 +231,73 @@
         <div id="maxUsesSection" style="display:none" class="form-row">
           <label>Límite de usos por poción (0 = sin límite)</label>
           <input type="number" id="matMaxUses" value="0" min="0" style="width:90px">
+        </div>
+
+        <!-- Multiplicador (modifier subtype) -->
+        <div id="multiplicadorSection" style="display:none">
+          <div class="form-row-2" style="margin-bottom:6px">
+            <div>
+              <label>Mult. de efecto (×N)</label>
+              <input type="number" id="matEffectMultiplier" value="2" min="0.1" max="20" step="0.5" style="width:90px">
+            </div>
+            <div>
+              <label>Aplicar sobre</label>
+              <select id="matEffectTarget">
+                <option value="dice">Número de dados</option>
+                <option value="total">Total del efecto</option>
+              </select>
+            </div>
+          </div>
+          <div class="form-row-2" style="margin-bottom:6px">
+            <div>
+              <label>Modo de duración</label>
+              <select id="matDurationMode">
+                <option value="none">Sin modificar</option>
+                <option value="multiply">Multiplicar (×N)</option>
+                <option value="flat">Sumar turnos (+N)</option>
+              </select>
+            </div>
+            <div id="durationModValueRow">
+              <label>Valor</label>
+              <input type="number" id="matDurationModValue" value="2" min="0.5" max="20" step="0.5" style="width:90px">
+            </div>
+          </div>
+          <label class="check-label">
+            <input type="checkbox" id="matDistributeEffect">
+            Distribuir efecto entre los turnos de duración
+          </label>
+          <p class="muted" style="font-size:.82em;margin:4px 0 0">Múltiples Multiplicadores se encadenan. "Total" aplica al resultado ya tirado (se guarda en la poción).</p>
+        </div>
+
+        <!-- Esencial (modificador para pociones Mágicas) -->
+        <div id="esencialSection" style="display:none">
+          <p class="muted" style="font-size:.82em;margin:4px 0 6px">
+            ✨ <strong>Esencial:</strong> Define el efecto de la poción mágica. Usa el campo "Descripción" para el texto del efecto, y la sección de duración para definir cuánto dura.
+          </p>
+        </div>
+
+        <!-- Invertidor (modificador para pociones Mágicas) -->
+        <div id="invertidorSection" style="display:none">
+          <p class="muted" style="font-size:.82em;margin:4px 0 6px">
+            🔃 <strong>Invertidor:</strong> Marca la poción como invertida. El efecto invertido se describe al elaborar la poción.
+          </p>
+        </div>
+
+        <!-- Alterador (modifier subtype) -->
+        <div id="alteradorSection" style="display:none">
+          <div class="form-row">
+            <label>Cambia tipo de daño a</label>
+            <div class="damage-type-row">
+              <select id="matChangeDamageType">
+                <option value="">-- No cambia --</option>
+              </select>
+              <button type="button" class="btn btn-sm" data-action="add-damage-type">+ Nuevo tipo</button>
+            </div>
+          </div>
+          <div class="form-row">
+            <label>Efecto secundario (texto libre)</label>
+            <textarea id="matAddSecondaryEffect" rows="2" placeholder="Ej: Vuelve el veneno no letal. El objetivo queda Inconsciente."></textarea>
+          </div>
         </div>
 
         <div class="form-row">
@@ -214,8 +316,17 @@
   <!-- Catálogo Materiales -->
   <div id="infoSub-catalogo" style="display:none">
     <div class="panel">
+<<<<<<< Updated upstream
       <h2>🌿 Reactivos</h2>
       <div id="catBaseList"><p class="muted">No hay reactivos registrados.</p></div>
+=======
+      <h2>❓ Sin identificar</h2>
+      <div id="catUnknownList"><p class="muted">No hay materiales sin identificar.</p></div>
+    </div>
+    <div class="panel">
+      <h2>🌿 Bases</h2>
+      <div id="catBaseList"><p class="muted">No hay bases registradas.</p></div>
+>>>>>>> Stashed changes
     </div>
     <div class="panel">
       <h2>🧪 Modificadores</h2>

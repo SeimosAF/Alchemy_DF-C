@@ -183,7 +183,30 @@ function updateSaveSection() {
 
 // ---- Damage type list (used by effect rows) ----
 export function populateDamageTypeSelect() {
+<<<<<<< Updated upstream
   renderEffectsEditor();
+=======
+  [
+    { id: 'matDamageType',       empty: '-- Elige o añade --' },
+    { id: 'matChangeDamageType', empty: '-- No cambia --' },
+  ].forEach(({ id, empty }) => {
+    const sel = document.getElementById(id);
+    if (!sel) return;
+    const cur = sel.value;
+    sel.innerHTML = `<option value="">${empty}</option>`;
+    (state.damageTypes || []).forEach(t => {
+      const o = document.createElement('option');
+      o.value = t; o.textContent = t;
+      sel.appendChild(o);
+    });
+    if (cur) sel.value = cur;
+  });
+}
+
+function getSubtipos(cat, type) {
+  if (type === 'Modificador') return SUBTIPOS[`${cat}_${type}`] || SUBTIPOS['_Modificador'];
+  return SUBTIPOS[`${cat}_${type}`] || [];
+>>>>>>> Stashed changes
 }
 
 // ---- Main form update ----
@@ -234,14 +257,42 @@ export function updateMatForm() {
     document.getElementById('tradeDiceLabel').textContent = conc ? 'Dados que suma al efecto principal' : 'Dados que resta al efecto principal (mín. 1)';
   }
 
+<<<<<<< Updated upstream
   const showDur = isBase || modKind === 'Prolongador';
-  document.getElementById('durationSection').style.display = showDur ? 'block' : 'none';
-  if (showDur) {
-    const inst = document.getElementById('matDurationInstant').checked;
-    document.getElementById('durationDiceSection').style.display = inst ? 'none' : 'block';
+=======
+  const showIncap = isBase && sub === 'Incapacitante';
+  document.getElementById('incapacitanteSection').style.display = showIncap ? 'block' : 'none';
+  if (showIncap) {
+    const pt = document.getElementById('matPenaltyType').value;
+    document.getElementById('penaltyValueRow').style.display = pt === 'disadvantage' ? 'none' : 'block';
   }
 
-  document.getElementById('maxUsesSection').style.display = isMod ? 'block' : 'none';
+  const showDur = isBase || sub === 'Prolongador' || sub === 'Esencial';
+>>>>>>> Stashed changes
+  document.getElementById('durationSection').style.display = showDur ? 'block' : 'none';
+  if (showDur) {
+    const isProlongador = sub === 'Prolongador';
+    // Prolongadores no pueden ser instantáneos; Esencial y Bases sí pueden
+    document.getElementById('durationInstantRow').style.display = isProlongador ? 'none' : 'block';
+    if (isProlongador) {
+      document.getElementById('durationDiceSection').style.display = 'block';
+    } else {
+      const inst = document.getElementById('matDurationInstant').checked;
+      document.getElementById('durationDiceSection').style.display = inst ? 'none' : 'block';
+    }
+  }
+
+  document.getElementById('potenciadorSection').style.display   = (isMod && sub === 'Potenciador')   ? 'block' : 'none';
+  document.getElementById('maxUsesSection').style.display       = isMod ? 'block' : 'none';
+  document.getElementById('multiplicadorSection').style.display = (isMod && sub === 'Multiplicador') ? 'block' : 'none';
+  if (isMod && sub === 'Multiplicador') {
+    const dm = document.getElementById('matDurationMode').value;
+    document.getElementById('durationModValueRow').style.display = dm === 'none' ? 'none' : 'block';
+  }
+  document.getElementById('esencialSection').style.display   = (isMod && sub === 'Esencial')   ? 'block' : 'none';
+  document.getElementById('invertidorSection').style.display = (isMod && sub === 'Invertidor') ? 'block' : 'none';
+  document.getElementById('alteradorSection').style.display  = (isMod && sub === 'Alterador')  ? 'block' : 'none';
+  if (isMod && (sub === 'Alterador' || sub === 'Resistencia' || sub === 'Debilitante')) populateDamageTypeSelect();
   document.getElementById('diffHint').textContent =
     modKind === 'Economizador' ? '(debe ser negativo)' : '(modificador a la CD; el disolvente se suma aparte)';
 
@@ -271,14 +322,23 @@ function readFormData() {
     data.discriminante = document.getElementById('matDiscriminante').checked;
     data.noPurificable = document.getElementById('matNoPurificable').checked;
   }
+<<<<<<< Updated upstream
   if (type === 'Reactivo' || modKind === 'Añadir efecto')
     data.effects = JSON.parse(JSON.stringify(formEffects));
   if (type === 'Reactivo' && hasMaleficio(data.effects))
     data.save = { stat: document.getElementById('matSaveStat').value, onSuccess: document.getElementById('matSaveOn').value };
   if (modKind === 'Potenciador') {
     data.dicePool = getDiceRows('pool');
+=======
+  const showPool = (type === 'Base' && (sub === 'Vitalidad' || sub === 'Dañina')) || sub === 'Potenciador';
+  if (showPool) {
+    data.dicePool  = getDiceRows('pool');
+>>>>>>> Stashed changes
     data.flatBonus = parseInt(document.getElementById('matFlatBonus').value) || 0;
-    data.statMod = document.getElementById('matStatMod').value.trim();
+    data.statMod   = document.getElementById('matStatMod').value.trim();
+    if (sub === 'Potenciador') {
+      data.dieUpgrade = parseInt(document.getElementById('matDieUpgrade').value) || 0;
+    }
   }
   if (modKind === 'Concentrador' || modKind === 'Diluyente') {
     data.tradeFactor = parseFloat(document.getElementById('matTradeFactor').value) || 2;
@@ -291,7 +351,27 @@ function readFormData() {
       data.durationFlat = parseInt(document.getElementById('matDurationFlat').value) || 0;
     }
   }
-  if (type === 'Modificador') data.maxUses = parseInt(document.getElementById('matMaxUses').value) || 0;
+  if (type === 'Modificador') {
+    data.maxUses = parseInt(document.getElementById('matMaxUses').value) || 0;
+    data.effectMultiplier   = 1;
+    data.durationMultiplier = 1;
+    data.changeDamageType   = '';
+    data.addSecondaryEffect = '';
+    data.distributeEffect   = false;
+    if (sub === 'Multiplicador') {
+      data.effectMultiplier  = parseFloat(document.getElementById('matEffectMultiplier').value)  || 2;
+      data.effectTarget      = document.getElementById('matEffectTarget').value;        // 'dice' | 'total'
+      data.durationMode      = document.getElementById('matDurationMode').value;        // 'none' | 'multiply' | 'flat'
+      data.durationModValue  = parseFloat(document.getElementById('matDurationModValue').value) || 2;
+      data.distributeEffect  = document.getElementById('matDistributeEffect').checked;
+    }
+    if (sub === 'Alterador') {
+      data.changeDamageType   = document.getElementById('matChangeDamageType').value;
+      data.addSecondaryEffect = document.getElementById('matAddSecondaryEffect').value.trim();
+    }
+    // Esencial: la descripción del efecto mágico va en matDesc (siempre visible),
+    // y la duración en los campos estándar de durationSection
+  }
   return data;
 }
 
@@ -308,7 +388,21 @@ export function resetForm() {
   document.getElementById('matSaveOn').value = 'anula';
   ['matUnknown','matDiscriminante','matNoPurificable','matDurationInstant'].forEach(id => { document.getElementById(id).checked = false; });
   clearDiceRows('pool'); clearDiceRows('duration');
+<<<<<<< Updated upstream
   formEffects = [];
+=======
+  document.getElementById('matEffectMultiplier').value   = '2';
+  document.getElementById('matDurationMultiplier').value = '1';
+  document.getElementById('matDieUpgrade').value          = '0';
+  document.getElementById('matEffectMultiplier').value   = '2';
+  document.getElementById('matEffectTarget').value       = 'dice';
+  document.getElementById('matDurationMode').value       = 'none';
+  document.getElementById('matDurationModValue').value   = '2';
+  document.getElementById('durationModValueRow').style.display = 'none';
+  document.getElementById('matDistributeEffect').checked = false;
+  document.getElementById('matChangeDamageType').value   = '';
+  document.getElementById('matAddSecondaryEffect').value = '';
+>>>>>>> Stashed changes
   editingMatId = null;
   document.getElementById('matFormTitle').textContent = '➕ Identificar componente';
   document.getElementById('matSubmitBtn').textContent = '➕ Añadir componente';
@@ -365,6 +459,26 @@ export function editMat(id) {
   document.getElementById('matMaxUses').value = m.maxUses || 0;
   populateDiceRows('pool', m.dicePool);
   populateDiceRows('duration', m.durationDice);
+<<<<<<< Updated upstream
+=======
+  if (m.damageType) { populateDamageTypeSelect(); document.getElementById('matDamageType').value = m.damageType; }
+  if (m.subtipo === 'Potenciador') {
+    document.getElementById('matDieUpgrade').value = m.dieUpgrade || 0;
+  }
+  if (m.subtipo === 'Multiplicador') {
+    document.getElementById('matEffectMultiplier').value   = m.effectMultiplier ?? 2;
+    document.getElementById('matEffectTarget').value       = m.effectTarget      || 'dice';
+    document.getElementById('matDurationMode').value       = m.durationMode      || 'none';
+    document.getElementById('matDurationModValue').value   = m.durationModValue  ?? 2;
+    document.getElementById('durationModValueRow').style.display = (m.durationMode && m.durationMode !== 'none') ? 'block' : 'none';
+    document.getElementById('matDistributeEffect').checked = !!m.distributeEffect;
+  }
+  if (m.subtipo === 'Alterador') {
+    populateDamageTypeSelect();
+    if (m.changeDamageType) document.getElementById('matChangeDamageType').value = m.changeDamageType;
+    document.getElementById('matAddSecondaryEffect').value = m.addSecondaryEffect || '';
+  }
+>>>>>>> Stashed changes
   if (m.durationInstant) document.getElementById('durationDiceSection').style.display = 'none';
   document.getElementById('matFormTitle').textContent = '✏️ Editar componente';
   document.getElementById('matSubmitBtn').textContent = '💾 Guardar cambios';

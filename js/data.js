@@ -10,6 +10,7 @@ export const APLICACION_OPTIONS = [
   { id: 'fumigena', label: 'Fumígena', diffMod: 4 },
 ];
 
+<<<<<<< Updated upstream
 // ---- Modelo de pociones: tipo · campo · polaridad ----
 export const TIPOS = ['Reactivo', 'Modificador'];
 export const POLARIDADES = ['Beneficioso', 'Maleficioso'];
@@ -104,4 +105,12 @@ export const MOD_KINDS = {
 export const MOD_KIND_ICONS = {
   'Potenciador': '⚡', 'Prolongador': '⏳', 'Economizador': '💰',
   'Concentrador': '🔻', 'Diluyente': '💧', 'Añadir efecto': '➕', 'Otro': '⚗️',
+=======
+export const SUBTIPOS = {
+  'Salutífera_Base':  ['Vitalidad', 'Resistencia', 'Otro'],
+  'Maliciosa_Base':   ['Dañina', 'Incapacitante', 'Debilitante'],
+  'Mágica_Base':      [],
+  '_Modificador':       ['Economizador', 'Prolongador', 'Potenciador', 'Multiplicador', 'Alterador', 'Otro'],
+  'Mágica_Modificador': ['Prolongador', 'Esencial', 'Invertidor', 'Alterador'],
+>>>>>>> Stashed changes
 };
