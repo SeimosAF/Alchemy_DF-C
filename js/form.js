@@ -217,7 +217,7 @@ export function updateMatForm() {
   const c = CAMPOS[campo];
   let hint = `Disolvente: <strong>${solv.name}</strong> (${solv.difficulty >= 0 ? '+' : ''}${solv.difficulty} CD) · Características: ${c.stats.length === 6 ? 'todas' : c.stats.join(' y ')}`;
   if (campo === 'Mágico') hint += ' · Las pociones mágicas solo admiten Prolongador, Esencial, Invertidor y Alterador, y no se concentran ni se combinan.';
-  if (isMod) hint = `Se puede usar con reactivos de campo ${campo}${campo === 'Mágico' ? '' : ' (o desde cualquier campo si el modificador es Mágico)'}. ${polaridad === 'Maleficioso' ? 'Con un reactivo beneficioso' : 'Con un reactivo maleficioso'} suma +${state.settings?.polaridadOpuestaDiff ?? 2} a la CD.`;
+  if (isMod) hint = `Se puede usar con reactivos de campo ${campo}${campo === 'Mágico' ? '' : ' (o desde cualquier campo si el modificador es Mágico)'}. ${polaridad === 'Neutro' ? 'Al ser neutro, no suma CD por polaridad.' : `${polaridad === 'Maleficioso' ? 'Con un reactivo beneficioso' : 'Con un reactivo maleficioso'} suma +${state.settings?.polaridadOpuestaDiff ?? 2} a la CD (con uno neutro, no).`}`;
   document.getElementById('campoHint').innerHTML = hint;
 
   document.getElementById('baseFlagsSection').style.display = isBase ? 'flex' : 'none';

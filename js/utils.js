@@ -17,7 +17,7 @@ export function campoBadge(campo) {
 }
 export function polBadge(pol) {
   if (!pol) return '';
-  return `<span class="badge badge-${pol === 'Maleficioso' ? 'malef' : 'benef'}">${pol}</span>`;
+  return `<span class="badge badge-${pol === 'Maleficioso' ? 'malef' : pol === 'Neutro' ? 'neutro' : 'benef'}">${pol}</span>`;
 }
 // Campo + polaridad juntos (sustituye a la antigua "categoría")
 export function catBadge(campo, pol) {

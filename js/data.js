@@ -12,7 +12,7 @@ export const APLICACION_OPTIONS = [
 
 // ---- Modelo de pociones: tipo · campo · polaridad ----
 export const TIPOS = ['Reactivo', 'Modificador'];
-export const POLARIDADES = ['Beneficioso', 'Maleficioso'];
+export const POLARIDADES = ['Beneficioso', 'Neutro', 'Maleficioso'];
 
 export const ALL_STATS = ['Fuerza', 'Destreza', 'Constitución', 'Inteligencia', 'Sabiduría', 'Carisma'];
 export const ALL_CONDITIONS = [
@@ -61,7 +61,7 @@ export const DEFAULT_SETTINGS = {
 };
 
 // ---- Bloques de efecto ----
-// pol: polaridad en la que aparece (null = ambas). campo: solo para ese campo.
+// pol: polaridad en la que aparece (null = todas). Neutro admite todos los bloques. campo: solo para ese campo.
 // fields: dice (texto "2d6+1d4"), flat, statMod, damageType, stat, rollKind, value, condition, text, spellName, spellLevel
 export const EFFECT_KINDS = {
   curacion:      { label: 'Curación',              icon: '❤️', pol: 'Beneficioso', fields: ['dice', 'flat', 'statMod'] },
@@ -87,7 +87,7 @@ export const ROLL_KINDS = ['Todas las tiradas', 'Pruebas', 'Salvaciones', 'Ataqu
 
 export function effectKindsFor(campo, polaridad) {
   return Object.entries(EFFECT_KINDS)
-    .filter(([, k]) => (!k.pol || k.pol === polaridad) && (!k.campo || k.campo === campo))
+    .filter(([, k]) => (!k.pol || polaridad === 'Neutro' || k.pol === polaridad) && (!k.campo || k.campo === campo))
     .map(([id, k]) => ({ id, ...k }));
 }
 

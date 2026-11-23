@@ -5,13 +5,13 @@ echo Pulsa Ctrl+C para cerrar el servidor.
 echo.
 
 :: Intenta con Python 3
-python -m http.server 8080 2>nul
+python servidor.py 8080 2>nul
 if %errorlevel% neq 0 (
   :: Intenta con Python
-  py -m http.server 8080 2>nul
+  py servidor.py 8080 2>nul
   if %errorlevel% neq 0 (
     :: Intenta con Node/npx
-    npx http-server . -p 8080 --cors
+    npx http-server . -p 8080 --cors -c-1
   )
 )
 pause

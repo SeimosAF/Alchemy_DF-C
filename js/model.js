@@ -1,6 +1,6 @@
 // model.js — pure rules of the potion model (no DOM, no state import)
 // Modelo: un componente es Reactivo o Modificador, tiene un Campo (Cuerpo, Mente, Alma, Mágico)
-// que fija su disolvente, una Polaridad (Beneficioso / Maleficioso) y una lista de bloques de efecto.
+// que fija su disolvente, una Polaridad (Beneficioso / Neutro / Maleficioso) y una lista de bloques de efecto.
 import { EFFECT_KINDS, DICE_EFFECTS, DEFAULT_SETTINGS, MAGIC_MOD_KINDS, MAGIC_ONLY_MOD_KINDS, DIE_TIERS } from './data.js';
 
 export const MODEL_VERSION = 3;
@@ -105,7 +105,9 @@ export function modCompat(reactivo, mod, settings) {
   const instant = reactivo.durationInstant;
   if (instant && (mod.modKind === 'Concentrador' || mod.modKind === 'Diluyente'))
     return { ok: false, reason: 'el reactivo es instantáneo' };
-  const opposite = mod.polaridad && reactivo.polaridad && mod.polaridad !== reactivo.polaridad;
+  // Neutro nunca cuenta como polaridad contraria
+  const opposite = mod.polaridad && reactivo.polaridad && mod.polaridad !== 'Neutro' && reactivo.polaridad !== 'Neutro'
+    && mod.polaridad !== reactivo.polaridad;
   const s = settings || DEFAULT_SETTINGS;
   return { ok: true, extraDiff: opposite ? (s.polaridadOpuestaDiff ?? 2) : 0, opposite };
 }

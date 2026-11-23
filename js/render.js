@@ -7,7 +7,7 @@ import {
 } from './utils.js';
 import { CAMPOS, CAMPO_NAMES, EFFECT_KINDS, MOD_KIND_ICONS } from './data.js';
 import {
-  effectText, durationText, saveText, formatDice, rollPool, getDisolvente, modCompat, elabDC,
+  effectText, durationText, saveText, formatDice, rollPool, getDisolvente, modCompat, elabDC, hasMaleficio,
 } from './model.js';
 
 // ---- CAT MATERIALES ----
@@ -263,7 +263,7 @@ export function renderInvPociones() {
     const catKey = parsedToCatKey(parsed);
     const catInfo = state.potionCatalog[catKey] || {};
     const apodo = catInfo.apodo ? ` <em class="apodo-badge">"${catInfo.apodo}"</em>` : '';
-    const isBenef = pot.polaridad !== 'Maleficioso';
+    const isBenef = pot.polaridad === 'Neutro' ? !hasMaleficio(pot.isMulti && pot.components?.length ? pot.components.flatMap(c => c.effects || []) : pot.effects) : pot.polaridad !== 'Maleficioso';
     const actionLabel = isBenef ? '🍵 Beber' : '⚔️ Aplicar';
     const aplicLabel = pot.aplicacion?.length
       ? ' [' + pot.aplicacion.map(a => (getAplicOption(a)?.label.split(' ')[0] ?? a)).join(', ') + ']'
@@ -314,7 +314,7 @@ function rollDuration(p) {
 export function usePotion(pk) {
   const pot = state.potions[pk];
   if (!pot || pot.qty <= 0) return;
-  const isBenef = pot.polaridad !== 'Maleficioso';
+  const isBenef = pot.polaridad === 'Neutro' ? !hasMaleficio(pot.isMulti && pot.components?.length ? pot.components.flatMap(c => c.effects || []) : pot.effects) : pot.polaridad !== 'Maleficioso';
   let body = '';
   const blocks = pot.isMulti && pot.components?.length ? pot.components : [pot];
   blocks.forEach(b => {

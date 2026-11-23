@@ -613,6 +613,7 @@ nav.tab-bar button:hover { color:#fff; }
 .badge-magico { background:#4a2a8a; }
 .badge-benef  { background:#3a6b35; }
 .badge-malef  { background:#6b3a35; }
+.badge-neutro { background:#5a5a62; }
 
 .form-row-3 { display:grid; grid-template-columns:repeat(3, 1fr); gap:10px; margin-bottom:8px; }
 .form-row-3 select { width:100%; }
