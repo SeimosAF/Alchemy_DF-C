@@ -1,11 +1,12 @@
 // app.js — init, navigation, event delegation
-import { state, loadState, saveState, setState, getDefaultState } from './state.js';
+import { state, loadState, saveState, setState, getDefaultState, normalizeState } from './state.js';
 import { SOUND_ENABLED, setSoundEnabled } from './data.js';
-import { togglePotCatEntry, renderAll, renderCatMateriales, renderInvMateriales, renderInvPociones, renderCatPociones, renderLoot, usePotion, setApodo, delPotion } from './render.js';
+import { togglePotCatEntry, renderAll, renderCatMateriales, renderInvMateriales, renderInvPociones, renderCatPociones, renderLoot, usePotion, setApodo, delPotion, renderSettings, onSettingChange } from './render.js';
 import {
   updateMatForm, addMat, editMat, deleteMat, cancelDelete,
   addDiceRow, removeDiceRow, updateNoPurificable, populateDamageTypeSelect,
   addLoot, deleteLoot, identifyLoot, resetForm,
+  addEffect, removeEffect, onEffectFieldChange,
 } from './form.js';
 import {
   craftSetMode, craftConfirm, renderCrafteo, updateAplicacionPanel, updateCraftSummary,
@@ -24,7 +25,7 @@ window.removeDiceRow = removeDiceRow;
 
 // ---- Navigation ----
 function showInfoSubtab(id) {
-  ['identificacion','catalogo','pociones'].forEach(s => {
+  ['identificacion','catalogo','pociones','parametros'].forEach(s => {
     const el = document.getElementById('infoSub-' + s);
     if (el) el.style.display = s === id ? 'block' : 'none';
   });
@@ -33,6 +34,7 @@ function showInfoSubtab(id) {
   });
   if (id === 'catalogo') renderCatMateriales();
   if (id === 'pociones') renderCatPociones();
+  if (id === 'parametros') renderSettings();
 }
 
 function showInvSubtab(id) {
@@ -134,16 +136,19 @@ document.addEventListener('DOMContentLoaded', () => {
   });
 
   // Form triggers
-  document.getElementById('matCategory').addEventListener('change', updateMatForm);
-  document.getElementById('matUnknown').addEventListener('change', updateMatForm);
-  document.getElementById('matType').addEventListener('change', updateMatForm);
-  document.getElementById('matSubtipo').addEventListener('change', updateMatForm);
+  ['matCampo','matPolaridad','matUnknown','matType','matModKind'].forEach(id =>
+    document.getElementById(id).addEventListener('change', updateMatForm));
+  // Effect block fields
+  const effRows = document.getElementById('effectRows');
+  effRows.addEventListener('change', e => { if (e.target.dataset.eidx != null) onEffectFieldChange(e.target); });
+  effRows.addEventListener('input',  e => { if (e.target.dataset.eidx != null) onEffectFieldChange(e.target); });
+  // Parámetros
+  document.getElementById('settingsPanel').addEventListener('change', e => {
+    if (e.target.dataset.setting) { onSettingChange(e.target); updateMatForm(); renderCatPociones(); }
+  });
   document.getElementById('matDurationInstant').addEventListener('change', function () {
     document.getElementById('durationDiceSection').style.display = this.checked ? 'none' : 'block';
     updateNoPurificable();
-  });
-  document.getElementById('matPenaltyType').addEventListener('change', function () {
-    document.getElementById('penaltyValueRow').style.display = this.value === 'disadvantage' ? 'none' : 'block';
   });
 
   // Aplicación checkboxes
@@ -157,10 +162,7 @@ document.addEventListener('DOMContentLoaded', () => {
       const reader = new FileReader();
       reader.onload = e => {
         try {
-          let imported = JSON.parse(e.target.result);
-          if (!imported.damageTypes)   imported.damageTypes   = getDefaultState().damageTypes;
-          if (!imported.lootPotions)   imported.lootPotions   = {};
-          if (!imported.potionCatalog) imported.potionCatalog = {};
+          const imported = normalizeState(JSON.parse(e.target.result));
           setState(imported);
           saveState();
           loadCharacterUI();
@@ -199,6 +201,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       case 'add-mat':
         addMat(renderCrafteo); break;
+      case 'add-effect': addEffect(); break;
+      case 'remove-effect': removeEffect(id); break;
       case 'cancel-edit-mat':
         resetForm(); break;
       case 'edit-mat':
@@ -267,8 +271,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const caulBonusEl = document.getElementById('caulBonus');
         const craftBonusEl2 = document.getElementById('craftBonus');
         if (caulBonusEl && craftBonusEl2) craftBonusEl2.value = caulBonusEl.value;
-        // Capture base category BEFORE craftConfirm() resets craftSelectedBase
-        const prevCategory = state.catalog[craftSelectedBase]?.category ?? null;
+        // Capture reactivo campo BEFORE craftConfirm() resets craftSelectedBase
+        const prevCategory = state.catalog[craftSelectedBase]?.campo ?? null;
         craftConfirm();   // resets craftSelectedBase; may call renderCrafteo()
         const craftResultEl   = document.getElementById('craftResult');
         const craftResultHTML = craftResultEl?.innerHTML || '';
@@ -339,7 +343,6 @@ document.addEventListener('DOMContentLoaded', () => {
           const t = nt.trim();
           if (!state.damageTypes.includes(t)) { state.damageTypes.push(t); saveState(); }
           populateDamageTypeSelect();
-          document.getElementById('matDamageType').value = t;
         }
         break;
       }

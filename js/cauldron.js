@@ -1,7 +1,9 @@
 // cauldron.js — visual drag-and-drop crafting interface (Elaboración only)
 import { state } from './state.js';
 import { APLICACION_OPTIONS } from './data.js';
-import { rarityBadge, getAplicOption } from './utils.js';
+import { rarityBadge, getAplicOption, campoBadge } from './utils.js';
+import { MOD_KIND_ICONS, EFFECT_KINDS } from './data.js';
+import { elabDC, modCompat, getDisolvente } from './model.js';
 import {
   craftSelectedBase, craftSelectedMods,
   setCraftSelectedBase, setCraftSelectedMods,
@@ -18,19 +20,20 @@ export function setCaulCraftState(s, category) {
 }
 
 // ── Category config ───────────────────────────────────────────────────────────
+// Color del líquido según el campo (es decir, según el disolvente)
 const CAT = {
-  'Salutífera': { liquidFill: '#145c2d', waveFill: '#1f8a44', cardClass: 'caul-card-sal', icon: '💚', rainbow: false },
-  'Maliciosa':  { liquidFill: '#6a0c0c', waveFill: '#9e1f1f', cardClass: 'caul-card-mal', icon: '🩸', rainbow: false },
-  'Mágica':     { liquidFill: '#2a0e6e', waveFill: '#4e1fa8', cardClass: 'caul-card-mag', icon: '✨', rainbow: true  },
+  'Cuerpo': { liquidFill: '#6a0c0c', waveFill: '#9e1f1f', cardClass: 'caul-card-cuerpo', icon: '💪', rainbow: false },
+  'Mente':  { liquidFill: '#4a5560', waveFill: '#8a98a6', cardClass: 'caul-card-mente',  icon: '🧠', rainbow: false },
+  'Alma':   { liquidFill: '#2c5f6e', waveFill: '#7fc4d4', cardClass: 'caul-card-alma',   icon: '👻', rainbow: false },
+  'Mágico': { liquidFill: '#2a0e6e', waveFill: '#4e1fa8', cardClass: 'caul-card-mag',    icon: '✨', rainbow: true  },
 };
 const LIQUID_DEFAULT = { liquidFill: '#1a4882', waveFill: '#2060b8', rainbow: false };
 const LIQUID_FAIL    = { liquidFill: '#060606', waveFill: '#0e0e0e', rainbow: false };
 
-const SUBTIPO_ICONS = {
-  'Vitalidad': '❤️', 'Resistencia': '🛡️', 'Dañina': '☠️',
-  'Incapacitante': '⛓️', 'Debilitante': '🩸', 'Otro': '⚗️',
-  'Economizador': '💰', 'Prolongador': '⏳', 'Potenciador': '⚡',
-};
+function reactivoIcon(m) {
+  const first = (m.effects || [])[0];
+  return (first && EFFECT_KINDS[first.kind]?.icon) || CAT[m.campo]?.icon || '⚗️';
+}
 
 // ── SVG ───────────────────────────────────────────────────────────────────────
 function caulSVG() {
@@ -112,7 +115,7 @@ export function triggerBubbles(category) {
   const container = document.getElementById('caulBubbles');
   if (!container) return;
   const ns  = 'http://www.w3.org/2000/svg';
-  const col = ({ 'Salutífera':'rgba(60,200,100,0.8)', 'Maliciosa':'rgba(220,50,50,0.8)', 'Mágica':'rgba(160,90,255,0.8)' })[category] || 'rgba(180,220,255,0.7)';
+  const col = ({ 'Cuerpo':'rgba(220,50,50,0.8)', 'Mente':'rgba(190,200,215,0.85)', 'Alma':'rgba(140,220,240,0.8)', 'Mágico':'rgba(160,90,255,0.8)' })[category] || 'rgba(180,220,255,0.7)';
   for (let i = 0; i < 7; i++) {
     const c = document.createElementNS(ns, 'circle');
     c.setAttribute('cx', String(54 + Math.random() * 132));
@@ -130,9 +133,10 @@ function spawnSuccessBubbles() {
   if (!container) return;
   const ns = 'http://www.w3.org/2000/svg';
   const palettes = {
-    'Salutífera': ['rgba(40,220,90,.9)','rgba(100,255,130,.9)','rgba(60,180,80,.9)'],
-    'Maliciosa':  ['rgba(255,50,50,.9)','rgba(255,100,80,.9)','rgba(200,30,30,.9)'],
-    'Mágica':     ['rgba(180,80,255,.9)','rgba(255,80,230,.9)','rgba(120,60,255,.9)'],
+    'Cuerpo': ['rgba(255,50,50,.9)','rgba(255,100,80,.9)','rgba(200,30,30,.9)'],
+    'Mente':  ['rgba(200,210,225,.9)','rgba(160,175,190,.9)','rgba(235,240,245,.9)'],
+    'Alma':   ['rgba(140,220,240,.9)','rgba(200,245,255,.9)','rgba(90,180,210,.9)'],
+    'Mágico': ['rgba(180,80,255,.9)','rgba(255,80,230,.9)','rgba(120,60,255,.9)'],
   };
   const palette = palettes[caulResultCat] || ['rgba(60,140,255,.9)','rgba(100,180,255,.9)','rgba(40,100,220,.9)'];
   for (let i = 0; i < 20; i++) {
@@ -152,9 +156,10 @@ function spawnSuccessSparkles() {
   if (!svg) return;
   const ns = 'http://www.w3.org/2000/svg';
   const palettes = {
-    'Salutífera': ['#3aff70','#60ff90','#20e050','#a0ffb0','#ffe060'],
-    'Maliciosa':  ['#ff4040','#ff7060','#ff2020','#ffaa80','#ff8040'],
-    'Mágica':     ['#c060ff','#ff60ee','#8040ff','#ffccff','#ffd060'],
+    'Cuerpo': ['#ff4040','#ff7060','#ff2020','#ffaa80','#ff8040'],
+    'Mente':  ['#d8e0ea','#b0bccb','#ffffff','#e8eef5','#ffe060'],
+    'Alma':   ['#9ee8f8','#c8f6ff','#60c8e0','#ffffff','#ffe060'],
+    'Mágico': ['#c060ff','#ff60ee','#8040ff','#ffccff','#ffd060'],
   };
   const palette = palettes[caulResultCat] || ['#40aaff','#60ccff','#2080ff','#ffe060','#ffffff'];
   for (let i = 0; i < 22; i++) {
@@ -190,36 +195,43 @@ function spawnFailSmoke() {
 }
 
 // ── Difficulty ────────────────────────────────────────────────────────────────
+function compatSelected(base) {
+  const out = {};
+  for (const mid in craftSelectedMods) {
+    const m = state.catalog[mid];
+    if (m && craftSelectedMods[mid] > 0 && modCompat(base, m, state.settings).ok) out[mid] = craftSelectedMods[mid];
+  }
+  return out;
+}
+
 function getDC() {
   if (!craftSelectedBase) return null;
   const base = state.catalog[craftSelectedBase];
-  let modDiff = 0;
-  for (const mid in craftSelectedMods) {
-    if (state.catalog[mid]) modDiff += (state.catalog[mid].difficulty || 0) * craftSelectedMods[mid];
-  }
+  if (!base) return null;
   const aplDiff = [...caulAplics].reduce((t, id) => t + (getAplicOption(id)?.diffMod ?? 0), 0);
-  return Math.max(6, 10 + (base?.difficulty || 0) + modDiff + aplDiff);
+  return elabDC(base, compatSelected(base), state.catalog, state.settings, aplDiff).dc;
 }
 
 // ── Material card renderers ───────────────────────────────────────────────────
 function renderBases() {
   const bases = Object.keys(state.catalog)
-    .filter(id => state.catalog[id].type === 'Base' && (state.inventory[id] || 0) > 0);
+    .filter(id => state.catalog[id].type === 'Reactivo' && (state.inventory[id] || 0) > 0);
   if (!bases.length)
-    return `<div class="caul-panel-header">🌿 Bases</div>
-      <p class="muted" style="padding:8px 12px">No tienes bases en el inventario.</p>`;
-  return `<div class="caul-panel-header">🌿 Arrastra una base al caldero</div>
+    return `<div class="caul-panel-header">🌿 Reactivos</div>
+      <p class="muted" style="padding:8px 12px">No tienes reactivos en el inventario.</p>`;
+  return `<div class="caul-panel-header">🌿 Arrastra un reactivo al caldero</div>
     <div class="caul-cards">
       ${bases.map(id => {
         const m   = state.catalog[id];
-        const cfg = CAT[m.category] || {};
-        const icon = SUBTIPO_ICONS[m.subtipo] || cfg.icon || '⚗️';
-        return `<div class="caul-card ${cfg.cardClass||''} ${m.category==='Mágica'?'caul-shimmer':''}"
+        const cfg = CAT[m.campo] || {};
+        const icon = reactivoIcon(m);
+        const solv = getDisolvente(state.settings, m.campo);
+        return `<div class="caul-card ${cfg.cardClass||''} ${m.campo==='Mágico'?'caul-shimmer':''}"
             draggable="true" data-drag-type="base" data-drag-id="${id}" title="Arrastra al caldero">
           <div class="caul-card-icon">${icon}</div>
           <div class="caul-card-body">
             <div class="caul-card-name">${m.unknown?'???':m.name}</div>
-            <div class="caul-card-sub">${m.subtipo||m.category} · dif:${m.difficulty>=0?'+':''}${m.difficulty}</div>
+            <div class="caul-card-sub">${m.campo} · ${m.polaridad} · ${solv.name} · dif:${m.difficulty>=0?'+':''}${m.difficulty}</div>
             <div class="caul-card-stock">${rarityBadge(m.rarity)} ×${state.inventory[id]}</div>
           </div>
           <div class="caul-card-grab">⠿</div>
@@ -231,8 +243,11 @@ function renderBases() {
 function renderModifiers() {
   const base = state.catalog[craftSelectedBase];
   if (base?.discriminante)
-    return `<div class="caul-panel-header">🚫 Base discriminante</div>
-      <p class="muted-i" style="padding:8px 12px">Esta base no acepta modificadores.</p>`;
+    return `<div class="caul-panel-header">🚫 Reactivo discriminante</div>
+      <p class="muted-i" style="padding:8px 12px">Este reactivo no acepta modificadores.</p>`;
+  if (base?.campo === 'Mágico')
+    return `<div class="caul-panel-header">✨ Poción mágica</div>
+      <p class="muted-i" style="padding:8px 12px">Las pociones mágicas no admiten modificadores.</p>`;
 
   const mods = Object.keys(state.catalog)
     .filter(id => state.catalog[id].type === 'Modificador' && (state.inventory[id] || 0) > 0);
@@ -253,15 +268,16 @@ function renderModifiers() {
             const m = state.catalog[id];
             const used   = craftSelectedMods[id] || 0;
             const maxU   = m.maxUses || 99;
-            const canAdd = used < maxU && used < (state.inventory[id] || 0);
-            const icon   = SUBTIPO_ICONS[m.subtipo] || '🌿';
+            const compat = modCompat(base, m, state.settings);
+            const canAdd = compat.ok && used < maxU && used < (state.inventory[id] || 0);
+            const icon   = MOD_KIND_ICONS[m.modKind] || '🌿';
             return `<div class="caul-card caul-card-mod ${!canAdd?'caul-card-exhausted':''}"
                 draggable="${canAdd}" data-drag-type="mod" data-drag-id="${id}"
-                title="${canAdd?'Arrastra al caldero':'Límite alcanzado'}">
+                title="${!compat.ok?'No compatible: '+compat.reason:canAdd?'Arrastra al caldero':'Límite alcanzado'}">
               <div class="caul-card-icon">${icon}</div>
               <div class="caul-card-body">
                 <div class="caul-card-name">${m.unknown?'???':m.name}${used>0?` <strong class="caul-used-count">×${used}</strong>`:''}</div>
-                <div class="caul-card-sub">${m.subtipo||''} · dif:${m.difficulty>=0?'+':''}${m.difficulty}</div>
+                <div class="caul-card-sub">${m.modKind||''} · ${m.campo} · dif:${m.difficulty>=0?'+':''}${m.difficulty}${compat.extraDiff?` · +${compat.extraDiff} polaridad`:''}</div>
                 <div class="caul-card-stock">${rarityBadge(m.rarity)} ×${state.inventory[id]}</div>
               </div>
               <div class="caul-card-grab">${canAdd?'⠿':'🔒'}</div>
@@ -276,11 +292,12 @@ function handleDrop(type, id) {
   if (type === 'base') {
     setCraftSelectedBase(id);
     setCraftSelectedMods({});
-    triggerBubbles(state.catalog[id]?.category);
+    triggerBubbles(state.catalog[id]?.campo);
     renderCauldron();
   } else if (type === 'mod') {
     if (!craftSelectedBase) return;
     const m = state.catalog[id]; if (!m) return;
+    if (!modCompat(state.catalog[craftSelectedBase], m, state.settings).ok) return;
     const used  = craftSelectedMods[id] || 0;
     const maxU  = m.maxUses || 99;
     if (used < maxU && used < (state.inventory[id] || 0)) {
@@ -327,9 +344,9 @@ export function renderCauldron() {
   const canCraft = hasBase && caulAplics.size > 0 && !conflict && !inResult;
 
   // Potion name preview (shown in notif area when not in result state)
-  let preview = '<em class="caul-empty-hint">⬇ Arrastra una base para empezar</em>';
+  let preview = '<em class="caul-empty-hint">⬇ Arrastra un reactivo para empezar</em>';
   if (base) {
-    const bn = base.unknown ? '???' : base.name;
+    const bn = (getDisolvente(state.settings, base.campo).name) + ' + ' + (base.unknown ? '???' : base.name);
     const modNames = Object.keys(craftSelectedMods)
       .filter(mid => craftSelectedMods[mid] > 0 && state.catalog[mid])
       .map(mid => state.catalog[mid].unknown ? '???' : state.catalog[mid].name);
@@ -353,7 +370,7 @@ export function renderCauldron() {
     <div class="caul-svg-section">
       <div class="caul-svg-wrap${inResult ? ' caul-state-'+caulCraftState : ''}" id="caulDropZone">
         ${caulSVG()}
-        ${!inResult ? `<div class="caul-drop-hint"><span>${hasBase ? '+ Suelta modificadores' : '⬇ Suelta una base'}</span></div>` : ''}
+        ${!inResult ? `<div class="caul-drop-hint"><span>${hasBase ? '+ Suelta modificadores' : '⬇ Suelta un reactivo'}</span></div>` : ''}
       </div>
     </div>
 
@@ -401,7 +418,7 @@ export function renderCauldron() {
 
 </div>`;
 
-  updateLiquid(base?.category ?? null);
+  updateLiquid(base?.campo ?? null);
   attachDnD();
 
   if (!inResult) {

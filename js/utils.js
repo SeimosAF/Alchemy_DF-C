@@ -9,9 +9,19 @@ export function rarityClass(r) {
 export function rarityBadge(r) {
   return `<span class="rarity-label ${rarityClass(r)}">${r}</span>`;
 }
-export function catBadge(c) {
-  const cls = c === 'Salutífera' ? 'sal' : c === 'Maliciosa' ? 'mal' : 'mag';
-  return `<span class="badge badge-${cls}">${c}</span>`;
+const CAMPO_CLS = { 'Cuerpo': 'cuerpo', 'Mente': 'mente', 'Alma': 'alma', 'Mágico': 'magico' };
+export function campoClass(campo) { return CAMPO_CLS[campo] || 'magico'; }
+export function campoBadge(campo) {
+  if (!campo) return '';
+  return `<span class="badge badge-${campoClass(campo)}">${campo}</span>`;
+}
+export function polBadge(pol) {
+  if (!pol) return '';
+  return `<span class="badge badge-${pol === 'Maleficioso' ? 'malef' : 'benef'}">${pol}</span>`;
+}
+// Campo + polaridad juntos (sustituye a la antigua "categoría")
+export function catBadge(campo, pol) {
+  return campoBadge(campo) + (pol ? ' ' + polBadge(pol) : '');
 }
 export function purityRoman(n) {
   return (['I','II','III','IV','V','VI','VII','VIII','IX','X'][n - 1] || 'I');
