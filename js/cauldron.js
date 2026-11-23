@@ -245,9 +245,7 @@ function renderModifiers() {
   if (base?.discriminante)
     return `<div class="caul-panel-header">🚫 Reactivo discriminante</div>
       <p class="muted-i" style="padding:8px 12px">Este reactivo no acepta modificadores.</p>`;
-  if (base?.campo === 'Mágico')
-    return `<div class="caul-panel-header">✨ Poción mágica</div>
-      <p class="muted-i" style="padding:8px 12px">Las pociones mágicas no admiten modificadores.</p>`;
+
 
   const mods = Object.keys(state.catalog)
     .filter(id => state.catalog[id].type === 'Modificador' && (state.inventory[id] || 0) > 0);

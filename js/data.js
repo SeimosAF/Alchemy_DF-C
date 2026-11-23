@@ -10,7 +10,6 @@ export const APLICACION_OPTIONS = [
   { id: 'fumigena', label: 'Fumígena', diffMod: 4 },
 ];
 
-<<<<<<< Updated upstream
 // ---- Modelo de pociones: tipo · campo · polaridad ----
 export const TIPOS = ['Reactivo', 'Modificador'];
 export const POLARIDADES = ['Beneficioso', 'Maleficioso'];
@@ -99,18 +98,19 @@ export const MOD_KINDS = {
   'Economizador': 'Baja la CD (dificultad negativa).',
   'Concentrador': 'Reduce la duración para potenciar el efecto.',
   'Diluyente':    'Alarga la duración a costa de potencia.',
+  'Multiplicador':'Multiplica los dados o el total del efecto, y puede cambiar la duración.',
+  'Alterador':    'Cambia el tipo de daño y/o añade un efecto secundario.',
   'Añadir efecto':'Añade uno o más bloques de efecto a la poción.',
+  'Esencial':     'Solo pociones mágicas: define la duración y la descripción del efecto mágico.',
+  'Invertidor':   'Solo pociones mágicas: invierte el efecto (se describe al elaborar).',
   'Otro':         'Sin regla automática; descríbelo en las notas.',
 };
+// Modificadores que aceptan las pociones mágicas, y los que solo valen para ellas
+export const MAGIC_MOD_KINDS = ['Prolongador', 'Esencial', 'Invertidor', 'Alterador'];
+export const MAGIC_ONLY_MOD_KINDS = ['Esencial', 'Invertidor'];
+export const DIE_TIERS = [4, 6, 8, 10, 12, 20];
 export const MOD_KIND_ICONS = {
   'Potenciador': '⚡', 'Prolongador': '⏳', 'Economizador': '💰',
   'Concentrador': '🔻', 'Diluyente': '💧', 'Añadir efecto': '➕', 'Otro': '⚗️',
-=======
-export const SUBTIPOS = {
-  'Salutífera_Base':  ['Vitalidad', 'Resistencia', 'Otro'],
-  'Maliciosa_Base':   ['Dañina', 'Incapacitante', 'Debilitante'],
-  'Mágica_Base':      [],
-  '_Modificador':       ['Economizador', 'Prolongador', 'Potenciador', 'Multiplicador', 'Alterador', 'Otro'],
-  'Mágica_Modificador': ['Prolongador', 'Esencial', 'Invertidor', 'Alterador'],
->>>>>>> Stashed changes
+  'Multiplicador': '✖️', 'Alterador': '🔄', 'Esencial': '💠', 'Invertidor': '🔃',
 };

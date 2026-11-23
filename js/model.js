@@ -1,7 +1,7 @@
 // model.js — pure rules of the potion model (no DOM, no state import)
 // Modelo: un componente es Reactivo o Modificador, tiene un Campo (Cuerpo, Mente, Alma, Mágico)
 // que fija su disolvente, una Polaridad (Beneficioso / Maleficioso) y una lista de bloques de efecto.
-import { EFFECT_KINDS, DICE_EFFECTS, DEFAULT_SETTINGS } from './data.js';
+import { EFFECT_KINDS, DICE_EFFECTS, DEFAULT_SETTINGS, MAGIC_MOD_KINDS, MAGIC_ONLY_MOD_KINDS, DIE_TIERS } from './data.js';
 
 export const MODEL_VERSION = 3;
 
@@ -95,8 +95,11 @@ export function hasMaleficio(effects) {
 // Las pociones Mágicas no admiten modificadores.
 export function modCompat(reactivo, mod, settings) {
   if (!reactivo || !mod) return { ok: false, reason: '' };
-  if (reactivo.campo === 'Mágico') return { ok: false, reason: 'las pociones mágicas no admiten modificadores' };
   if (reactivo.discriminante) return { ok: false, reason: 'reactivo discriminante' };
+  if (reactivo.campo === 'Mágico' && !MAGIC_MOD_KINDS.includes(mod.modKind))
+    return { ok: false, reason: 'las mágicas solo aceptan ' + MAGIC_MOD_KINDS.join(', ') };
+  if (reactivo.campo !== 'Mágico' && MAGIC_ONLY_MOD_KINDS.includes(mod.modKind))
+    return { ok: false, reason: 'solo para pociones mágicas' };
   if (mod.campo !== reactivo.campo && mod.campo !== 'Mágico')
     return { ok: false, reason: `campo ${mod.campo}` };
   const instant = reactivo.durationInstant;
@@ -138,7 +141,24 @@ export function applyModifiers(reactivo, modsObj, catalog) {
     durationDice: (reactivo.durationDice || []).map(d => ({ ...d })),
     durationFlat: reactivo.durationFlat || 0,
     durationMult: 1,
+    effectTotalMultiplier: 1,
+    isDistributed: false,
+    isInverted: false,
+    description: reactivo.description || '',
   };
+  // Potenciador: mejora de tier de dado sobre los dados del reactivo (d4→d6→…→d20)
+  let tierUp = 0;
+  for (const mid in modsObj) {
+    const m = catalog[mid];
+    if (m && m.modKind === 'Potenciador') tierUp += (m.dieUpgrade || 0) * (modsObj[mid] || 0);
+  }
+  if (tierUp) out.effects.forEach(e => {
+    (e.dice || []).forEach(d => {
+      const i = DIE_TIERS.indexOf(d.sides);
+      if (i >= 0) d.sides = DIE_TIERS[Math.min(i + tierUp, DIE_TIERS.length - 1)];
+    });
+  });
+  let diceMult = 1;
   for (const mid in modsObj) {
     const m = catalog[mid]; const qty = modsObj[mid] || 0;
     if (!m || !qty) continue;
@@ -168,9 +188,42 @@ export function applyModifiers(reactivo, modsObj, catalog) {
         case 'Añadir efecto':
           (m.effects || []).forEach(e => out.effects.push(JSON.parse(JSON.stringify(e))));
           break;
+        case 'Multiplicador': {
+          const ef = m.effectMultiplier || 1;
+          if (m.effectTarget === 'total') out.effectTotalMultiplier *= ef;
+          else diceMult *= ef;
+          if (m.durationMode === 'multiply') out.durationMult *= (m.durationModValue || 1);
+          else if (m.durationMode === 'flat') out.durationFlat += Math.round(m.durationModValue || 0);
+          if (m.distributeEffect) out.isDistributed = true;
+          break;
+        }
+        case 'Alterador':
+          if (m.changeDamageType) out.effects.forEach(e => {
+            if (EFFECT_KINDS[e.kind]?.fields.includes('damageType') && ['dano', 'danoContinuo'].includes(e.kind))
+              e.damageType = m.changeDamageType;
+          });
+          if (m.addSecondaryEffect && i === 0) out.effects.push({ kind: 'especial', text: m.addSecondaryEffect });
+          break;
+        case 'Esencial':
+          // En pociones mágicas, el Esencial dicta la duración y la descripción del efecto
+          out.durationInstant = !!m.durationInstant;
+          out.durationDice = (m.durationDice || []).map(d => ({ ...d }));
+          out.durationFlat = m.durationFlat || 0;
+          if (m.description) out.description = m.description;
+          break;
+        case 'Invertidor':
+          out.isInverted = true;
+          break;
       }
     }
   }
+  // Multiplicador sobre dados: se aplica después de sumar los dados de los Potenciadores
+  if (diceMult !== 1) out.effects.forEach(e => {
+    if (DICE_EFFECTS.includes(e.kind) && e.dice?.length)
+      e.dice = e.dice.map(d => ({ count: Math.max(1, Math.round(d.count * diceMult)), sides: d.sides }));
+  });
+  // Distribuir: un efecto instantáneo pasa a durar 2 turnos
+  if (out.isDistributed && out.durationInstant) { out.durationInstant = false; out.durationFlat = 2; }
   return out;
 }
 

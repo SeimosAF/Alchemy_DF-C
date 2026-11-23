@@ -161,7 +161,6 @@
           <input type="text" id="matStatMod" placeholder="ej. Constitución, Fuerza...">
         </div>
 
-<<<<<<< Updated upstream
         <!-- Concentrador / Diluyente -->
         <div id="tradeSection" class="dice-section" style="display:none">
           <div class="dice-section-label" id="tradeLabel">Intercambio duración / potencia</div>
@@ -174,49 +173,15 @@
               <label id="tradeDiceLabel">Dados que suma al efecto principal</label>
               <input type="number" id="matTradeDice" value="1" min="0" style="width:90px">
             </div>
-=======
-        <!-- Potenciador: mejora de tier de dado -->
-        <div id="potenciadorSection" style="display:none" class="form-row">
-          <label>Mejora de tier de dado <span class="muted" style="font-size:.82em">(0 = sin mejora · d4→d6→d8→d10→d12→d20)</span></label>
-          <input type="number" id="matDieUpgrade" value="0" min="0" max="5" style="width:90px">
-        </div>
-
-        <!-- Damage type -->
-        <div id="damageTypeSection" style="display:none" class="form-row">
-          <label id="damageTypeLabel">Tipo de daño</label>
-          <div class="damage-type-row">
-            <select id="matDamageType">
-              <option value="">-- Elige o añade un tipo --</option>
-            </select>
-            <button type="button" class="btn btn-sm" data-action="add-damage-type">+ Nuevo tipo</button>
-          </div>
-        </div>
-
-        <!-- Incapacitante -->
-        <div id="incapacitanteSection" style="display:none">
-          <div class="form-row">
-            <label>Tipo de penalización</label>
-            <select id="matPenaltyType">
-              <option value="flat">Penalización fija (número)</option>
-              <option value="disadvantage">Desventaja en tiradas</option>
-              <option value="both">Ambas</option>
-            </select>
-          </div>
-          <div id="penaltyValueRow" class="form-row">
-            <label>Valor de penalización</label>
-            <input type="number" id="matPenaltyValue" value="1" min="1" style="width:90px">
->>>>>>> Stashed changes
           </div>
         </div>
 
         <!-- Duration -->
         <div id="durationSection" class="dice-section" style="display:none">
           <div class="dice-section-label">Duración del efecto</div>
-          <div id="durationInstantRow">
-            <label class="check-label">
-              <input type="checkbox" id="matDurationInstant"> Instantánea
-            </label>
-          </div>
+          <label class="check-label">
+            <input type="checkbox" id="matDurationInstant"> Instantánea
+          </label>
           <div id="durationDiceSection">
             <div id="durationDiceRows"></div>
             <button type="button" class="btn btn-sm" onclick="window.addDiceRow('duration')">+ Añadir dado de duración</button>
@@ -227,10 +192,10 @@
           </div>
         </div>
 
-        <!-- Max uses (modifier only) -->
-        <div id="maxUsesSection" style="display:none" class="form-row">
-          <label>Límite de usos por poción (0 = sin límite)</label>
-          <input type="number" id="matMaxUses" value="0" min="0" style="width:90px">
+        <!-- Potenciador: mejora de tier de dado -->
+        <div id="potenciadorSection" style="display:none" class="form-row">
+          <label>Mejora de tier de dado <span class="muted" style="font-size:.82em">(0 = sin mejora · d4→d6→d8→d10→d12→d20)</span></label>
+          <input type="number" id="matDieUpgrade" value="0" min="0" max="5" style="width:90px">
         </div>
 
         <!-- Multiplicador (modifier subtype) -->
@@ -300,6 +265,12 @@
           </div>
         </div>
 
+        <!-- Max uses (modifier only) -->
+        <div id="maxUsesSection" style="display:none" class="form-row">
+          <label>Límite de usos por poción (0 = sin límite)</label>
+          <input type="number" id="matMaxUses" value="0" min="0" style="width:90px">
+        </div>
+
         <div class="form-row">
           <label>Descripción / Notas</label>
           <textarea id="matDesc" rows="2" placeholder="Efecto, aspecto, sabor..."></textarea>
@@ -316,17 +287,12 @@
   <!-- Catálogo Materiales -->
   <div id="infoSub-catalogo" style="display:none">
     <div class="panel">
-<<<<<<< Updated upstream
-      <h2>🌿 Reactivos</h2>
-      <div id="catBaseList"><p class="muted">No hay reactivos registrados.</p></div>
-=======
       <h2>❓ Sin identificar</h2>
-      <div id="catUnknownList"><p class="muted">No hay materiales sin identificar.</p></div>
+      <div id="catUnknownList"><p class="muted">No hay componentes sin identificar.</p></div>
     </div>
     <div class="panel">
-      <h2>🌿 Bases</h2>
-      <div id="catBaseList"><p class="muted">No hay bases registradas.</p></div>
->>>>>>> Stashed changes
+      <h2>🌿 Reactivos</h2>
+      <div id="catBaseList"><p class="muted">No hay reactivos registrados.</p></div>
     </div>
     <div class="panel">
       <h2>🧪 Modificadores</h2>

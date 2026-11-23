@@ -152,141 +152,35 @@ function confirmCraftElab() {
   for (const mid in modsObj) state.inventory[mid] -= modsObj[mid];
 
   if (success) {
-<<<<<<< Updated upstream
     const applied = applyModifiers(base, modsObj, state.catalog);
     const solv = getDisolvente(state.settings, base.campo);
-=======
-    const modDiceExtra = [], modDurDice = [];
-    let modFlatExtra = 0, modStatMod = '', modDurFlat = 0;
-    let effectMultFactor = 1, effectTotalFactor = 1, durationMultFactor = 1;
-    let totalDieUpgrade = 0;
-    let isDistributed = false;
-    let finalDamageType = base.damageType || '';
-    const secondaryEffects = [];
-    // Mágica-specific
-    let esencialDesc = '', esencialDurInst = false, esencialDurDice = [], esencialDurFlat = 0;
-    let isInverted = false, invertedEffect = '';
-
-    for (const mid in modsObj) {
-      const mm = state.catalog[mid]; if (!mm) continue;
-      const qty = modsObj[mid] || 1;
-      if (mm.subtipo === 'Potenciador') {
-        (mm.dicePool || []).forEach(d => modDiceExtra.push({ count: (d.count || 1) * qty, sides: d.sides }));
-        modFlatExtra += (mm.flatBonus || 0) * qty;
-        if (mm.statMod && !modStatMod) modStatMod = mm.statMod;
-        totalDieUpgrade += (mm.dieUpgrade || 0) * qty;
-      }
-      if (mm.subtipo === 'Prolongador') {
-        (mm.durationDice || []).forEach(d => modDurDice.push({ count: (d.count || 1) * qty, sides: d.sides }));
-        modDurFlat += (mm.durationFlat || 0) * qty;
-      }
-      if (mm.subtipo === 'Multiplicador') {
-        const ef = mm.effectMultiplier || 1;
-        if (mm.effectTarget === 'total') {
-          effectTotalFactor *= Math.pow(ef, qty);    // multiplica el total ya tirado
-        } else {
-          effectMultFactor  *= Math.pow(ef, qty);    // multiplica el número de dados
-        }
-        if (mm.durationMode === 'multiply') {
-          durationMultFactor *= Math.pow(mm.durationModValue || 1, qty);
-        } else if (mm.durationMode === 'flat') {
-          modDurFlat += Math.round((mm.durationModValue || 0) * qty);
-        }
-        if (mm.distributeEffect) isDistributed = true;
-      }
-      if (mm.subtipo === 'Alterador') {
-        if (mm.changeDamageType)   finalDamageType = mm.changeDamageType;
-        if (mm.addSecondaryEffect) secondaryEffects.push(mm.addSecondaryEffect);
-      }
-      if (mm.subtipo === 'Esencial') {
-        // Para pociones Mágicas: el Esencial define la duración y la descripción del efecto
-        esencialDurInst  = !!mm.durationInstant;
-        esencialDurDice  = mm.durationDice  || [];
-        esencialDurFlat  = mm.durationFlat  || 0;
-        esencialDesc     = mm.description   || '';
-      }
-      if (mm.subtipo === 'Invertidor') {
-        isInverted = true;
-      }
-    }
-
-    // Tier upgrade: mejora los dados de la base (d4→d6→d8→d10→d12→d20)
-    const DIE_TIERS = [4, 6, 8, 10, 12, 20];
-    const upgradedBase = (base.dicePool || []).map(d => {
-      if (!totalDieUpgrade) return { count: d.count, sides: d.sides };
-      const idx = DIE_TIERS.indexOf(d.sides);
-      const newSides = idx >= 0 ? DIE_TIERS[Math.min(idx + totalDieUpgrade, DIE_TIERS.length - 1)] : d.sides;
-      return { count: d.count, sides: newSides };
-    });
-
-    // Additive pool + multiplicative pass
-    let finalPool = [...upgradedBase, ...modDiceExtra];
-    if (effectMultFactor !== 1) {
-      finalPool = finalPool.map(d => ({ count: Math.max(1, Math.round((d.count || 1) * effectMultFactor)), sides: d.sides }));
-    }
-    const finalFlat = (base.flatBonus || 0) + modFlatExtra;
-    const finalStat = base.statMod || modStatMod;
-
-    // Para pociones Mágicas: la duración la dicta el modificador Esencial
-    const isMagicaPotion = base.category === 'Mágica';
-    let finalDurDice, finalDurFlat, finalDurInst;
-    if (isMagicaPotion) {
-      finalDurDice = [...esencialDurDice];
-      finalDurFlat = esencialDurFlat;
-      finalDurInst = esencialDurInst && !esencialDurDice.length && !esencialDurFlat;
-    } else {
-      finalDurDice = [...(base.durationDice || []), ...modDurDice];
-      finalDurFlat = (base.durationFlat || 0) + modDurFlat;
-      finalDurInst = base.durationInstant && !modDurDice.length && !modDurFlat;
-    }
-    if (durationMultFactor !== 1 && !finalDurInst) {
-      finalDurDice = finalDurDice.map(d => ({ count: Math.max(1, Math.round((d.count || 1) * durationMultFactor)), sides: d.sides }));
-      finalDurFlat = Math.round(finalDurFlat * durationMultFactor);
-    }
-    // Distribuidor: instant → force 2 turns
-    if (isDistributed && finalDurInst) { finalDurInst = false; finalDurFlat = 2; }
-
-    const secondaryEffect = secondaryEffects.join(' / ');
-
->>>>>>> Stashed changes
     const ck = potCatKey(craftSelectedBase, modsObj);
     if (!state.potionCatalog[ck]) {
       const apodo = prompt('Primera vez creando esta poción. ¿Quieres darle un apodo? (deja vacío para omitir)');
-      const entry = { apodo: apodo != null ? apodo.trim() : '' };
-      if (isInverted) {
-        const invDesc = prompt('Poción invertida: describe el efecto de la inversión (deja vacío para omitir)');
-        entry.invertedEffect = invDesc != null ? invDesc.trim() : '';
-      }
-      state.potionCatalog[ck] = entry;
+      state.potionCatalog[ck] = { apodo: apodo != null ? apodo.trim() : '' };
     }
-    invertedEffect = state.potionCatalog[ck].invertedEffect || '';
     const modNames = Object.keys(modsObj).map(mid => state.catalog[mid] ? (state.catalog[mid].unknown ? '???' : state.catalog[mid].name) : null).filter(Boolean);
     const bn = base.unknown ? '???' : base.name;
     const potName = bn + (modNames.length ? ` (${modNames.join(', ')})` : '') + '.';
+    if (applied.isInverted && !state.potionCatalog[ck].invertedAsked) {
+      const inv = prompt('Poción invertida: describe el efecto de la inversión (deja vacío para omitir)');
+      state.potionCatalog[ck].invertedEffect = inv != null ? inv.trim() : '';
+      state.potionCatalog[ck].invertedAsked = true;
+    }
     const pk = potKey(craftSelectedBase, modsObj, aplics, 0);
     if (state.potions[pk]) state.potions[pk].qty++;
     else state.potions[pk] = {
       qty: 1, name: potName, campo: base.campo, polaridad: base.polaridad, disolvente: solv.name,
       baseId: craftSelectedBase, baseName: bn, pureUnits: 0,
-<<<<<<< Updated upstream
       effects: applied.effects,
       durationInstant: applied.durationInstant, durationDice: applied.durationDice,
       durationFlat: applied.durationFlat, durationMult: applied.durationMult,
       save: base.save || null, craftDC: dc,
       modDifficulty: d.modDiff, baseDifficulty: d.baseDiff, extraDifficulty: d.solvDiff + d.polDiff,
       aplicacion: aplics,
-      noPurificable: base.noPurificable || false, description: base.description || '', isMulti: false,
-=======
-      dicePool: finalPool, flatBonus: finalFlat, statMod: finalStat,
-      damageType: finalDamageType, penaltyType: base.penaltyType || '', penaltyValue: base.penaltyValue || 0,
-      modDifficulty: modDiff, baseDifficulty: baseDiff, aplicacion: aplics,
-      durationInstant: finalDurInst, durationDice: finalDurDice, durationFlat: finalDurFlat,
-      noPurificable: base.noPurificable || false,
-      description: isMagicaPotion ? esencialDesc : (base.description || ''),
-      isMulti: false, isDistributed, secondaryEffect,
-      isInverted, invertedEffect,
-      effectTotalMultiplier: effectTotalFactor !== 1 ? effectTotalFactor : undefined,
->>>>>>> Stashed changes
+      noPurificable: base.noPurificable || false, description: applied.description, isMulti: false,
+      effectTotalMultiplier: applied.effectTotalMultiplier, isDistributed: applied.isDistributed,
+      isInverted: applied.isInverted, invertedEffect: applied.isInverted ? (state.potionCatalog[ck].invertedEffect || '') : '',
     };
     saveState();
     const ai = state.potionCatalog[ck];
