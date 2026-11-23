@@ -138,6 +138,9 @@ document.addEventListener('DOMContentLoaded', () => {
   // Form triggers
   ['matCampo','matPolaridad','matUnknown','matType','matModKind'].forEach(id =>
     document.getElementById(id).addEventListener('change', updateMatForm));
+  document.getElementById('matDurationMode').addEventListener('change', function () {
+    document.getElementById('durationModValueRow').style.display = this.value === 'none' ? 'none' : 'block';
+  });
   // Effect block fields
   const effRows = document.getElementById('effectRows');
   effRows.addEventListener('change', e => { if (e.target.dataset.eidx != null) onEffectFieldChange(e.target); });
@@ -150,15 +153,6 @@ document.addEventListener('DOMContentLoaded', () => {
     document.getElementById('durationDiceSection').style.display = this.checked ? 'none' : 'block';
     updateNoPurificable();
   });
-<<<<<<< Updated upstream
-=======
-  document.getElementById('matDurationMode').addEventListener('change', function () {
-    document.getElementById('durationModValueRow').style.display = this.value === 'none' ? 'none' : 'block';
-  });
-  document.getElementById('matPenaltyType').addEventListener('change', function () {
-    document.getElementById('penaltyValueRow').style.display = this.value === 'disadvantage' ? 'none' : 'block';
-  });
->>>>>>> Stashed changes
 
   // Aplicación checkboxes
   document.querySelectorAll('[name="craftAplic"]').forEach(cb => {

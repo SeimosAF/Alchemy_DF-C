@@ -29,25 +29,21 @@ function buildMatDetail(m) {
   if (m.modKind === 'Prolongador') { const dt = durationText(m); if (dt) parts.push('Suma ' + dt); }
   if (m.modKind === 'Concentrador') parts.push(`🔻 Duración ÷${m.tradeFactor || 2}, +${m.tradeDice ?? 1} dado(s) al efecto principal`);
   if (m.modKind === 'Diluyente') parts.push(`💧 Duración ×${m.tradeFactor || 2}, −${m.tradeDice ?? 1} dado(s) al efecto principal`);
-  if (m.type === 'Modificador' && m.maxUses) parts.push(`🔢 Máx usos por poción: ${m.maxUses}`);
-  if (m.subtipo === 'Potenciador' && m.dieUpgrade) parts.push(`⬆️ Mejora tier de dado ×${m.dieUpgrade} paso(s) (d4→d6→…→d20)`);
-  if (m.subtipo === 'Multiplicador') {
-    if (m.effectMultiplier && m.effectMultiplier !== 1) {
-      const tgt = m.effectTarget === 'total' ? 'total del efecto' : 'número de dados';
-      parts.push(`✖️ Efecto ×${m.effectMultiplier} (sobre ${tgt})`);
-    }
-    if (m.durationMode === 'multiply' && m.durationModValue && m.durationModValue !== 1)
-      parts.push(`✖️ Duración ×${m.durationModValue}`);
-    if (m.durationMode === 'flat' && m.durationModValue)
-      parts.push(`⏱️ +${m.durationModValue} turno(s) de duración`);
-    if (m.distributeEffect) parts.push('📊 Distribuye el efecto por turnos');
+  if (m.modKind === 'Potenciador' && m.dieUpgrade) parts.push(`⬆️ Mejora el dado ${m.dieUpgrade} paso(s) (d4→d6→…→d20)`);
+  if (m.modKind === 'Multiplicador') {
+    if (m.effectMultiplier && m.effectMultiplier !== 1)
+      parts.push(`✖️ Efecto ×${m.effectMultiplier} (sobre ${m.effectTarget === 'total' ? 'el total' : 'el número de dados'})`);
+    if (m.durationMode === 'multiply' && m.durationModValue && m.durationModValue !== 1) parts.push(`✖️ Duración ×${m.durationModValue}`);
+    if (m.durationMode === 'flat' && m.durationModValue) parts.push(`⏱️ +${m.durationModValue} turno(s) de duración`);
+    if (m.distributeEffect) parts.push('📊 Distribuye el efecto entre los turnos');
   }
-  if (m.subtipo === 'Alterador') {
-    if (m.changeDamageType) parts.push(`🔄 Cambia tipo de daño → ${m.changeDamageType}`);
+  if (m.modKind === 'Alterador') {
+    if (m.changeDamageType) parts.push(`🔄 Cambia el tipo de daño a ${m.changeDamageType}`);
     if (m.addSecondaryEffect) parts.push(`✨ Efecto secundario: ${m.addSecondaryEffect}`);
   }
-  if (m.subtipo === 'Esencial') parts.push('✨ Define el efecto mágico de la poción (Mágica)');
-  if (m.subtipo === 'Invertidor') parts.push('🔃 Invierte el efecto de la poción mágica');
+  if (m.modKind === 'Esencial') { const dt = durationText(m); parts.push('💠 Define el efecto mágico' + (dt ? ' · ' + dt : '')); }
+  if (m.modKind === 'Invertidor') parts.push('🔃 Invierte el efecto de la poción mágica');
+  if (m.type === 'Modificador' && m.maxUses) parts.push(`🔢 Máx usos por poción: ${m.maxUses}`);
   return parts.length ? parts.join('<br>') : '<em class="muted">Sin detalles adicionales.</em>';
 }
 
@@ -57,7 +53,6 @@ function makeUnknownCard(id, m, deletePendingId) {
     ? `<button class="btn btn-sm btn-danger" data-action="delete-mat" data-id="${id}">⚠️ Confirmar</button>
        <button class="btn btn-sm" style="background:#777" data-action="cancel-delete">✖</button>`
     : `<button class="btn btn-sm btn-danger" data-action="delete-mat" data-id="${id}">🗑️</button>`;
-  const lugar = m.lugar || 'Desconocido';
   const div = document.createElement('div');
   div.className = 'mat-card';
   div.innerHTML = `
@@ -66,8 +61,7 @@ function makeUnknownCard(id, m, deletePendingId) {
         <div class="mat-card-title">${m.name || '(Sin nombre)'}</div>
         <div class="mat-card-meta">
           <span class="badge" style="background:#555;color:#ddd">Sin identificar</span>
-          ${rarityBadge(m.rarity)}
-          · 📍 ${lugar}
+          ${rarityBadge(m.rarity)} · 📍 ${m.lugar || 'Desconocido'}
         </div>
       </div>
       <div class="mat-card-actions">
@@ -79,7 +73,7 @@ function makeUnknownCard(id, m, deletePendingId) {
 }
 
 function makeMatCard(id, m, deletePendingId) {
-  const dn = m.name;
+  const dn = m.unknown ? '<em>???</em>' : m.name;
   const lugar = m.lugar || '???';
   const isPending = deletePendingId === id;
   const delHtml = isPending
@@ -114,27 +108,22 @@ function makeMatCard(id, m, deletePendingId) {
 export function renderCatMateriales(deletePendingId = null) {
   const bases = [], mods = [], unknowns = [];
   for (const id in state.catalog) {
-<<<<<<< Updated upstream
-    (state.catalog[id].type === 'Reactivo' ? bases : mods).push({ id, m: state.catalog[id] });
-=======
     const m = state.catalog[id];
     if (m.unknown) unknowns.push({ id, m });
-    else if (m.type === 'Base') bases.push({ id, m });
-    else mods.push({ id, m });
->>>>>>> Stashed changes
+    else (m.type === 'Reactivo' ? bases : mods).push({ id, m });
+  }
+  const uEl = document.getElementById('catUnknownList');
+  if (uEl) {
+    if (!unknowns.length) uEl.innerHTML = '<p class="muted">No hay componentes sin identificar.</p>';
+    else { uEl.innerHTML = ''; unknowns.forEach(x => uEl.appendChild(makeUnknownCard(x.id, x.m, deletePendingId))); }
   }
   const bEl = document.getElementById('catBaseList');
   const mEl = document.getElementById('catModList');
-  const uEl = document.getElementById('catUnknownList');
   if (!bEl || !mEl) return;
   if (!bases.length) bEl.innerHTML = '<p class="muted">No hay reactivos registrados.</p>';
   else { bEl.innerHTML = ''; bases.forEach(x => bEl.appendChild(makeMatCard(x.id, x.m, deletePendingId))); }
   if (!mods.length) mEl.innerHTML = '<p class="muted">No hay modificadores registrados.</p>';
   else { mEl.innerHTML = ''; mods.forEach(x => mEl.appendChild(makeMatCard(x.id, x.m, deletePendingId))); }
-  if (uEl) {
-    if (!unknowns.length) uEl.innerHTML = '<p class="muted">No hay materiales sin identificar.</p>';
-    else { uEl.innerHTML = ''; unknowns.forEach(x => uEl.appendChild(makeUnknownCard(x.id, x.m, deletePendingId))); }
-  }
 }
 
 // ---- CAT POCIONES ----
@@ -248,39 +237,14 @@ export function buildPotDetail(pot) {
   }
   const parts = [];
   if (pot.description) parts.push(`<strong>Descripción:</strong> ${pot.description}`);
-<<<<<<< Updated upstream
   if (pot.disolvente) parts.push(`🫗 Disolvente: ${pot.disolvente}`);
   (pot.effects || []).forEach(e => parts.push(effectText(e)));
   const dt = durationText(pot); if (dt) parts.push(dt);
   const sv = saveText(pot); if (sv) parts.push(sv);
-=======
-  if (pot.dicePool?.length) {
-    let ds = pot.dicePool.map(d => `${d.count}d${d.sides}`).join('+');
-    if (pot.flatBonus) ds += ` + ${pot.flatBonus}`;
-    if (pot.statMod) ds += ` + mod.${pot.statMod}`;
-    parts.push('🎲 Dados: ' + ds);
-  } else if (pot.flatBonus) {
-    parts.push('🎲 Bono fijo: ' + pot.flatBonus + (pot.statMod ? ` + mod.${pot.statMod}` : ''));
-  }
-  if (pot.damageType) parts.push(`🛡️ Tipo de daño: ${pot.damageType}`);
-  if (pot.penaltyType) parts.push(`⬇️ Penalización: ${pot.penaltyType}${pot.penaltyValue ? ` (${pot.penaltyValue})` : ''}`);
-  if (pot.durationInstant) parts.push('⚡ Duración: Instantánea');
-  else if (pot.durationDice?.length) {
-    let ds = pot.durationDice.map(d => `${d.count}d${d.sides}`).join('+');
-    if (pot.durationFlat) ds += ` + ${pot.durationFlat}`;
-    parts.push(`⏱️ Duración: ${ds} turno(s)`);
-  } else if (pot.durationFlat) {
-    parts.push(`⏱️ Duración: ${pot.durationFlat} turno(s)`);
-  }
   if (pot.effectTotalMultiplier && pot.effectTotalMultiplier !== 1)
     parts.push(`✖️ Total del efecto ×${pot.effectTotalMultiplier} (se aplica al usar)`);
-  if (pot.isDistributed) parts.push('📊 Efecto distribuido por turno');
-  if (pot.secondaryEffect) parts.push(`✨ Efecto secundario: ${pot.secondaryEffect}`);
-  if (pot.isInverted) {
-    parts.push('🔃 <strong>Poción invertida</strong>');
-    if (pot.invertedEffect) parts.push(`↩️ Efecto invertido: ${pot.invertedEffect}`);
-  }
->>>>>>> Stashed changes
+  if (pot.isDistributed) parts.push('📊 Efecto distribuido entre los turnos');
+  if (pot.isInverted) parts.push('🔃 <strong>Poción invertida</strong>' + (pot.invertedEffect ? `: ${pot.invertedEffect}` : ''));
   if (pot.noPurificable) parts.push('🚫 No purificable');
   if (aplic) parts.push(aplic);
   return parts.length ? parts.join('<br>') : '<em class="muted">Sin detalles adicionales.</em>';
@@ -325,17 +289,17 @@ export function renderInvPociones() {
 }
 
 // ---- USE / APODO / DEL POTION ----
-function rollEffectLine(e, mult) {
+function rollEffectLine(e, totalMult) {
   const k = EFFECT_KINDS[e.kind] || { icon: '•', label: e.kind };
   const hasAmount = e.dice?.length || e.flat;
   if (!hasAmount) return `<p>${effectText(e)}</p>`;
-  const r = rollPool(e.dice) + (e.flat || 0);
+  const r = Math.round((rollPool(e.dice) + (e.flat || 0)) * (totalMult || 1));
   const statStr = e.statMod ? ` + mod.${e.statMod}` : '';
   const what = {
     curacion: 'Curación', pgTemp: 'PG temporales', dano: 'Daño', danoContinuo: 'Daño por turno', especial: e.text || 'Efecto',
   }[e.kind] || k.label;
   const dmg = e.damageType ? ` (${e.damageType})` : '';
-  return `<p>${k.icon} ${what}: <strong>${r}</strong>${statStr}${dmg} <span class="muted">[${formatDice(e.dice)}${e.flat ? '+' + e.flat : ''}]</span></p>`;
+  return `<p>${k.icon} ${what}: <strong>${r}</strong>${statStr}${dmg} <span class="muted">[${formatDice(e.dice)}${e.flat ? '+' + e.flat : ''}${totalMult && totalMult !== 1 ? ' ×' + totalMult : ''}]</span></p>`;
 }
 
 function rollDuration(p) {
@@ -350,49 +314,18 @@ function rollDuration(p) {
 export function usePotion(pk) {
   const pot = state.potions[pk];
   if (!pot || pot.qty <= 0) return;
-<<<<<<< Updated upstream
   const isBenef = pot.polaridad !== 'Maleficioso';
   let body = '';
   const blocks = pot.isMulti && pot.components?.length ? pot.components : [pot];
   blocks.forEach(b => {
     if (blocks.length > 1) body += `<p><strong>${b.name}</strong></p>`;
-    (b.effects || []).forEach(e => { body += rollEffectLine(e, b.durationMult); });
+    (b.effects || []).forEach(e => { body += rollEffectLine(e, b.effectTotalMultiplier); });
+    if (b.isDistributed) body += '<p class="muted">📊 Reparte el efecto entre los turnos de duración.</p>';
+    if (b.isInverted) body += `<p>🔃 Invertida${b.invertedEffect ? ': ' + b.invertedEffect : ''}</p>`;
     body += rollDuration(b);
     const sv = saveText({ ...b, craftDC: b.craftDC || pot.craftDC });
     if (sv) body += `<p>${sv}</p>`;
   });
-=======
-  const cat = pot.category || '';
-  const isSalMag = cat === 'Salutífera' || cat === 'Mágica';
-  const effectRoll = rollDice(pot.dicePool || []);
-  const effectTotal = Math.round((effectRoll + (pot.flatBonus || 0)) * (pot.effectTotalMultiplier || 1));
-  const hasEffect = (pot.dicePool?.length ?? 0) > 0;
-  const hasDur = !pot.durationInstant && ((pot.durationDice?.length ?? 0) > 0 || pot.durationFlat > 0);
-  let durStr = '';
-  if (pot.durationInstant) durStr = 'Instantánea';
-  else if (hasDur) { const dr = rollDice(pot.durationDice || []); durStr = (dr + (pot.durationFlat || 0)) + ' turno(s)'; }
-
-  let effectDesc = '';
-  if (hasEffect) {
-    const statStr = pot.statMod ? ` + mod.${pot.statMod}` : '';
-    if (cat === 'Salutífera' && pot.subtipo === 'Vitalidad')
-      effectDesc = `<p>❤️ Curación: <strong>${effectTotal}</strong>${statStr}</p>`;
-    else if (cat === 'Maliciosa') {
-      if (pot.subtipo === 'Dañina')
-        effectDesc = `<p>⚔️ Daño: <strong>${effectTotal}</strong>${pot.damageType ? ` (${pot.damageType})` : ''}${statStr}</p>`;
-      else if (pot.subtipo === 'Incapacitante')
-        effectDesc = `<p>⬇️ Penalización: ${pot.penaltyType}${pot.penaltyValue ? ` (${pot.penaltyValue})` : ''}</p>`;
-      else if (pot.subtipo === 'Debilitante')
-        effectDesc = `<p>🛡️ Tipo de daño: ${pot.damageType || '???'}</p>`;
-    } else {
-      effectDesc = `<p>✨ Efecto: <strong>${effectTotal}</strong>${statStr}</p>`;
-    }
-  } else {
-    if (pot.damageType) effectDesc = `<p>🛡️ Resistencia a: ${pot.damageType}</p>`;
-    if (pot.penaltyType) effectDesc = `<p>⬇️ Penalización: ${pot.penaltyType}</p>`;
-  }
-  const durDesc = hasDur ? `<p>⏱️ Duración: <strong>${durStr}</strong></p>` : pot.durationInstant ? '<p>⚡ Instantánea</p>' : '';
->>>>>>> Stashed changes
   const desc = pot.description ? `<p class="muted-i">${pot.description}</p>` : '';
 
   document.getElementById('drinkResult').innerHTML =
@@ -483,18 +416,11 @@ export function renderElaboracion(craftSelectedBase, craftSelectedMods) {
   const base = state.catalog[craftSelectedBase];
   document.getElementById('craftModPanel').style.display = 'block';
   if (base?.discriminante) { document.getElementById('craftModList').innerHTML = '<p class="muted-i">Reactivo discriminante: sin modificadores.</p>'; return; }
-  if (base?.campo === 'Mágico') { document.getElementById('craftModList').innerHTML = '<p class="muted-i">Las pociones mágicas no admiten modificadores.</p>'; return; }
 
-  const isMagica = base?.category === 'Mágica';
-  const MAGICA_SUBS    = new Set(['Prolongador', 'Esencial', 'Invertidor', 'Alterador']);
-  const MAG_ONLY_SUBS  = new Set(['Esencial', 'Invertidor']); // solo disponibles para Mágica
   const modList = [];
   for (const mid in state.catalog) {
-    if (state.catalog[mid].type !== 'Modificador' || (state.inventory[mid] || 0) <= 0) continue;
-    const msub = state.catalog[mid].subtipo || '';
-    if (isMagica  && !MAGICA_SUBS.has(msub))   continue; // Mágica: solo sus 4 subtipos
-    if (!isMagica && MAG_ONLY_SUBS.has(msub))  continue; // no-Mágica: sin Esencial ni Invertidor
-    modList.push({ id: mid, m: state.catalog[mid] });
+    if (state.catalog[mid].type === 'Modificador' && (state.inventory[mid] || 0) > 0)
+      modList.push({ id: mid, m: state.catalog[mid] });
   }
   if (!modList.length) { document.getElementById('craftModList').innerHTML = '<p class="muted">No tienes modificadores en el inventario.</p>'; return; }
 
