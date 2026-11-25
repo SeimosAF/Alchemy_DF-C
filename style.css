@@ -1239,3 +1239,7 @@ body.es-admin .solo-admin { display:inline !important; }
 .proximamente h2 { margin:6px 0; }
 .proximamente-sello { display:inline-block; margin:6px 0 12px; padding:4px 16px; border:2px solid #8a2a2a; color:#8a2a2a; border-radius:4px;
   font-family:var(--f-rotulo); letter-spacing:3px; text-transform:uppercase; transform:rotate(-4deg); }
+
+/* Material sin identificar: se ve su nombre y dónde se encontró */
+.mat-sin-id { display:inline-block; margin-left:4px; font-size:.8em; font-style:italic; color:#7a6247; }
+.badge-sin-id { background:#777; color:#eee; }

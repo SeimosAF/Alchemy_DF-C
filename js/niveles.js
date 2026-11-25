@@ -11,6 +11,7 @@
 // El nivel se guarda por jugador en state.perfil.alquimia.nivel. En el servidor
 // solo el DM puede cambiarlo. Sin servidor (modo local) no hay DM: empieza en el
 // máximo y lo puede cambiar quien use la app.
+import { nombreMat } from './utils.js';
 import { state, saveState } from './state.js';
 import * as auth from './auth.js';
 import { setFiltroNivel } from './model.js';
@@ -104,7 +105,7 @@ export function problemaCrafteo(modo, base, mods, aplics, catalog) {
     if (!reactivoOk(base)) return `Ese reactivo se aprende en el nivel ${nivelReactivo(base)} de alquimia.`;
     for (const mid in mods || {}) {
       const m = catalog[mid];
-      if (mods[mid] > 0 && m && !modOk(m)) return `«${m.unknown ? '???' : m.name}» se aprende en el nivel ${nivelMod(m)} de alquimia.`;
+      if (mods[mid] > 0 && m && !modOk(m)) return `«${nombreMat(m)}» se aprende en el nivel ${nivelMod(m)} de alquimia.`;
     }
   }
   for (const a of aplics || []) if (!aplicOk(a)) return `La aplicación ${NOMBRE_APLIC[a] || a} se aprende en el nivel ${nivelAplic(a)}.`;

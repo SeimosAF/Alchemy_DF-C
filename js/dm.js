@@ -10,7 +10,7 @@
 import { state, genId } from './state.js';
 import * as sync from './sync.js';
 import * as auth from './auth.js';
-import { rarityBadge, campoClass } from './utils.js';
+import { rarityBadge, campoClass, nombreMat as nombreDe, notaSinIdentificar } from './utils.js';
 import * as niveles from './niveles.js';
 import * as lectura from './lectura.js';
 import { nombreDisciplina } from './panel.js';
@@ -22,7 +22,7 @@ let ocupado = false;
 
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const sinQty = v => { const { qty, ...r } = v || {}; return r; };
-const nombreMat = id => { const m = state.catalog[id]; return m ? (m.unknown ? '???' : m.name) : 'material borrado'; };
+const nombreMat = id => { const m = state.catalog[id]; return m ? nombreDe(m) : 'material borrado'; };
 
 export function visible() {
   const el = document.getElementById('invSub-dm');
@@ -67,7 +67,7 @@ export function render() {
     .map(id => {
       const m = state.catalog[id], n = j.inventory[id] || 0;
       return `<div class="inv-row ${n ? '' : 'dm-cero'}">
-        <div class="inv-name"><span class="badge badge-${campoClass(m.campo)}" style="margin-right:4px">${esc(m.type?.[0] || '?')}</span>${esc(nombreMat(id))} ${rarityBadge(m.rarity)}</div>
+        <div class="inv-name"><span class="badge badge-${m.unknown ? 'sin-id' : campoClass(m.campo)}" style="margin-right:4px">${esc(m.type?.[0] || '?')}</span>${esc(nombreMat(id))} ${rarityBadge(m.rarity)} ${notaSinIdentificar(m)}</div>
         <div class="inv-stepper">
           <button class="btn btn-sm" data-dm="mat" data-id="${esc(id)}" data-n="-1" ${n ? '' : 'disabled'}>−</button>
           <input type="number" min="0" class="dm-num" value="${n}" data-dm-set="${esc(id)}" data-antes="${n}" title="Escribe la cantidad exacta y pulsa Intro">

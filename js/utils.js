@@ -2,6 +2,16 @@
 import { APLICACION_OPTIONS } from './data.js';
 import { state } from './state.js';
 
+// ---- Materiales sin identificar ----
+// De un material sin identificar se sabe su NOMBRE y DÓNDE se encontró, pero no qué es
+// (campo, polaridad, efectos). Por eso se enseña su nombre, nunca "???".
+export function nombreMat(m) { return String(m?.name || '').trim() || '???'; }
+const escU = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+export function notaSinIdentificar(m) {
+  if (!m?.unknown) return '';
+  return `<span class="mat-sin-id" title="Sin identificar">❔ sin identificar${m.lugar ? ` · 📍 ${escU(m.lugar)}` : ''}</span>`;
+}
+
 // ---- Badges ----
 export function rarityClass(r) {
   return 'rarity-' + ({ 'Común':'comun','Poco Común':'poco','Rara':'rara','Muy Rara':'muy','Única':'unico' }[r] || 'comun');

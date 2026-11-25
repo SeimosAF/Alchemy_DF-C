@@ -77,7 +77,7 @@ export function servidorVacio(d) {
 // ---- Diferencias -> operaciones ----
 function nombreMat(snap, id) {
   const m = snap.catalog?.[id];
-  return m ? (m.unknown ? '???' : m.name) : 'material';
+  return m ? (m.name || '???') : 'material';
 }
 export function diferencias(antes, despues) {
   const ops = [], texto = [];

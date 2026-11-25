@@ -1,6 +1,6 @@
 // render.js — all DOM rendering functions
 import { state, saveState } from './state.js';
-import { getAplicOption } from './utils.js';
+import { getAplicOption, nombreMat, notaSinIdentificar } from './utils.js';
 import {
   rarityBadge, catBadge, campoBadge, campoClass, purityRoman,
   parsePotKey, parsedToCatKey, parseCatKey,
@@ -75,7 +75,7 @@ function makeUnknownCard(id, m, deletePendingId) {
 }
 
 function makeMatCard(id, m, deletePendingId) {
-  const dn = m.unknown ? '<em>???</em>' : m.name;
+  const dn = nombreMat(m);
   const lugar = m.lugar || '???';
   const isPending = deletePendingId === id;
   const delHtml = isPending
@@ -161,10 +161,10 @@ export function renderCatPociones() {
       html += `<div style="font-size:.85em;color:#666;margin:6px 0 2px"><strong>${sub}</strong></div>`;
       groups[cat][sub].forEach(item => {
         const info = state.potionCatalog[item.ck] || {};
-        const bn = item.base.unknown ? '???' : item.base.name;
+        const bn = nombreMat(item.base);
         const modNames = (item.parsed.mods || '').split(',')
           .filter(Boolean)
-          .map(mid => state.catalog[mid] ? (state.catalog[mid].unknown ? '???' : state.catalog[mid].name) : null)
+          .map(mid => state.catalog[mid] ? nombreMat(state.catalog[mid]) : null)
           .filter(Boolean);
         const formula = bn + (modNames.length ? ` (${modNames.join(', ')})` : '');
         const apodo = info.apodo ? ` <em class="apodo-badge">"${info.apodo}"</em>` : '';
@@ -208,10 +208,10 @@ export function renderInvMateriales() {
   el.innerHTML = ids.map(id => {
     const m = state.catalog[id];
     const qty = state.inventory[id] || 0;
-    const dn = m.unknown ? '???' : m.name;
-    const cc = campoClass(m.campo);
+    const dn = nombreMat(m);
+    const cc = m.unknown ? 'sin-id' : campoClass(m.campo);   // sin identificar: no se delata su campo
     return `<div class="inv-row">
-      <div class="inv-name"><span class="badge badge-${cc}" style="margin-right:4px" title="${m.type} · ${m.campo}">${m.type[0]}</span>${dn} ${rarityBadge(m.rarity)}</div>
+      <div class="inv-name"><span class="badge badge-${cc}" style="margin-right:4px" title="${m.unknown ? m.type : m.type + ' · ' + m.campo}">${m.type[0]}</span>${dn} ${rarityBadge(m.rarity)} ${notaSinIdentificar(m)}</div>
       <div class="inv-stepper">
         <button class="btn btn-sm" data-action="inv-dec" data-id="${id}">−</button>
         <span class="stepper-count">${qty}</span>
@@ -444,7 +444,7 @@ export function renderElaboracion(craftSelectedSolvent, craftSelectedBase, craft
   bEl.innerHTML = baseList.map(item => {
     const picked = craftSelectedBase === item.id;
     return `<div class="craft-pot-row">
-      <span>${item.m.unknown ? '???' : item.m.name} ${catBadge(item.m.campo, item.m.polaridad)} ${rarityBadge(item.m.rarity)} (x${state.inventory[item.id]})</span>
+      <span>${nombreMat(item.m)} ${catBadge(item.m.campo, item.m.polaridad)} ${rarityBadge(item.m.rarity)} (x${state.inventory[item.id]})</span>
       <button class="btn btn-sm btn-pick${picked ? ' picked' : ''}" data-action="craft-pick-base" data-id="${item.id}">${picked ? '✅ Elegido' : 'Elegir'}</button>
     </div>`;
   }).join('') + notaBloq;
@@ -475,7 +475,7 @@ export function renderElaboracion(craftSelectedSolvent, craftSelectedBase, craft
       : (modUnique && blocked) ? ' <span class="muted">(única: va sola)</span>'
       : compat.extraDiff ? ` <span class="muted">(polaridad contraria: +${compat.extraDiff} CD)</span>` : '';
     return `<div class="mod-row${compat.ok ? '' : ' mod-row-off'}">
-      <span class="mod-label">${MOD_KIND_ICONS[item.m.modKind] || ''} ${item.m.unknown ? '???' : item.m.name} ${campoBadge(item.m.campo)} ${rarityBadge(item.m.rarity)} dif:${item.m.difficulty >= 0 ? '+' : ''}${item.m.difficulty} (x${state.inventory[item.id]})${blockedNote}</span>
+      <span class="mod-label">${MOD_KIND_ICONS[item.m.modKind] || ''} ${nombreMat(item.m)} ${campoBadge(item.m.campo)} ${rarityBadge(item.m.rarity)} dif:${item.m.difficulty >= 0 ? '+' : ''}${item.m.difficulty} (x${state.inventory[item.id]})${blockedNote}</span>
       <div class="stepper">
         <button class="btn btn-sm" data-action="craft-mod-dec" data-id="${item.id}" ${used <= 0 ? 'disabled' : ''}>−</button>
         <span class="count">${used}</span>

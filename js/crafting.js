@@ -3,8 +3,8 @@ import { state, saveState, genId } from './state.js';
 import { APLICACION_OPTIONS } from './data.js';
 import {
   getAplicOption, potCatKey, potKey, parsePotKey,
-  roll20, calcBonus,
-} from './utils.js';
+  roll20, calcBonus, nombreMat,
+}  from './utils.js';
 import { elabDC, applyModifiers, modCompat, getDisolvente, mergePools } from './model.js';
 import * as niveles from './niveles.js';
 import {
@@ -188,7 +188,7 @@ export function craftStockProblem() {
       const have = state.inventory[id] || 0;
       const m = state.catalog[id];
       if (!m) return 'Uno de los materiales elegidos ya no existe: otra persona lo ha borrado.';
-      if (have < need[id]) return `No queda suficiente «${m.unknown ? '???' : m.name}»: hay ${have} y hacen falta ${need[id]}. Otra persona lo habrá usado.`;
+      if (have < need[id]) return `No queda suficiente «${nombreMat(m)}»: hay ${have} y hacen falta ${need[id]}. Otra persona lo habrá usado.`;
     }
     for (const mid in craftSelectedMods) if (craftSelectedMods[mid] > 0 && !state.catalog[mid]) return 'Uno de los modificadores elegidos ya no existe: otra persona lo ha borrado.';
     return null;
@@ -227,8 +227,8 @@ function confirmCraftElab() {
       const apodo = prompt('Primera vez creando esta poción. ¿Quieres darle un apodo? (deja vacío para omitir)');
       state.potionCatalog[ck] = { apodo: apodo != null ? apodo.trim() : '' };
     }
-    const modNames = Object.keys(modsObj).map(mid => state.catalog[mid] ? (state.catalog[mid].unknown ? '???' : state.catalog[mid].name) : null).filter(Boolean);
-    const bn = base.unknown ? '???' : base.name;
+    const modNames = Object.keys(modsObj).map(mid => state.catalog[mid] ? nombreMat(state.catalog[mid]) : null).filter(Boolean);
+    const bn = nombreMat(base);
     const potName = bn + (modNames.length ? ` (${modNames.join(', ')})` : '') + '.';
     if (applied.isInverted && !state.potionCatalog[ck].invertedAsked) {
       const inv = prompt('Poción invertida: describe el efecto de la inversión (deja vacío para omitir)');
@@ -289,7 +289,7 @@ function confirmCraftConc() {
     const ck = potCatKey(pp1.baseId, modsObj);
     if (!state.potionCatalog[ck]) state.potionCatalog[ck] = { apodo: '' };
     const bn = pot1.baseName || '???';
-    const mns = Object.keys(modsObj).map(m2 => state.catalog[m2] ? (state.catalog[m2].unknown ? '???' : state.catalog[m2].name) : null).filter(Boolean);
+    const mns = Object.keys(modsObj).map(m2 => state.catalog[m2] ? nombreMat(state.catalog[m2]) : null).filter(Boolean);
     const potName = bn + (mns.length ? ` (${mns.join(', ')})` : '') + `. Nivel de Pureza ${_purityRoman(newPurity)}.`;
     const npk = potKey(pp1.baseId, modsObj, aplics, newPurity);
     const eff1 = pot1.effects || [], eff2 = pot2.effects || [];

@@ -3,7 +3,7 @@
 // renderizados, para que los colores se mezclen y las animaciones no se reinicien.
 import { state } from './state.js';
 import { APLICACION_OPTIONS, SOUND_ENABLED } from './data.js';
-import { rarityBadge, getAplicOption } from './utils.js';
+import { rarityBadge, getAplicOption, nombreMat } from './utils.js';
 import { MOD_KIND_ICONS, EFFECT_KINDS } from './data.js';
 import { elabDC, modCompat, getDisolvente } from './model.js';
 import { CAMPOS, CAMPO_NAMES } from './data.js';
@@ -750,7 +750,7 @@ function renderBases() {
         const m   = state.catalog[id];
         const cfg = CAT[m.campo] || {};
         const icon = reactivoIcon(m);
-        const name = m.unknown ? '???' : m.name;
+        const name = nombreMat(m);
         return `<div class="caul-card ${cfg.cardClass || ''} ${m.campo === 'Mágico' ? 'caul-shimmer' : ''}"
             draggable="true" data-drag-type="base" data-drag-id="${id}" data-icon="${icon}" data-label="${name}" title="Arrastra al caldero o haz clic">
           <div class="caul-card-icon">${icon}</div>
@@ -777,7 +777,7 @@ function renderModifiers() {
     .filter(([, qty]) => qty > 0)
     .map(([mid, qty]) => {
       const m = state.catalog[mid];
-      return `<span class="caul-mod-chip">${m ? (m.unknown ? '???' : m.name) : mid} ×${qty}
+      return `<span class="caul-mod-chip">${m ? nombreMat(m) : mid} ×${qty}
         <button class="caul-chip-del" data-action="caul-mod-remove" data-id="${mid}">✕</button>
       </span>`;
     }).join('');
@@ -793,7 +793,7 @@ function renderModifiers() {
             const compat = modCompat(base, m, state.settings);
             const canAdd = compat.ok && used < maxU && used < (state.inventory[id] || 0);
             const icon   = MOD_KIND_ICONS[m.modKind] || '🌿';
-            const name   = m.unknown ? '???' : m.name;
+            const name   = nombreMat(m);
             return `<div class="caul-card caul-card-mod ${!canAdd ? 'caul-card-exhausted' : ''}"
                 draggable="${canAdd}" data-drag-type="mod" data-drag-id="${id}" data-icon="${icon}" data-label="${name}"
                 title="${!compat.ok ? 'No compatible: ' + compat.reason : canAdd ? 'Arrastra al caldero o haz clic' : 'Límite alcanzado'}">
@@ -927,10 +927,10 @@ export function renderCauldron() {
     let preview = '<em class="caul-empty-hint">El caldero está vacío: echa un disolvente para empezar</em>';
     if (hasSolv && !base) preview = `⚗️ <strong>${getDisolvente(state.settings, craftSelectedSolvent).name}</strong> <em class="caul-empty-hint">· ahora añade un reactivo</em>`;
     if (base) {
-      const bn = getDisolvente(state.settings, base.campo).name + ' + ' + (base.unknown ? '???' : base.name);
+      const bn = getDisolvente(state.settings, base.campo).name + ' + ' + nombreMat(base);
       const modNames = Object.keys(craftSelectedMods)
         .filter(mid => craftSelectedMods[mid] > 0 && state.catalog[mid])
-        .map(mid => state.catalog[mid].unknown ? '???' : state.catalog[mid].name);
+        .map(mid => nombreMat(state.catalog[mid]));
       preview = `⚗️ <strong>${bn}${modNames.length ? ` + ${modNames.join(', ')}` : ''}</strong>`;
     }
     document.getElementById('caulNotifArea').innerHTML = `<div class="caul-brew-preview">${preview}</div>`;

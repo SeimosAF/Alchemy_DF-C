@@ -1,4 +1,5 @@
 // form.js — material identification form management
+import { nombreMat } from './utils.js';
 import { state, saveState, genId } from './state.js';
 import {
   CAMPOS, ALL_STATS, ROLL_KINDS, EFFECT_KINDS, MOD_KINDS, MOD_KIND_ICONS, effectKindsFor,
@@ -464,13 +465,13 @@ export function identifyLoot(id) {
   const bases = [];
   for (const bid in state.catalog) if (state.catalog[bid].type === 'Reactivo') bases.push({ id: bid, m: state.catalog[bid] });
   if (!bases.length) { alert('No tienes reactivos identificados para comparar.'); return; }
-  const opts = bases.map((b, i) => `${i + 1}. ${b.m.unknown ? '???' : b.m.name} (${b.m.campo} · ${b.m.polaridad})`);
+  const opts = bases.map((b, i) => `${i + 1}. ${nombreMat(b.m)} (${b.m.campo} · ${b.m.polaridad})`);
   const choice = prompt('Ingeniería inversa: consume 1 unidad.\n\n' + opts.join('\n') + '\n\nNúmero:');
   if (choice == null) return;
   const idx = parseInt(choice) - 1;
   if (isNaN(idx) || idx < 0 || idx >= bases.length) { alert('Opción no válida.'); return; }
   const base = bases[idx];
-  loot.tipo = (base.m.unknown ? '???' : base.m.name) + ' (' + base.m.campo + ' · ' + base.m.polaridad + ')';
+  loot.tipo = nombreMat(base.m) + ' (' + base.m.campo + ' · ' + base.m.polaridad + ')';
   loot.identificada = true;
   loot.qty--;
   if (loot.qty <= 0) delete state.lootPotions[id];
