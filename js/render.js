@@ -6,6 +6,7 @@ import {
   parsePotKey, parsedToCatKey, parseCatKey,
 } from './utils.js';
 import { CAMPOS, CAMPO_NAMES, EFFECT_KINDS, MOD_KIND_ICONS } from './data.js';
+import * as niveles from './niveles.js';
 import {
   effectText, durationText, saveText, formatDice, rollPool, getDisolvente, modCompat, elabDC, hasMaleficio,
 } from './model.js';
@@ -390,27 +391,62 @@ export function renderLoot() {
 }
 
 // ---- CRAFTEO PANEL RENDERERS ----
-export function renderElaboracion(craftSelectedBase, craftSelectedMods) {
-  const baseList = [];
+// Paso 1: disolventes. Devuelve cuántos reactivos en inventario hay para cada campo.
+export function reactivosPorCampo() {
+  const n = {};
   for (const id in state.catalog) {
-    if (state.catalog[id].type === 'Reactivo' && (state.inventory[id] || 0) > 0)
-      baseList.push({ id, m: state.catalog[id] });
+    const m = state.catalog[id];
+    if (m.type === 'Reactivo' && (state.inventory[id] || 0) > 0 && niveles.reactivoOk(m)) n[m.campo] = (n[m.campo] || 0) + 1;
   }
+  return n;
+}
 
+export function renderElaboracion(craftSelectedSolvent, craftSelectedBase, craftSelectedMods) {
+  const sEl = document.getElementById('craftSolventList');
+  const counts = reactivosPorCampo();
+  sEl.innerHTML = '<div class="solv-grid">' + CAMPO_NAMES.map(c => {
+    const solv = getDisolvente(state.settings, c);
+    const picked = craftSelectedSolvent === c;
+    if (!niveles.disolventeOk(c)) return `<button class="solv-btn solv-${campoClass(c)} solv-bloqueado" disabled title="Se aprende en el nivel ${niveles.nivelDisolvente(c)} de alquimia">
+      <span class="solv-name">🔒 ${solv.name}</span>
+      <span class="solv-sub">${c} · nivel ${niveles.nivelDisolvente(c)} de alquimia</span>
+    </button>`;
+    return `<button class="solv-btn solv-${campoClass(c)}${picked ? ' picked' : ''}" data-action="craft-pick-solvent" data-id="${c}">
+      <span class="solv-name">${CAMPOS[c].icon} ${solv.name}</span>
+      <span class="solv-sub">${c} · CD ${solv.difficulty >= 0 ? '+' : ''}${solv.difficulty} · ${counts[c] || 0} reactivo${counts[c] === 1 ? '' : 's'}</span>
+    </button>`;
+  }).join('') + '</div>';
+
+  const reactPanel = document.getElementById('craftReactivoPanel');
   const bEl = document.getElementById('craftBaseList');
+  if (!craftSelectedSolvent) {
+    reactPanel.style.display = 'none';
+    document.getElementById('craftModPanel').style.display = 'none';
+    return;
+  }
+  reactPanel.style.display = 'block';
+
+  const baseList = [];
+  let bloqueados = 0;
+  for (const id in state.catalog) {
+    const m = state.catalog[id];
+    if (m.type === 'Reactivo' && m.campo === craftSelectedSolvent && (state.inventory[id] || 0) > 0) {
+      if (niveles.reactivoOk(m)) baseList.push({ id, m }); else bloqueados++;
+    }
+  }
+  const notaBloq = bloqueados ? `<p class="muted nivel-bloq">🔒 Tienes ${bloqueados} reactivo${bloqueados === 1 ? '' : 's'} de este disolvente que aún no sabes usar: se aprende${bloqueados === 1 ? '' : 'n'} en un nivel superior de alquimia.</p>` : '';
   if (!baseList.length) {
-    bEl.innerHTML = '<p class="muted">No tienes reactivos en el inventario.</p>';
+    bEl.innerHTML = `<p class="muted">No tienes reactivos que sepas disolver en ${getDisolvente(state.settings, craftSelectedSolvent).name}.</p>${notaBloq}`;
     document.getElementById('craftModPanel').style.display = 'none';
     return;
   }
   bEl.innerHTML = baseList.map(item => {
     const picked = craftSelectedBase === item.id;
-    const solv = getDisolvente(state.settings, item.m.campo);
     return `<div class="craft-pot-row">
-      <span>${item.m.unknown ? '???' : item.m.name} ${catBadge(item.m.campo, item.m.polaridad)} ${rarityBadge(item.m.rarity)} <span class="muted">· ${solv.name}</span> (x${state.inventory[item.id]})</span>
+      <span>${item.m.unknown ? '???' : item.m.name} ${catBadge(item.m.campo, item.m.polaridad)} ${rarityBadge(item.m.rarity)} (x${state.inventory[item.id]})</span>
       <button class="btn btn-sm btn-pick${picked ? ' picked' : ''}" data-action="craft-pick-base" data-id="${item.id}">${picked ? '✅ Elegido' : 'Elegir'}</button>
     </div>`;
-  }).join('');
+  }).join('') + notaBloq;
 
   if (!craftSelectedBase) { document.getElementById('craftModPanel').style.display = 'none'; return; }
   const base = state.catalog[craftSelectedBase];

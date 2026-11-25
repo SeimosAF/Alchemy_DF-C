@@ -1,5 +1,6 @@
-// app.js — init, navigation, event delegation
-import { state, loadState, saveState, setState, getDefaultState, normalizeState } from './state.js';
+// app.js — arranque, módulos de la mesa, navegación y delegación de eventos
+import { state, loadState, saveState, setState, getDefaultState, normalizeState, applyServerData } from './state.js';
+import * as sync from './sync.js';
 import { SOUND_ENABLED, setSoundEnabled } from './data.js';
 import { togglePotCatEntry, renderAll, renderCatMateriales, renderInvMateriales, renderInvPociones, renderCatPociones, renderLoot, usePotion, setApodo, delPotion, renderSettings, onSettingChange } from './render.js';
 import {
@@ -10,10 +11,17 @@ import {
 } from './form.js';
 import {
   craftSetMode, craftConfirm, renderCrafteo, updateAplicacionPanel, updateCraftSummary,
-  craftSelectedBase, craftSelectedMods, craftPotionPicks,
-  setCraftSelectedBase, setCraftSelectedMods, setCraftPotionPicks,
+  craftSelectedSolvent, craftSelectedBase, craftSelectedMods, craftPotionPicks,
+  setCraftSelectedSolvent, setCraftSelectedBase, setCraftSelectedMods, setCraftPotionPicks,
 } from './crafting.js';
-import { renderCauldron, syncCaulAplics, setCaulCraftState } from './cauldron.js';
+import { renderCauldron, syncCaulAplics, setCaulCraftState, brewCauldron } from './cauldron.js';
+import * as auth from './auth.js';
+import * as panel from './panel.js';
+import * as dm from './dm.js';
+import * as modulos from './modulos.js';
+import * as lectura from './lectura.js';
+import * as niveles from './niveles.js';
+import * as diario from './diario.js';
 
 // ---- Cauldron toggle state ----
 let caulActive = false;
@@ -38,7 +46,8 @@ function showInfoSubtab(id) {
 }
 
 function showInvSubtab(id) {
-  ['materiales','pociones','loot'].forEach(s => {
+  if (id === 'dm' && !auth.esDM()) id = 'materiales';
+  ['materiales','pociones','loot','libros','dm'].forEach(s => {
     const el = document.getElementById('invSub-' + s);
     if (el) el.style.display = s === id ? 'block' : 'none';
   });
@@ -47,18 +56,69 @@ function showInvSubtab(id) {
   });
   if (id === 'pociones') renderInvPociones();
   if (id === 'loot') renderLoot();
+  if (id === 'libros') lectura.renderInventario();
+  if (id === 'dm') { dm.render(); dm.recargar(); }
 }
 
+// ---- Módulos de la mesa ----
+// Cada módulo es una pestaña (y quizá una tarjeta de la mesa). Ver modulos.js
+// y docs/ARQUITECTURA.md para añadir uno nuevo (cocina, ficha, armas...).
+modulos.registrar({ id: 'panel', icono: '🏰', titulo: 'Mesa', lugar: 'panel', lugarTxt: 'en la mesa principal',
+  alMostrar() { panel.pintarSaludo(); panel.animarEntrada(); } });
+modulos.registrar({ id: 'inventario', icono: '🎒', titulo: 'Inventario', lugar: 'inventario', lugarTxt: 'revisando su inventario',
+  tarjeta: { orden: 0, clase: 'tarjeta-inventario', texto: 'Tus materiales, pociones, botín y libros' },
+  resumen: () => panel.resumenInventario(),
+  alMostrar() {
+    renderInvMateriales(); renderInvPociones(); lectura.renderInventario();
+    if (document.getElementById('invSub-dm')?.style.display !== 'none') { dm.render(); dm.recargar(); }
+  } });
+modulos.registrar({ id: 'crafteo', icono: '⚗️', titulo: 'Alquimia', lugar: 'alquimia', lugarTxt: 'junto al caldero',
+  tarjeta: { orden: 1, clase: 'tarjeta-alquimia', texto: 'Enciende el caldero y elabora' },
+  resumen: () => panel.resumenAlquimia(),
+  alMostrar() { if (caulActive) renderCauldron(); else renderCrafteo(); diario.alEntrarEnAlquimia(); } });
+modulos.registrar({ id: 'lectura', icono: '📖', titulo: 'Lectura', lugar: 'lectura', lugarTxt: 'leyendo un libro',
+  tarjeta: { orden: 2, clase: 'tarjeta-lectura', texto: 'Tus libros y lo que llevas leído' },
+  resumen: () => lectura.resumen(),
+  alMostrar() { lectura.render(); } });
+modulos.registrar({ id: 'info', icono: '📜', titulo: 'Compendio', lugar: 'compendio', lugarTxt: 'consultando el compendio',
+  alMostrar() {} });
+modulos.registrar({ id: 'usuarios', icono: '🟢', titulo: 'En línea', lugar: 'usuarios', lugarTxt: 'mirando quién anda por aquí',
+  contador: 'navOnlineCount',
+  tarjeta: { orden: 3, clase: 'tarjeta-usuarios', icono: '🔮', titulo: 'Usuarios en línea', texto: 'Quién está en la mesa ahora' },
+  resumen: () => panel.resumenUsuarios(),
+  alMostrar() { panel.renderUsuarios(); } });
+
 function switchTab(id) {
-  ['info','inventario','crafteo'].forEach(t => {
-    const el = document.getElementById('tab-' + t);
-    if (el) el.className = 'tab-content' + (t === id ? ' active' : '');
+  if (!modulos.porId(id)) id = 'panel';
+  modulos.todos().forEach(m => {
+    const el = document.getElementById('tab-' + m.id);
+    if (el) el.className = 'tab-content' + (m.id === id ? ' active' : '');
   });
-  document.querySelectorAll('[data-action="switch-tab"]').forEach(b => {
-    b.className = b.getAttribute('data-id') === id ? 'active' : '';
+  document.querySelectorAll('nav.tab-bar [data-action="switch-tab"]').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-id') === id);
   });
-  if (id === 'inventario') { renderInvMateriales(); renderInvPociones(); }
-  if (id === 'crafteo') renderCrafteo();
+  document.body.dataset.vista = id;
+  sync.setLugar(modulos.lugarDe(id));
+  modulos.porId(id).alMostrar?.();
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+const vistaActual = () => document.body.dataset.vista;
+
+// El DM pulsa "Ver inventario" en la lista de usuarios
+function verInventarioDe(clave) {
+  switchTab('inventario');
+  showInvSubtab('dm');
+  dm.elegir(clave);
+}
+
+// Cosas que solo ve el DM (o que cambian si el DM da o quita poderes)
+function aplicarRol() {
+  panel.pintarCabecera();
+  panel.pintarSaludo();
+  diario.pintarBarra();
+  lectura.render(); lectura.renderInventario();
+  if (!auth.esDM() && document.getElementById('invSub-dm')?.style.display !== 'none') showInvSubtab('materiales');
+  if (document.getElementById('tab-usuarios')?.classList.contains('active')) panel.renderUsuarios();
 }
 
 // ---- Cauldron toggle ----
@@ -103,6 +163,7 @@ function syncCharacter() {
   state.character.intMod = parseInt(document.getElementById('charInt').value) || 0;
   state.character.bonus  = parseInt(document.getElementById('charBonus').value) || 0;
   saveState();
+  if (vistaActual() === 'lectura') lectura.render();   // la tirada de comprensión usa el mod. INT
 }
 
 function loadCharacterUI() {
@@ -122,13 +183,80 @@ function exportData() {
   URL.revokeObjectURL(url);
 }
 
+// ---- Servidor compartido: cambios de otras personas y rechazos ----
+function rerenderAfterServer() {
+  const caulBusy = document.querySelector('#caulStage.caul-brewing');
+  // Si otra persona borró algo que tenías elegido en el caldero, se quita de la selección
+  if (craftSelectedBase && !state.catalog[craftSelectedBase]) { setCraftSelectedBase(null); setCraftSelectedMods({}); }
+  const mods = Object.fromEntries(Object.entries(craftSelectedMods).filter(([mid]) => state.catalog[mid]));
+  if (Object.keys(mods).length !== Object.keys(craftSelectedMods).length) setCraftSelectedMods(mods);
+  if (craftPotionPicks.some(pk => !state.potions[pk])) setCraftPotionPicks(craftPotionPicks.filter(pk => state.potions[pk]));
+  renderAll();
+  if (caulBusy) return;
+  if (caulActive) renderCauldron(); else renderCrafteo();
+  populateDamageTypeSelect();
+  if (document.getElementById('settingsPanel')?.contains(document.activeElement)) return;
+  renderSettings();
+}
+sync.setHooks({
+  presencia(lista) { panel.setPresencia(lista); },
+  usuario() {
+    aplicarRol();
+    sync.aviso(auth.esDM() ? '👑 Ahora eres DM de la mesa.' : 'Ya no eres DM de la mesa.');
+  },
+  remoto(datos, cambios) {
+    const nivelAntes = niveles.nivelActual();
+    applyServerData(datos);
+    rerenderAfterServer();
+    panel.pintarTarjetas();
+    lectura.renderInventario();
+    if (vistaActual() === 'lectura' && !document.getElementById('tab-lectura')?.contains(document.activeElement)) lectura.render();
+    const nivelAhora = niveles.nivelActual();
+    if (nivelAhora !== nivelAntes) {
+      diario.pintarBarra();
+      if (nivelAhora > nivelAntes) {
+        sync.aviso(`📓 ¡Subes al nivel ${nivelAhora} de alquimia! Jhon Arbaquel ha escrito una página nueva en su diario.`);
+        if (vistaActual() === 'crafteo') diario.alEntrarEnAlquimia();
+      } else sync.aviso(`Tu nivel de alquimia ahora es ${nivelAhora}.`);
+    }
+    if (dm.visible()) dm.recargar();
+    for (const c of cambios) sync.aviso(`${c.autor}: ${c.resumen || 'ha hecho cambios'}`);
+  },
+  rechazo(msg) {
+    // refrescar() ya ha llamado a remoto() con el estado bueno del servidor
+    sync.aviso(msg.split('\n')[0], 'error');
+    // Si lo rechazado era una elaboración que ya se veía como hecha, se corrige el resultado
+    const nota = `<div class="result-box fail"><div class="verdict">⚠️ No se ha guardado</div><p>${msg.split('\n')[0]}</p><p>No se ha gastado nada ni se ha creado la poción.</p></div>`;
+    const res = document.getElementById('craftResult');
+    if (res?.innerHTML.trim()) res.innerHTML = nota;
+    const notif = document.getElementById('caulNotifArea');
+    if (caulActive && notif?.querySelector('.caul-notif')) notif.innerHTML = `<div class="caul-notif caul-notif-fail">${nota}</div>`;
+    alert('⚠️ ' + msg);
+  },
+});
+
+// Antes de gastar materiales, trae lo último del servidor (no hace nada en modo local)
+async function freshThenCraft() {
+  await sync.refrescar({ silencioso: true });
+  return craftConfirm();
+}
+
 // ---- Init ----
-document.addEventListener('DOMContentLoaded', () => {
-  loadState();
+document.addEventListener('DOMContentLoaded', async () => {
+  await auth.iniciar();          // pantalla de entrada (solo si hay servidor)
+  panel.pintarCabecera();
+  await loadState();
   loadCharacterUI();
   updateMatForm();
   renderAll();
   renderCrafteo();
+  dm.init();
+  lectura.init();
+  panel.initUsuarios(verInventarioDe);
+  modulos.construirPestanas(document.getElementById('barraModulos'));
+  modulos.construirTarjetas(document.getElementById('mesaTarjetas'));
+  diario.pintarBarra();
+  switchTab('panel');            // las tarjetas aparecen una a una
 
   // Character fields
   ['charName','charInt','charBonus'].forEach(id => {
@@ -166,12 +294,21 @@ document.addEventListener('DOMContentLoaded', () => {
       reader.onload = e => {
         try {
           const imported = normalizeState(JSON.parse(e.target.result));
+          if (sync.modo === 'servidor' && !auth.esDM()) {
+            // El nivel de alquimia y las tiradas de los libros solo los cambia el DM: se conservan los de ahora
+            imported.perfil = state.perfil;
+            for (const [lid, l] of Object.entries(imported.libros || {})) {
+              const ya = state.libros?.[lid];
+              l.pruebas = ya ? ya.pruebas || {} : Object.fromEntries(Object.keys(l.pruebas || {}).map(k => [k, { cd: null }]));
+            }
+          }
           setState(imported);
           saveState();
           loadCharacterUI();
           resetForm();
           renderAll();
           renderCrafteo();
+          lectura.render(); lectura.renderInventario(); diario.pintarBarra();
           alert('Datos importados.');
         } catch (err) { alert('Error al importar: ' + err.message); }
       };
@@ -188,10 +325,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     switch (action) {
       case 'switch-tab':    switchTab(id); break;
+      case 'salir':         if (confirm('¿Cerrar sesión en este navegador?')) auth.salir(); break;
       case 'info-subtab':   showInfoSubtab(id); break;
       case 'inv-subtab':    showInvSubtab(id); break;
       case 'craft-set-mode':
-        craftSetMode(id);
+        if (craftSetMode(id) === false) break;
         // If switching away from elaboración, close cauldron
         if (id !== 'elaboracion' && caulActive) {
           caulActive = false;
@@ -236,6 +374,12 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         break;
 
+      case 'craft-pick-solvent':
+        // Cambiar de disolvente vacía el caldero
+        setCraftSelectedSolvent(craftSelectedSolvent === id ? null : id);
+        setCraftSelectedBase(null);
+        setCraftSelectedMods({});
+        renderCrafteo(); break;
       case 'craft-pick-base':
         setCraftSelectedBase(craftSelectedBase === id ? null : id);
         setCraftSelectedMods({});
@@ -268,19 +412,34 @@ document.addEventListener('DOMContentLoaded', () => {
         renderCrafteo(); break;
       }
       case 'toggle-cauldron': toggleCauldron(); break;
+      case 'abrir-diario': diario.abrir(); break;
+      case 'nivel-propio': {
+        const n = niveles.nivelActual() + (parseInt(id) || 0);
+        if (niveles.fijarPropio(n)) {
+          diario.pintarBarra(); panel.pintarTarjetas();
+          if (caulActive) renderCauldron(); else renderCrafteo();
+          if (parseInt(id) > 0) diario.alEntrarEnAlquimia();
+        }
+        break;
+      }
+      case 'ir-libros': e.preventDefault(); switchTab('inventario'); showInvSubtab('libros'); break;
 
       case 'caul-elaborar': {
+        const fresh = sync.refrescar({ silencioso: true });   // mientras gira el caldero
+        brewCauldron(async () => {
+        await fresh;
         syncCaulAplics();
         const caulBonusEl = document.getElementById('caulBonus');
         const craftBonusEl2 = document.getElementById('craftBonus');
         if (caulBonusEl && craftBonusEl2) craftBonusEl2.value = caulBonusEl.value;
         // Capture reactivo campo BEFORE craftConfirm() resets craftSelectedBase
         const prevCategory = state.catalog[craftSelectedBase]?.campo ?? null;
-        craftConfirm();   // resets craftSelectedBase; may call renderCrafteo()
+        const prevPolaridad = state.catalog[craftSelectedBase]?.polaridad ?? null;
+        if (!craftConfirm()) { setCaulCraftState(null, null); renderCauldron(); return; }   // resets craftSelectedBase
         const craftResultEl   = document.getElementById('craftResult');
         const craftResultHTML = craftResultEl?.innerHTML || '';
         const isSuccess       = !!craftResultEl?.querySelector('.result-box.success');
-        setCaulCraftState(isSuccess ? 'success' : 'fail', prevCategory);
+        setCaulCraftState(isSuccess ? 'success' : 'fail', prevCategory, prevPolaridad);
         hideCauldronTextPanels();
         renderCauldron();   // renders in result state; triggers particles via setTimeout
         // Inject notification into the zone above the cauldron
@@ -288,16 +447,17 @@ document.addEventListener('DOMContentLoaded', () => {
         if (notifArea && craftResultHTML) {
           notifArea.innerHTML = `<div class="caul-notif caul-notif-${isSuccess ? 'success' : 'fail'} ${isSuccess ? 'caul-anim-success' : 'caul-anim-fail'}">${craftResultHTML}</div>`;
         }
-        break;
-      }
+      }); break; }
       case 'caul-retry':
         setCaulCraftState(null, null);
+        setCraftSelectedSolvent(null);
         setCraftSelectedBase(null);
         setCraftSelectedMods({});
         renderCauldron();   // liquid transitions blue via CSS, shows fresh base-picker
         break;
       case 'caul-reset':
         setCaulCraftState(null, null);
+        setCraftSelectedSolvent(null);
         setCraftSelectedBase(null);
         setCraftSelectedMods({});
         renderCauldron();
@@ -310,8 +470,9 @@ document.addEventListener('DOMContentLoaded', () => {
         break;
       }
 
-      case 'craft-confirm': craftConfirm(); break;
+      case 'craft-confirm': freshThenCraft(); break;
       case 'craft-reset':
+        setCraftSelectedSolvent(null);
         setCraftSelectedBase(null);
         setCraftSelectedMods({});
         setCraftPotionPicks([]);
@@ -356,9 +517,13 @@ document.addEventListener('DOMContentLoaded', () => {
       case 'export-data': exportData(); break;
       case 'import-data': document.getElementById('importFile').click(); break;
       case 'reset-all':
-        if (confirm('¿Borrar TODOS los datos? Esta acción no se puede deshacer.')) {
+        if (sync.modo === 'servidor' && !auth.esDM()) { alert('Solo el DM puede borrar los datos de la mesa.'); break; }
+        if (confirm(sync.modo === 'servidor'
+            ? '¿Borrar TODOS los datos DEL SERVIDOR? Se borra el catálogo de materiales y pociones para toda la mesa y tu propio inventario (el de los demás jugadores pierde los materiales borrados). No se puede deshacer (salvo con las copias de seguridad).'
+            : '¿Borrar TODOS los datos? Esta acción no se puede deshacer.')) {
           setState(getDefaultState());
           saveState(); loadCharacterUI(); resetForm(); renderAll(); renderCrafteo();
+          lectura.render(); lectura.renderInventario(); diario.pintarBarra();
         }
         break;
     }

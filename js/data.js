@@ -53,7 +53,7 @@ export const DEFAULT_SETTINGS = {
   disolventes: {
     'Cuerpo': { name: 'Agua',           difficulty: 0 },
     'Mente':  { name: 'Azogue',         difficulty: 1 },
-    'Alma':   { name: 'Polvo mágico',   difficulty: 2 },
+    'Alma':   { name: 'Polvo etéreo',   difficulty: 2 },
     'Mágico': { name: 'Esencia mágica', difficulty: 3 },
   },
   polaridadOpuestaDiff: 2,   // modificador de polaridad contraria a la del reactivo

@@ -6,6 +6,7 @@ import {
   roll20, calcBonus,
 } from './utils.js';
 import { elabDC, applyModifiers, modCompat, getDisolvente, mergePools } from './model.js';
+import * as niveles from './niveles.js';
 import {
   renderElaboracion, renderPotPicker,
   renderInvMateriales, renderInvPociones,
@@ -13,11 +14,13 @@ import {
 
 // ---- Craft state (use setters from other modules — cannot reassign exported lets directly) ----
 export let craftMode = 'elaboracion';
+export let craftSelectedSolvent = null;   // campo cuyo disolvente está en el caldero
 export let craftSelectedBase = null;
 export let craftSelectedMods = {};
 export let craftPotionPicks = [];
 
 export function setCraftMode(v)         { craftMode = v; }
+export function setCraftSelectedSolvent(v) { craftSelectedSolvent = v; }
 export function setCraftSelectedBase(v) { craftSelectedBase = v; }
 export function setCraftSelectedMods(v) { craftSelectedMods = v; }
 export function setCraftPotionPicks(v)  { craftPotionPicks = v; }
@@ -40,6 +43,20 @@ export function updateAplicacionPanel() {
   const fum = document.getElementById('aplicFumigena');
   const conflict = inh?.checked && fum?.checked;
   document.getElementById('aplicConflictWarn').style.display = conflict ? 'block' : 'none';
+  // Métodos de aplicación que aún no se han aprendido: bloqueados
+  APLICACION_OPTIONS.forEach(opt => {
+    const cb = document.querySelector(`[name="craftAplic"][value="${opt.id}"]`);
+    if (!cb) return;
+    const ok = niveles.aplicOk(opt.id);
+    cb.disabled = !ok;
+    if (!ok) cb.checked = false;
+    const lab = cb.closest('.aplic-opt');
+    lab?.classList.toggle('aplic-bloqueada', !ok);
+    if (lab) lab.title = ok ? '' : `Se aprende en el nivel ${niveles.nivelAplic(opt.id)} de alquimia`;
+  });
+  if (!getCheckedAplics().length && niveles.aplicOk('brebaje')) {
+    const b = document.querySelector('[name="craftAplic"][value="brebaje"]'); if (b) b.checked = true;
+  }
   const checked = getCheckedAplics();
   APLICACION_OPTIONS.forEach(opt => {
     const el = document.getElementById('ad-' + opt.id);
@@ -78,7 +95,12 @@ export function updateCraftSummary() {
 }
 
 export function craftSetMode(mode) {
+  if (!niveles.modoOk(mode)) {
+    alert(`La ${niveles.NOMBRE_MODO[mode]} se aprende en el nivel ${niveles.nivelModo(mode)} de alquimia. Pregunta al DM… o lee el diario de Jhon Arbaquel.`);
+    return false;
+  }
   craftMode = mode;
+  craftSelectedSolvent = null;
   craftSelectedBase = null;
   craftSelectedMods = {};
   craftPotionPicks = [];
@@ -87,12 +109,18 @@ export function craftSetMode(mode) {
 }
 
 export function renderCrafteo() {
+  if (!niveles.modoOk(craftMode)) { craftMode = 'elaboracion'; craftPotionPicks = []; }   // el DM ha bajado el nivel
   ['elaboracion','concentracion','multipocion'].forEach(m => {
     const btn = document.querySelector(`[data-action="craft-set-mode"][data-id="${m}"]`);
-    if (btn) btn.className = 'btn mode-btn' + (craftMode === m ? ' active' : '');
+    if (!btn) return;
+    const ok = niveles.modoOk(m);
+    btn.className = 'btn mode-btn' + (craftMode === m ? ' active' : '') + (ok ? '' : ' mode-bloqueado');
+    btn.title = ok ? '' : `Se aprende en el nivel ${niveles.nivelModo(m)} de alquimia`;
+    if (!btn.dataset.txt) btn.dataset.txt = btn.textContent;
+    btn.textContent = (ok ? '' : '🔒 ') + btn.dataset.txt;
   });
   const hints = {
-    elaboracion: 'Combina un reactivo (su campo fija el disolvente) con modificadores opcionales.',
+    elaboracion: 'Echa primero el disolvente en el caldero, luego un reactivo de ese disolvente y, si quieres, modificadores.',
     concentracion: '2 pociones del mismo reactivo → sube de pureza (consume ambas). Sin purificar + sin purificar = Pureza I. Las mágicas no se concentran.',
     multipocion: '2 pociones → multipoción (consume ambas). Con disolventes distintos la CD sube. Las mágicas no se combinan.',
   };
@@ -101,7 +129,7 @@ export function renderCrafteo() {
   document.getElementById('craftConcentracionPanels').style.display = craftMode === 'concentracion' ? 'block' : 'none';
   document.getElementById('craftMultipocionPanels').style.display = craftMode === 'multipocion' ? 'block' : 'none';
 
-  if (craftMode === 'elaboracion') renderElaboracion(craftSelectedBase, craftSelectedMods);
+  if (craftMode === 'elaboracion') renderElaboracion(craftSelectedSolvent, craftSelectedBase, craftSelectedMods);
   else if (craftMode === 'concentracion') renderPotPicker(document.getElementById('craftPotionList'), craftPotionPicks);
   else renderPotPicker(document.getElementById('craftMultiList'), craftPotionPicks);
   updateAplicacionPanel();
@@ -129,10 +157,50 @@ function pairDC(p1, p2, isMulti) {
 }
 
 // ---- Confirm craft ----
+// Devuelve false si no se pudo elaborar (p. ej. otra persona gastó un material).
 export function craftConfirm() {
+  const base = craftMode === 'elaboracion' ? state.catalog[craftSelectedBase] : null;
+  const problem = niveles.problemaCrafteo(craftMode, base, craftSelectedMods, getCheckedAplics(), state.catalog) || craftStockProblem();
+  if (problem) {
+    alert(problem + '\n\nNo se ha tirado el dado ni se ha gastado nada.');
+    craftSelectedSolvent = null; craftSelectedBase = null; craftSelectedMods = {}; craftPotionPicks = [];
+    renderCrafteo(); renderInvMateriales(); renderInvPociones();
+    return false;
+  }
   if (craftMode === 'elaboracion') confirmCraftElab();
   else if (craftMode === 'concentracion') confirmCraftConc();
   else confirmCraftMulti();
+  return true;
+}
+
+// Comprueba que sigue habiendo de todo lo que se va a gastar. Con varias
+// personas a la vez, alguien puede haberlo usado mientras elegías.
+export function craftStockProblem() {
+  const need = {}, label = {};
+  if (craftMode === 'elaboracion') {
+    if (!craftSelectedBase) return null;
+    const base = state.catalog[craftSelectedBase];
+    if (!base) return 'El reactivo elegido ya no existe: otra persona lo ha borrado del catálogo.';
+    need[craftSelectedBase] = 1;
+    const mods = compatMods(base, craftSelectedMods);
+    for (const mid in mods) need[mid] = (need[mid] || 0) + mods[mid];
+    for (const id in need) {
+      const have = state.inventory[id] || 0;
+      const m = state.catalog[id];
+      if (!m) return 'Uno de los materiales elegidos ya no existe: otra persona lo ha borrado.';
+      if (have < need[id]) return `No queda suficiente «${m.unknown ? '???' : m.name}»: hay ${have} y hacen falta ${need[id]}. Otra persona lo habrá usado.`;
+    }
+    for (const mid in craftSelectedMods) if (craftSelectedMods[mid] > 0 && !state.catalog[mid]) return 'Uno de los modificadores elegidos ya no existe: otra persona lo ha borrado.';
+    return null;
+  }
+  if (craftPotionPicks.length < 2) return null;
+  for (const pk of craftPotionPicks) need[pk] = (need[pk] || 0) + 1;
+  for (const pk in need) {
+    const p = state.potions[pk];
+    if (!p) return 'Una de las pociones elegidas ya no está en el inventario: otra persona la habrá usado.';
+    if ((p.qty || 0) < need[pk]) return `No quedan suficientes «${p.name}»: hay ${p.qty} y hacen falta ${need[pk]}.`;
+  }
+  return null;
 }
 
 function confirmCraftElab() {
@@ -190,7 +258,7 @@ function confirmCraftElab() {
     saveState();
     resultEl.innerHTML = `<div class="result-box fail"><div class="verdict puterio">❌ Fallido. d20(${roll})+bono(${bonus})=${total} vs CD ${dc}</div><p>Se pierden los materiales.</p></div>`;
   }
-  craftSelectedBase = null; craftSelectedMods = {}; craftPotionPicks = [];
+  craftSelectedSolvent = null; craftSelectedBase = null; craftSelectedMods = {}; craftPotionPicks = [];
   renderCrafteo(); renderInvMateriales(); renderInvPociones();
 }
 

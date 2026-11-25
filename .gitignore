@@ -1,0 +1,40 @@
+# ============================================================
+# Nada de esto se sube a GitHub: contraseñas, datos de la partida
+# (cuentas, sesiones, inventarios) y archivos temporales.
+# ============================================================
+
+# Contraseñas: palabra de paso de la mesa y contraseña fija del superusuario «DM».
+# Se sube solo la plantilla .env.example (sin contraseñas).
+.env
+.env.*
+!.env.example
+
+# Base de datos del servidor y sus copias de seguridad: cuentas (contraseñas cifradas),
+# sesiones abiertas e inventarios de los jugadores
+datos/
+copias/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite3
+
+# Exportaciones de la app (pueden llevar el inventario de alguien)
+alquimia_v2_*.json
+
+# Python
+__pycache__/
+*.py[cod]
+
+# Registros y temporales
+*.log
+*.tmp
+node_modules/
+
+# Sistema y editores
+Thumbs.db
+desktop.ini
+.DS_Store
+.vscode/
+.idea/

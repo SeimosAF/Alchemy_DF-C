@@ -93,9 +93,15 @@ export function hasMaleficio(effects) {
 // Regla propuesta (pendiente de confirmar): el modificador debe ser del mismo campo que el
 // reactivo o de campo Mágico. Polaridad contraria → +settings.polaridadOpuestaDiff a la CD.
 // Las pociones Mágicas no admiten modificadores.
+// Filtro opcional por nivel de alquimia (lo instala niveles.js). Devuelve el motivo o null.
+let filtroNivel = null;
+export function setFiltroNivel(fn) { filtroNivel = fn; }
+
 export function modCompat(reactivo, mod, settings) {
   if (!reactivo || !mod) return { ok: false, reason: '' };
   if (reactivo.discriminante) return { ok: false, reason: 'reactivo discriminante' };
+  const bloqueo = filtroNivel && filtroNivel(mod);
+  if (bloqueo) return { ok: false, reason: bloqueo, nivel: true };
   if (reactivo.campo === 'Mágico' && !MAGIC_MOD_KINDS.includes(mod.modKind))
     return { ok: false, reason: 'las mágicas solo aceptan ' + MAGIC_MOD_KINDS.join(', ') };
   if (reactivo.campo !== 'Mágico' && MAGIC_ONLY_MOD_KINDS.includes(mod.modKind))

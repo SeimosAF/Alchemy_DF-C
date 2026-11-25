@@ -3,15 +3,64 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width,initial-scale=1.0">
-  <title>Alquimia v2</title>
+  <title>La taberna de Jhon</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cinzel+Decorative:wght@700&family=Cinzel:wght@500;700&family=IM+Fell+English:ital@0;1&display=swap">
   <link rel="stylesheet" href="style.css">
 </head>
-<body>
+<body class="sin-sesion">
+
+<!-- ====== PANTALLA DE ENTRADA (solo con servidor) ====== -->
+<div id="pantallaEntrada" class="entrada">
+  <div class="entrada-fondo" aria-hidden="true">
+    <div class="antorcha antorcha-izq"><div class="llama"></div></div>
+    <div class="antorcha antorcha-der"><div class="llama"></div></div>
+    <div class="ascuas"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+  </div>
+  <div class="pergamino">
+    <div class="pergamino-rollo pergamino-rollo-arriba" aria-hidden="true"></div>
+    <div class="pergamino-hoja">
+      <div class="entrada-emblema" aria-hidden="true">⚗️</div>
+      <h1 class="entrada-titulo">La taberna<br><span>de Jhon</span></h1>
+      <p class="entrada-sub">Alquimia, pociones y buena compañía</p>
+      <div class="entrada-pestanas" role="tablist">
+        <button type="button" data-entrada-modo="entrar">Entrar</button>
+        <span class="entrada-sep">✦</span>
+        <button type="button" data-entrada-modo="crear">Crear cuenta</button>
+      </div>
+      <form id="entradaForm" class="entrada-form" autocomplete="on" novalidate>
+        <label class="entrada-campo">
+          <span>Nombre</span>
+          <input type="text" id="entradaNombre" name="username" autocomplete="username" maxlength="24" spellcheck="false" required>
+        </label>
+        <label class="entrada-campo">
+          <span>Contraseña</span>
+          <input type="password" id="entradaPass" name="password" autocomplete="current-password" maxlength="200" required>
+        </label>
+        <label class="entrada-campo" id="filaPass2" hidden>
+          <span>Repite la contraseña</span>
+          <input type="password" id="entradaPass2" autocomplete="new-password" maxlength="200">
+        </label>
+        <label class="entrada-campo" id="filaClave" hidden>
+          <span>Palabra de paso de la mesa</span>
+          <input type="password" id="entradaClave" autocomplete="off" maxlength="200">
+        </label>
+        <p class="entrada-nota" id="entradaNota"></p>
+        <p class="entrada-error" id="entradaError" role="alert"></p>
+        <button type="submit" class="sello" id="entradaBoton"><span>Cruzar el umbral</span></button>
+      </form>
+    </div>
+    <div class="pergamino-rollo pergamino-rollo-abajo" aria-hidden="true"></div>
+  </div>
+</div>
 
 <header class="app-header">
   <div class="header-title-row">
-    <h1>⚗️ Alquimia</h1>
+    <h1 class="app-titulo" data-action="switch-tab" data-id="panel" title="Volver a la mesa">🍺 La taberna de Jhon</h1>
+    <span class="usuario-chip" id="usuarioChip" hidden></span>
     <button class="mute-btn" data-action="toggle-sound" id="muteBtn" title="Silenciar/Activar sonidos">🔊</button>
+    <button class="salir-btn" data-action="salir" id="salirBtn" title="Cerrar sesión" hidden>🚪 Cerrar sesión</button>
   </div>
   <div class="char-bar">
     <label>Personaje: <input type="text" id="charName" value="Mi personaje"></label>
@@ -19,28 +68,57 @@
     <label>Bono alquimista: <input type="number" id="charBonus" value="0" min="0" max="20"></label>
     <button class="btn btn-sm" data-action="export-data">💾 Exportar</button>
     <button class="btn btn-sm" data-action="import-data">📂 Importar</button>
-    <button class="btn btn-sm" style="background:#8a2a2a" data-action="reset-all">🗑️ Borrar todo</button>
+    <button class="btn btn-sm solo-dm-o-local" style="background:#8a2a2a" data-action="reset-all">🗑️ Borrar todo</button>
     <input type="file" id="importFile" accept=".json" style="display:none">
   </div>
 </header>
 
-<nav class="tab-bar">
-  <button class="active" data-action="switch-tab" data-id="info">📋 Info</button>
-  <button data-action="switch-tab" data-id="inventario">🎒 Inventario</button>
-  <button data-action="switch-tab" data-id="crafteo">⚗️ Crafteo</button>
-</nav>
+<!-- Las pestañas y las tarjetas de la mesa salen del registro de módulos (js/modulos.js, js/app.js) -->
+<nav class="tab-bar" id="barraModulos"></nav>
 
-<!-- ====== INFO TAB ====== -->
-<section id="tab-info" class="tab-content active">
+<!-- ====== MESA PRINCIPAL: 4 tarjetas ====== -->
+<section id="tab-panel" class="tab-content active">
+  <div class="mesa">
+    <h2 class="mesa-saludo" id="mesaSaludo"></h2>
+    <p class="mesa-sub">¿Qué te trae hoy a la taberna? <button class="mesa-salir" data-action="salir" id="mesaSalir" hidden>¿No eres tú? Cerrar sesión</button></p>
+    <div class="mesa-tarjetas" id="mesaTarjetas"></div>
+  </div>
+</section>
+
+<!-- ====== USUARIOS EN LÍNEA ====== -->
+<section id="tab-usuarios" class="tab-content">
+  <div class="panel">
+    <h2>🔮 Usuarios en línea</h2>
+    <p class="muted">Se actualiza solo cada pocos segundos. <span class="solo-dm">Como DM puedes poner una contraseña nueva a quien la olvide y abrir su inventario, sus libros y su nivel de alquimia.</span>
+      <span class="solo-admin">Como superusuario, además, das o quitas poderes de DM y destierras (o readmites) cuentas.</span></p>
+    <div id="listaUsuarios"></div>
+  </div>
+</section>
+
+<!-- ====== LECTURA (módulo js/lectura.js) ====== -->
+<section id="tab-lectura" class="tab-content">
+  <div class="panel lectura-cab">
+    <h2>📖 Lectura</h2>
+    <p class="muted">En cada <b>descanso corto o largo</b> puedes avanzar una lectura de un libro. Las lecturas marcadas con 🌙 piden
+      <b>sí o sí un descanso largo</b> y una <b>tirada de comprensión</b>: d20 + mod. INT (<b id="lecturaIntMod">+0</b>, se cambia en la barra
+      de arriba) contra la dificultad que fija el DM. Al terminar el libro obtienes su bono.</p>
+    <p class="muted">Los libros se dan de alta en <a href="#" data-action="ir-libros">Inventario → Libros</a>.</p>
+  </div>
+  <div id="lecturaAviso"></div>
+  <div id="lecturaLista"></div>
+</section>
+
+<!-- ====== COMPENDIO (catálogos de alquimia) ====== -->
+<section id="tab-info" class="tab-content">
   <div class="subtab-bar">
-    <button class="subtab-btn active" data-action="info-subtab" data-id="identificacion">📋 Identificación</button>
-    <button class="subtab-btn" data-action="info-subtab" data-id="catalogo">🗃️ Catálogo Materiales</button>
+    <button class="subtab-btn active" data-action="info-subtab" data-id="catalogo">🗃️ Catálogo Materiales</button>
     <button class="subtab-btn" data-action="info-subtab" data-id="pociones">🧪 Catálogo Pociones</button>
+    <button class="subtab-btn" data-action="info-subtab" data-id="identificacion">📋 Identificación</button>
     <button class="subtab-btn" data-action="info-subtab" data-id="parametros">⚙️ Parámetros</button>
   </div>
 
   <!-- Identificación -->
-  <div id="infoSub-identificacion">
+  <div id="infoSub-identificacion" style="display:none">
     <div class="panel">
       <h2 id="matFormTitle">➕ Identificar componente</h2>
       <label class="check-label" style="margin-bottom:10px;padding:8px 10px;background:#faf6ef;border:1px solid #d8cdb4;border-radius:6px">
@@ -286,7 +364,7 @@
   </div>
 
   <!-- Catálogo Materiales -->
-  <div id="infoSub-catalogo" style="display:none">
+  <div id="infoSub-catalogo">
     <div class="panel">
       <h2>❓ Sin identificar</h2>
       <div id="catUnknownList"><p class="muted">No hay componentes sin identificar.</p></div>
@@ -326,11 +404,33 @@
       <button class="subtab-btn active" data-action="inv-subtab" data-id="materiales">📦 Materiales</button>
       <button class="subtab-btn" data-action="inv-subtab" data-id="pociones">🧪 Pociones</button>
       <button class="subtab-btn" data-action="inv-subtab" data-id="loot">🔍 Loot</button>
+      <button class="subtab-btn" data-action="inv-subtab" data-id="libros">📚 Libros</button>
+      <button class="subtab-btn subtab-dm solo-dm" data-action="inv-subtab" data-id="dm">👑 Inventarios de la mesa (DM)</button>
     </div>
+    <div id="invSub-dm" style="display:none"><div id="dmPanel"></div></div>
     <div id="invSub-materiales"><div id="invMatList"></div></div>
     <div id="invSub-pociones" style="display:none">
       <div id="invPotList"></div>
       <div id="drinkResult"></div>
+    </div>
+    <div id="invSub-libros" style="display:none">
+      <div id="invLibrosList"></div>
+      <div class="libro-form">
+        <h3>➕ Dar de alta un libro</h3>
+        <div class="form-row-2">
+          <div class="form-row"><label>Título *</label><input type="text" id="libroNombre" maxlength="120"></div>
+          <div class="form-row"><label>Número de lecturas</label><input type="number" id="libroLecturas" value="8" min="1" max="100" style="width:90px"></div>
+        </div>
+        <div class="form-row"><label>Bono al terminarlo</label><input type="text" id="libroBono" maxlength="300" placeholder="p. ej. +1 a las pruebas de Arcanos; aprendes el conjuro Identificar"></div>
+        <div class="form-row"><label>Descripción (opcional)</label><textarea id="libroDesc" rows="2" maxlength="1000"></textarea></div>
+        <div class="form-row"><label>Lecturas que piden descanso largo y tirada de comprensión</label>
+          <input type="text" id="libroPruebas" placeholder="p. ej. 4, 8">
+          <p class="muted" id="libroPruebasAyuda" style="font-size:.85em;margin:4px 0 0"></p></div>
+        <div class="btn-row">
+          <button class="btn" data-lec="guardar-libro" id="libroGuardar">➕ Añadir libro</button>
+          <button class="btn" style="background:#777" data-lec="cancelar-libro" id="libroCancelar" hidden>✖ Cancelar edición</button>
+        </div>
+      </div>
     </div>
     <div id="invSub-loot" style="display:none">
       <div class="form-row-2">
@@ -352,6 +452,7 @@
 
 <!-- ====== CRAFTEO TAB ====== -->
 <section id="tab-crafteo" class="tab-content">
+  <div class="panel nivel-barra" id="alqNivelBar"></div>
   <div class="panel">
     <h2>Tipo de crafteo</h2>
     <div class="mode-btn-bar">
@@ -375,11 +476,16 @@
   <!-- Elaboración -->
   <div id="craftElaboracionPanels">
     <div class="panel">
-      <h2>1. Elige el Reactivo</h2>
+      <h2>1. Echa el disolvente</h2>
+      <p class="muted">El caldero empieza vacío. El disolvente da la textura y el color inicial al líquido.</p>
+      <div id="craftSolventList"></div>
+    </div>
+    <div class="panel" id="craftReactivoPanel" style="display:none">
+      <h2>2. Elige el Reactivo</h2>
       <div id="craftBaseList"></div>
     </div>
     <div class="panel" id="craftModPanel" style="display:none">
-      <h2>2. Elige los Modificadores</h2>
+      <h2>3. Elige los Modificadores</h2>
       <div id="craftModList"></div>
     </div>
   </div>

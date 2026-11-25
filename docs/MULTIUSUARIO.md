@@ -1,0 +1,130 @@
+# Usar la app entre varias personas
+
+La app puede funcionar de dos formas. Ella sola detecta cuál toca:
+
+| Cómo la abres | Dónde se guardan los datos | Se comparte |
+|---|---|---|
+| `iniciar.bat` / `python servidor.py` | En el servidor, archivo `datos/alquimia.db` | Sí, con todo el que entre a esa dirección |
+| Sin servidor (por ejemplo `npx http-server`) | En el navegador, como siempre | No |
+
+Arriba a la derecha se ve el modo: **🟢 Conectado**, **🟡 Guardando…**,
+**🔴 Sin conexión** o **💾 Solo este navegador**.
+
+## Cuentas: entrar con usuario y contraseña
+
+Con servidor, lo primero que aparece es un pergamino para **Entrar** o **Crear cuenta**.
+
+- **La primera cuenta que se crea es la del DM** (👑). Créala tú antes que nadie.
+- Las contraseñas se guardan cifradas (PBKDF2-SHA256 con sal): ni el servidor las conoce.
+- Si `ALQUIMIA_CLAVE` está puesta, hace falta esa **palabra de paso de la mesa** para crear
+  una cuenta (también la primera). Para entrar después solo hace falta la contraseña de cada uno.
+- La sesión se recuerda en el navegador 30 días. El botón 🚪 cierra la sesión.
+- Tras entrar aparece **la mesa** con cuatro tarjetas: **Inventario** (materiales, pociones, botín
+  y libros), **Alquimia** (el caldero, con tu nivel y el diario de Jhon Arbaquel), **Lectura**
+  (tus libros y lo que llevas leído) y **Usuarios en línea** (quién está conectado y en qué parte
+  de la app anda). El **Compendio** (catálogo de materiales y de pociones, identificación y
+  parámetros) está en su pestaña y en un botón de Alquimia.
+
+### El superusuario «DM»
+
+Hay una cuenta especial que se llama **DM** (🛡️ Superusuario). No se crea a mano: el servidor
+la crea solo al arrancar con la contraseña que pongas en `ALQUIMIA_ADMIN` (archivo `.env`).
+Esa contraseña es **fija**: para cambiarla, cambia `ALQUIMIA_ADMIN` y reinicia el servidor
+(`docker-iniciar.bat`). Si `ALQUIMIA_ADMIN` está vacía, el superusuario no puede entrar.
+
+Entra con nombre `DM` y esa contraseña. Puede todo lo que puede un DM y además, en
+**Usuarios en línea**:
+
+- **👑 Hacer DM / Quitar DM** a cualquier cuenta (solo él puede hacerlo).
+- **🚫 Desterrar** una cuenta: se le cierra la sesión al momento y no puede volver a entrar.
+  Sus datos no se borran. Las cuentas desterradas solo las ve el superusuario, con el botón
+  **🕊️ Readmitir**. También desde la consola: `python servidor.py readmitir NOMBRE`.
+
+El superusuario no es un personaje: no aparece en «Inventarios de la mesa».
+
+### El DM
+
+- En **Inventario → 👑 Inventarios de la mesa** elige un jugador y cambia su inventario:
+  +1 / −1, escribir la cantidad exacta, dar o quitar pociones y dar botín sin identificar.
+  Cada cambio es una transacción como las demás: se aplica entera o nada, nunca deja
+  nada por debajo de 0, y si el jugador cambió esa cantidad justo a la vez, se rechaza en
+  vez de pisarla.
+- En ese mismo panel fija el **nivel de alquimia** de cada jugador (− / + Subir) y gestiona sus
+  **libros**: darle uno nuevo, quitárselo y decir qué lecturas piden descanso largo y tirada
+  de comprensión, con su CD (`casilla:CD`, por ejemplo `4:14, 8:16`). El jugador no ve la CD.
+- En **Usuarios en línea** puede ponerle una contraseña nueva a quien la olvide y abrir su
+  inventario, libros y nivel. Dar o quitar poderes de DM es cosa del superusuario.
+- Solo el DM ve **Borrar todo** con servidor.
+
+¿Se te olvidó la contraseña del DM? En la carpeta del repo:
+
+    python servidor.py restablecer Moisés NuevaContraseña
+
+y con Docker:
+
+    docker compose exec app python servidor.py restablecer Moisés NuevaContraseña
+
+## Cómo se protegen los datos (como un banco)
+
+Cada acción (elaborar, dar de alta un material, beber una poción...) se manda al
+servidor como **una transacción**: una lista de cambios que se aplica **entera o nada**.
+
+1. **Todo o nada.** Elaborar una poción gasta materiales y crea la poción en el
+   mismo paquete. Si algo falla, no se gasta nada ni se crea nada.
+2. **Nunca por debajo de cero.** El stock se manda como "resta 1" o "suma 3", no como
+   "ahora hay 2". El servidor comprueba en el momento que hay suficiente; si no, rechaza.
+3. **Uno detrás de otro.** El servidor aplica las transacciones de una en una
+   (SQLite con `BEGIN IMMEDIATE`), así dos personas nunca gastan la misma unidad.
+4. **"Como lo dejé".** Para cambios de fichas (editar un material, ajustes...) se manda
+   cómo estaba antes. Si otra persona lo cambió entretanto, se rechaza en vez de pisarlo.
+5. **Sin duplicados.** Cada transacción lleva un número único. Si se corta la conexión
+   y el navegador la reenvía, el servidor no la aplica dos veces.
+6. **Nada se pierde sin conexión.** Lo pendiente queda en cola (también si cierras la
+   pestaña) y se reintenta solo.
+7. **Queda apuntado.** Cada transacción confirmada se guarda en un libro de registro
+   (`/api/diario`) con quién y cuándo.
+8. **Copias de seguridad.** El servidor copia la base al arrancar y cada 24 h en
+   `datos/copias/`, guardando las 7 últimas.
+
+### El caso "alguien gastó mi material"
+
+- Al pulsar **Elaborar**, la app pide al servidor lo último antes de tirar el dado. Si ya
+  no queda el material, avisa y **no tira ni gasta nada**.
+- Si aun así coinciden en el mismo segundo, el servidor rechaza la transacción, la app
+  muestra **"⚠️ No se ha guardado"**, explica qué faltaba y quién lo cambió, y se pone al
+  día con lo que hay de verdad.
+
+Cambios distintos a la vez (tú elaboras, tu amigo da de alta un material) no chocan:
+se aplican los dos y cada uno ve lo del otro en unos segundos, con un aviso abajo a la derecha.
+
+## Qué es de cada persona
+
+- **De cada jugador:** su inventario de materiales, sus pociones, su botín, sus libros (con lo
+  que lleva leído) y su nivel de alquimia (este solo lo cambia el DM).
+- **De toda la mesa:** el catálogo de materiales, las pociones descubiertas (con sus apodos)
+  y los parámetros.
+- El **personaje** (nombre, mod. INT, bono) se guarda en el navegador de cada cuenta.
+
+Al pasar de la versión sin cuentas a esta, el servidor hace una copia
+(`datos/copias/antes-de-cuentas-....db`) y **el inventario que había pasa a ser del DM**
+(la primera cuenta que se cree). Nada se pierde.
+
+## Primera vez con el servidor
+
+Si el servidor está vacío y tu navegador tiene datos de antes, la app pregunta si quieres
+subirlos. Hazlo **tú primero**, antes de que entre nadie más. Si no te lo ofrece, abre la
+app sin servidor, pulsa **Exportar**, arranca el servidor y pulsa **Importar**.
+
+## Configuración (variables de entorno)
+
+| Variable | Por defecto | Para qué |
+|---|---|---|
+| `PORT` | `8080` | Puerto |
+| `HOST` | `0.0.0.0` | Interfaz de red |
+| `DB_PATH` | `./datos/alquimia.db` | Archivo de la base de datos (en Docker: `/data/alquimia.db`) |
+| `ALQUIMIA_CLAVE` | vacía | Palabra de paso de la mesa para **crear cuentas**. **Ponla siempre si el servidor está en internet.** Vacía = cualquiera que llegue a la app puede crearse una cuenta |
+| `ALQUIMIA_ADMIN` | vacía | Contraseña fija del superusuario **DM** (mínimo 6 caracteres). Vacía = no hay superusuario |
+
+`GET /health` responde `{"ok": true}` para comprobar que el servidor está vivo.
+
+Solo usa Python 3 con su biblioteca estándar: no hay que instalar nada más.

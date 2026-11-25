@@ -1,0 +1,11 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+datos/
+__pycache__/
+*.py[cod]
+*.bat
+alquimia-app.html
+docs/
