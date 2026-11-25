@@ -39,7 +39,7 @@
 #
 # Solo usa la biblioteca estándar de Python 3: no hace falta instalar nada.
 
-import http.server, json, os, sqlite3, sys, threading, time, hmac, hashlib, secrets, re, unicodedata
+import http.server, ipaddress, json, os, sqlite3, sys, threading, time, hmac, hashlib, secrets, re, unicodedata
 from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs, unquote
 
@@ -51,6 +51,8 @@ CLAVE = os.environ.get('ALQUIMIA_CLAVE', '')
 ADMIN_CLAVE = os.environ.get('ALQUIMIA_ADMIN', '')
 ADMIN_NOMBRE = 'DM'               # el superusuario se llama así (su clave es 'dm')
 MAX_CUERPO = 5 * 1024 * 1024      # 5 MB por petición, de sobra para un import completo
+FALLOS_REGISTRO = 7               # fallos SEGUIDOS de la palabra de paso que bloquean crear cuentas
+HORAS_BLOQUEO = 24                # ...durante este tiempo (o hasta que el superusuario lo levante)
 
 # Tipo de cada colección. El servidor manda: el cliente no puede cambiarlo.
 #   num -> número entero que no puede bajar de 0 (stock de materiales)
@@ -151,6 +153,9 @@ def preparar_bd():
                 id TEXT PRIMARY KEY, nombre TEXT NOT NULL, creada TEXT, rev INTEGER NOT NULL DEFAULT 0,
                 clave_hash TEXT);
             -- Quién juega en cada campaña, con qué papel (dm / jugador) y con qué disciplina.
+            -- Quien falla la palabra de paso de la mesa al crear cuenta: tras 7 fallos seguidos, bloqueado.
+            CREATE TABLE IF NOT EXISTS bloqueos_registro (
+                origen TEXT PRIMARY KEY, fallos INTEGER NOT NULL DEFAULT 0, ultimo REAL, hasta REAL);
             CREATE TABLE IF NOT EXISTS miembros (
                 campana TEXT NOT NULL, usuario TEXT NOT NULL, rol TEXT NOT NULL DEFAULT 'jugador',
                 disciplina TEXT NOT NULL DEFAULT 'alquimista', unido TEXT, personaje TEXT,
@@ -363,20 +368,51 @@ def validar_contrasena(c):
         raise Rechazo('invalida', 'La contraseña es demasiado larga.')
 
 
-def registrar(cuerpo):
+def comprobar_palabra_de_paso(cuerpo, origen):
+    """La palabra de paso de la mesa (ALQUIMIA_CLAVE) protege la creación de cuentas.
+    Tras FALLOS_REGISTRO fallos SEGUIDOS desde el mismo origen, ese origen no puede crear cuentas
+    durante HORAS_BLOQUEO horas (o hasta que el superusuario lo levante). Acertar pone el contador a 0.
+    El contador se guarda en la base de datos: reiniciar el servidor no lo borra."""
+    if not CLAVE:
+        return
+
+    def hacer(con):
+        fila = con.execute('SELECT fallos, hasta FROM bloqueos_registro WHERE origen=?', (origen,)).fetchone()
+        if fila and fila[1] and fila[1] > time.time():
+            return 'bloqueado'
+        if hmac.compare_digest(str(cuerpo.get('clave') or ''), CLAVE):
+            con.execute('DELETE FROM bloqueos_registro WHERE origen=?', (origen,))
+            return 'ok'
+        fallos = (fila[0] if fila and not (fila[1] and fila[1] <= time.time()) else 0) + 1   # bloqueo caducado: de cero
+        hasta = time.time() + HORAS_BLOQUEO * 3600 if fallos >= FALLOS_REGISTRO else None
+        con.execute('INSERT OR REPLACE INTO bloqueos_registro (origen, fallos, ultimo, hasta) VALUES (?,?,?,?)',
+                    (origen, fallos, time.time(), hasta))
+        if hasta:
+            print(f'Creación de cuentas bloqueada {HORAS_BLOQUEO} h para {origen} ({fallos} fallos seguidos de la palabra de paso).')
+            return 'bloqueado'
+        return FALLOS_REGISTRO - fallos
+    r = con_escritura(hacer)
+    if r == 'ok':
+        return
+    if r == 'bloqueado':
+        raise Rechazo('bloqueado', f'Se ha fallado la palabra de paso {FALLOS_REGISTRO} veces seguidas: desde aquí no se pueden crear '
+                      f'cuentas durante {HORAS_BLOQUEO} horas. Si eres de la mesa, pide al superusuario que lo desbloquee.')
+    raise Rechazo('clave', 'La palabra de paso de la mesa no es correcta. Pídesela al DM.'
+                  + (f' Te queda{"n" if r > 1 else ""} {r} intento{"s" if r > 1 else ""}.' if r <= 3 else ''))
+
+
+def registrar(cuerpo, origen='-'):
     nombre = re.sub(r'\s+', ' ', unicodedata.normalize('NFC', str(cuerpo.get('nombre') or '')).strip())
     contrasena = cuerpo.get('contrasena')
     if not NOMBRE_OK.match(nombre):
         raise Rechazo('invalida', 'El nombre debe tener de 2 a 24 letras o números (también valen espacios, guiones y puntos).')
     validar_contrasena(contrasena)
+    comprobar_palabra_de_paso(cuerpo, origen)
     with CERROJO:
         con = conectar()
         try:
             con.execute('BEGIN IMMEDIATE')
             primera = not con.execute("SELECT 1 FROM usuarios WHERE rol!='admin' LIMIT 1").fetchone()
-            # La palabra de paso de la mesa (ALQUIMIA_CLAVE) protege la creación de cuentas.
-            if CLAVE and not hmac.compare_digest(str(cuerpo.get('clave') or ''), CLAVE):
-                raise Rechazo('clave', 'La palabra de paso de la mesa no es correcta. Pídesela al DM.')
             clave = clave_de(nombre)
             if buscar_usuario(con, clave):
                 raise Rechazo('existe', f'Ya existe una cuenta llamada «{nombre}». Elige otro nombre o entra con ella.')
@@ -754,6 +790,27 @@ def lista_cuentas(con, u, camp=None):
     return cuentas
 
 
+def bloqueos_registro(con):
+    """Para el superusuario: orígenes bloqueados para crear cuentas (o con fallos acumulados)."""
+    return [{'origen': o, 'fallos': f, 'hace': round(time.time() - (ul or 0)), 'quedan': round(h - time.time()) if h else None}
+            for o, f, ul, h in con.execute('SELECT origen, fallos, ultimo, hasta FROM bloqueos_registro ORDER BY ultimo DESC')
+            if (h and h > time.time()) or (not h and f > 0)]
+
+
+def desbloquear_registro(u, cuerpo):
+    if not es_admin(u):
+        raise Rechazo('permiso', 'Solo el superusuario puede levantar el bloqueo de creación de cuentas.')
+    origen = cuerpo.get('origen')
+
+    def hacer(con):
+        if origen:
+            con.execute('DELETE FROM bloqueos_registro WHERE origen=?', (str(origen),))
+        else:
+            con.execute('DELETE FROM bloqueos_registro')
+        return {'ok': True}
+    return con_escritura(hacer)
+
+
 def resumen_campanas(con):
     """Para el superusuario: todas las campañas con sus DM y cuántos jugadores tienen."""
     out = []
@@ -1117,6 +1174,23 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(cuerpo)
 
+    def origen(self):
+        """De dónde viene la petición. Detrás de Docker y de Tailscale Funnel todas llegan desde una IP
+        interna (el proxy): entonces la IP real va en X-Forwarded-For. Esa cabecera solo se cree si la
+        petición llega desde una IP interna; si llega directa de internet, cuenta su propia IP."""
+        ip = self.client_address[0]
+        try:
+            interna = ipaddress.ip_address(ip).is_private or ipaddress.ip_address(ip).is_loopback
+        except ValueError:
+            interna = False
+        reenviada = (self.headers.get('X-Forwarded-For') or '').split(',')[0].strip()
+        if interna and reenviada:
+            try:
+                return str(ipaddress.ip_address(reenviada))
+            except ValueError:
+                pass
+        return ip
+
     def token(self):
         a = self.headers.get('Authorization', '')
         return a[7:].strip() if a.startswith('Bearer ') else ''
@@ -1167,7 +1241,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     if not es_admin(u) and not puede_crear_campanas(con, u):
                         return self.json(200, {'ok': True, 'campanas': campanas_de(con, u)})
                     return self.json(200, {'ok': True, 'campanas': resumen_campanas(con) if es_admin(u) else campanas_de(con, u),
-                                           'cuentas': lista_cuentas(con, u) if es_admin(u) else []})
+                                           'cuentas': lista_cuentas(con, u) if es_admin(u) else [],
+                                           'bloqueos': bloqueos_registro(con) if es_admin(u) else []})
                 # --- dentro de una campaña
                 actor = self.actor_mesa(con, u)
                 if not actor:
@@ -1234,7 +1309,7 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
         ruta = urlparse(self.path).path
         acciones = ('/api/transaccion', '/api/registro', '/api/entrar', '/api/salir',
                     '/api/usuarios/rol', '/api/usuarios/contrasena', '/api/usuarios/destierro',
-                    '/api/campanas/crear', '/api/campanas/renombrar', '/api/campanas/unirse',
+                    '/api/campanas/crear', '/api/registro/desbloquear', '/api/campanas/renombrar', '/api/campanas/unirse',
                     '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave')
         if ruta not in acciones:
             return self.json(404, {'ok': False, 'mensaje': 'No existe.'})
@@ -1249,9 +1324,9 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
             return self.json(400, {'ok': False, 'motivo': 'invalida', 'mensaje': 'JSON no válido.'})
         try:
             if ruta == '/api/registro':
-                return self.json(200, registrar(cuerpo))
+                return self.json(200, registrar(cuerpo, self.origen()))
             if ruta == '/api/entrar':
-                return self.json(200, entrar(cuerpo, self.client_address[0]))
+                return self.json(200, entrar(cuerpo, self.origen()))
             if ruta == '/api/salir':
                 if self.token():
                     u = usuario_de_token(self.token())
@@ -1267,10 +1342,12 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, desterrar(u, cuerpo))
             if ruta == '/api/campanas/crear':
                 return self.json(200, crear_campana(u, cuerpo))
+            if ruta == '/api/registro/desbloquear':
+                return self.json(200, desbloquear_registro(u, cuerpo))
             if ruta == '/api/campanas/renombrar':
                 return self.json(200, renombrar_campana(u, cuerpo))
             if ruta == '/api/campanas/unirse':
-                return self.json(200, unirse(u, cuerpo, self.client_address[0]))
+                return self.json(200, unirse(u, cuerpo, self.origen()))
             con = conectar()
             try:
                 actor = self.actor_mesa(con, u)
@@ -1297,7 +1374,7 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, poner_clave_mesa(actor, cuerpo))
         except Rechazo as r:
             codigo = {'stock': 409, 'conflicto': 409, 'existe': 409, 'permiso': 403,
-                      'credenciales': 401, 'clave': 401, 'espera': 429, 'baneado': 403}.get(r.motivo, 400)
+                      'credenciales': 401, 'clave': 401, 'espera': 429, 'baneado': 403, 'bloqueado': 429}.get(r.motivo, 400)
             return self.json(codigo, {'ok': False, 'motivo': r.motivo, 'mensaje': r.mensaje, 'detalle': r.detalle})
         except sqlite3.Error as e:
             print('Error de base de datos:', e, file=sys.stderr)
@@ -1339,11 +1416,15 @@ def copias_periodicas():
 
 
 def orden_consola(args):
-    """python servidor.py restablecer NOMBRE CONTRASEÑA  |  hacer-dm NOMBRE  |  readmitir NOMBRE"""
+    """python servidor.py restablecer NOMBRE CONTRASEÑA  |  hacer-dm NOMBRE  |  readmitir NOMBRE  |  desbloquear"""
     preparar_bd()
     con = conectar()
     try:
         orden, nombre = args[0], args[1] if len(args) > 1 else ''
+        if orden == 'desbloquear':   # levanta todos los bloqueos de creación de cuentas
+            n = con.execute('DELETE FROM bloqueos_registro').rowcount
+            print(f'Bloqueos de creación de cuentas levantados: {n}.')
+            return 0
         fila = buscar_usuario(con, clave_de(nombre))
         if not fila:
             print(f'No existe ninguna cuenta llamada «{nombre}».')

@@ -241,6 +241,8 @@ function renderGestion() {
         <button class="btn btn-sm btn-edit" data-usr="renombrar" data-id="${esc(c.id)}" data-nombre="${esc(c.nombre)}">✏️ Renombrar</button>
       </div></div>`).join('');
   const desterrados = admin.cuentas.filter(c => c.baneado);
+  const bloqueos = admin.bloqueos || [];
+  const tiempo = s => s >= 3600 ? `${Math.round(s / 3600)} h` : `${Math.max(1, Math.round(s / 60))} min`;
   ad.innerHTML = `<div class="gestion-caja gestion-admin">
       <h3>🛡️ Campañas</h3>
       <p class="muted">Para nombrar DM o invitar gente a una campaña, entra en ella y usa la lista de abajo. Como superusuario entras en todas con poderes de DM.</p>
@@ -251,6 +253,14 @@ function renderGestion() {
         <select id="campNuevaCopia"><option value="">Catálogo vacío</option>${admin.campanas.map(c => `<option value="${esc(c.id)}">Copiar catálogo de «${esc(c.nombre)}»</option>`).join('')}</select>
         <button class="btn btn-sm" data-usr="crear-campana">➕ Crear campaña</button>
       </div>
+      ${bloqueos.length ? `<h3>🔒 Creación de cuentas bloqueada</h3>
+        <p class="muted">Tras 7 fallos seguidos de la palabra de paso de la mesa, desde ese sitio no se pueden crear cuentas durante 24 h.</p>
+        ${bloqueos.map(b => `<div class="usr-fila">
+          <span class="avatar avatar-grande">${b.quedan ? '🔒' : '⚠️'}</span>
+          <div class="usr-info"><div class="usr-nombre">${esc(b.origen)}</div>
+            <div class="usr-estado">${b.quedan ? `Bloqueado · quedan ${tiempo(b.quedan)}` : `${b.fallos} fallo${b.fallos === 1 ? '' : 's'} seguido${b.fallos === 1 ? '' : 's'}`} · último intento hace ${tiempo(b.hace)}</div></div>
+          <div class="usr-acciones"><button class="btn btn-sm" data-usr="desbloquear" data-origen="${esc(b.origen)}">🔓 ${b.quedan ? 'Desbloquear' : 'Poner a cero'}</button></div>
+        </div>`).join('')}` : ''}
       ${desterrados.length ? `<h3>🚫 Cuentas desterradas</h3>${desterrados.map(c => `<div class="usr-fila usr-desterrado">
           <span class="avatar avatar-grande">🚫</span><div class="usr-info"><div class="usr-nombre">${esc(c.nombre)}</div></div>
           <div class="usr-acciones"><button class="btn btn-sm" data-usr="readmitir" data-clave="${esc(c.clave)}" data-nombre="${esc(c.nombre)}">🕊️ Readmitir</button></div>
@@ -302,6 +312,12 @@ export function initUsuarios(verInventario, verPerfil = () => {}) {
       return;
     }
     if (accion === 'ir-mesa') { auth.cambiarMesa(b.dataset.id); return; }
+    if (accion === 'desbloquear') {
+      const r = await auth.apiMesa('/api/registro/desbloquear', { origen: b.dataset.origen });
+      if (!r.ok) alert(r.mensaje);
+      await cargarGestion();
+      return;
+    }
     if (accion === 'renombrar') {
       const n = prompt('Nuevo nombre de la campaña:', b.dataset.nombre);
       if (!n?.trim()) return;

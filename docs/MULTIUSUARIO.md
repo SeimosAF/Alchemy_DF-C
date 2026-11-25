@@ -19,6 +19,10 @@ Con servidor, lo primero que aparece es un pergamino para **Entrar** o **Crear c
   El superusuario las crea (en «En línea», abajo) y nombra a su DM; el DM **invita** a los jugadores
   desde «En línea». Una cuenta nueva no está en ninguna campaña hasta que la inviten. Si alguien
   juega en varias, elige mesa al entrar (y la cambia con el botón 🗺️ de arriba).
+- **Fallos de la palabra de paso:** si alguien falla 7 veces seguidas la palabra de paso al crear cuenta,
+  desde ese sitio (su IP) no se pueden crear cuentas durante 24 h. Entrar con una cuenta ya creada sigue
+  funcionando. El superusuario lo ve y lo levanta en «En línea» → Campañas («🔒 Creación de cuentas
+  bloqueada»), o desde la consola con `python servidor.py desbloquear`.
 - **Contraseña de mesa (opcional):** el DM o el superusuario la ponen en «En línea». Quien sepa el
   nombre de la mesa y su contraseña se une solo desde la pantalla de elegir mesa.
 - **Perfil:** cada jugador tiene un personaje por campaña (pestaña 🧙 Perfil). El DM puede editar el de
