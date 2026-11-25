@@ -7,6 +7,7 @@ import {
 } from './utils.js';
 import { CAMPOS, CAMPO_NAMES, EFFECT_KINDS, MOD_KIND_ICONS } from './data.js';
 import * as niveles from './niveles.js';
+import * as auth from './auth.js';
 import {
   effectText, durationText, saveText, formatDice, rollPool, getDisolvente, modCompat, elabDC, hasMaleficio,
 } from './model.js';
@@ -51,9 +52,9 @@ function buildMatDetail(m) {
 function makeUnknownCard(id, m, deletePendingId) {
   const isPending = deletePendingId === id;
   const delHtml = isPending
-    ? `<button class="btn btn-sm btn-danger" data-action="delete-mat" data-id="${id}">⚠️ Confirmar</button>
+    ? `<button class="btn btn-sm btn-danger solo-dm-o-local" data-action="delete-mat" data-id="${id}">⚠️ Confirmar</button>
        <button class="btn btn-sm" style="background:#777" data-action="cancel-delete">✖</button>`
-    : `<button class="btn btn-sm btn-danger" data-action="delete-mat" data-id="${id}">🗑️</button>`;
+    : `<button class="btn btn-sm btn-danger solo-dm-o-local" data-action="delete-mat" data-id="${id}" title="Borrar del catálogo (solo DM)">🗑️</button>`;
   const div = document.createElement('div');
   div.className = 'mat-card';
   div.innerHTML = `
@@ -66,7 +67,7 @@ function makeUnknownCard(id, m, deletePendingId) {
         </div>
       </div>
       <div class="mat-card-actions">
-        <button class="btn btn-sm btn-edit" data-action="edit-mat" data-id="${id}">✏️</button>
+        <button class="btn btn-sm btn-edit solo-dm-o-local" data-action="edit-mat" data-id="${id}" title="Editar o identificar (solo DM)">✏️</button>
         ${delHtml}
       </div>
     </div>`;
@@ -78,9 +79,9 @@ function makeMatCard(id, m, deletePendingId) {
   const lugar = m.lugar || '???';
   const isPending = deletePendingId === id;
   const delHtml = isPending
-    ? `<button class="btn btn-sm btn-danger" data-action="delete-mat" data-id="${id}">⚠️ Confirmar</button>
+    ? `<button class="btn btn-sm btn-danger solo-dm-o-local" data-action="delete-mat" data-id="${id}">⚠️ Confirmar</button>
        <button class="btn btn-sm" style="background:#777" data-action="cancel-delete">✖</button>`
-    : `<button class="btn btn-sm btn-danger" data-action="delete-mat" data-id="${id}">🗑️</button>`;
+    : `<button class="btn btn-sm btn-danger solo-dm-o-local" data-action="delete-mat" data-id="${id}" title="Borrar del catálogo (solo DM)">🗑️</button>`;
 
   const div = document.createElement('div');
   div.className = 'mat-card';
@@ -98,7 +99,7 @@ function makeMatCard(id, m, deletePendingId) {
       </div>
       <div class="mat-card-actions">
         <button class="btn btn-sm btn-info" data-action="toggle-mat-detail" data-id="${id}">ℹ️</button>
-        <button class="btn btn-sm btn-edit" data-action="edit-mat" data-id="${id}">✏️</button>
+        <button class="btn btn-sm btn-edit solo-dm-o-local" data-action="edit-mat" data-id="${id}" title="Editar o identificar (solo DM)">✏️</button>
         ${delHtml}
       </div>
     </div>
@@ -514,24 +515,26 @@ export function renderPotPicker(el, craftPotionPicks) {
 export function renderSettings() {
   const el = document.getElementById('settingsPanel'); if (!el) return;
   const st = state.settings;
-  el.innerHTML = `<table class="settings-table">
+  const soloVer = auth.servidor && !auth.esDM() ? 'disabled title="Solo el DM puede cambiar los parámetros"' : '';
+  el.innerHTML = (soloVer ? '<p class="muted">🔒 Solo el DM puede cambiar los parámetros. Aquí puedes consultarlos.</p>' : '') + `<table class="settings-table">
     <thead><tr><th>Campo</th><th>Características</th><th>Disolvente</th><th>CD</th></tr></thead>
     <tbody>${CAMPO_NAMES.map(c => {
       const d = st.disolventes[c];
       const stats = CAMPOS[c].stats.length === 6 ? 'Todas' : CAMPOS[c].stats.join(', ');
       return `<tr><td>${campoBadge(c)}</td><td class="muted">${stats}</td>
-        <td><input type="text" data-setting="solvName" data-campo="${c}" value="${d.name}"></td>
-        <td><input type="number" data-setting="solvDiff" data-campo="${c}" value="${d.difficulty}" style="width:60px"></td></tr>`;
+        <td><input type="text" data-setting="solvName" data-campo="${c}" value="${d.name}" ${soloVer}></td>
+        <td><input type="number" data-setting="solvDiff" data-campo="${c}" value="${d.difficulty}" style="width:60px" ${soloVer}></td></tr>`;
     }).join('')}</tbody></table>
     <div class="form-row-2" style="margin-top:12px">
       <div class="form-row"><label>Modificador de polaridad contraria (+CD)</label>
-        <input type="number" data-setting="polaridadOpuestaDiff" value="${st.polaridadOpuestaDiff}" style="width:70px"></div>
+        <input type="number" data-setting="polaridadOpuestaDiff" value="${st.polaridadOpuestaDiff}" style="width:70px" ${soloVer}></div>
       <div class="form-row"><label>Multipoción con disolventes distintos (+CD)</label>
-        <input type="number" data-setting="multiDisolventeDiff" value="${st.multiDisolventeDiff}" style="width:70px"></div>
+        <input type="number" data-setting="multiDisolventeDiff" value="${st.multiDisolventeDiff}" style="width:70px" ${soloVer}></div>
     </div>`;
 }
 
 export function onSettingChange(inp) {
+  if (auth.servidor && !auth.esDM()) return;
   const st = state.settings;
   const k = inp.dataset.setting, c = inp.dataset.campo;
   if (k === 'solvName') st.disolventes[c].name = inp.value.trim() || st.disolventes[c].name;

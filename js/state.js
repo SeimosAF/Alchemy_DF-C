@@ -101,7 +101,7 @@ export async function loadState() {
     sync.guardar(state, [{ t: 'vacio', c: 'meta', id: '-' }]);
   } else {
     state = normalizeState(sync.desdeServidor(datos, character));
-    sync.guardar(state);   // solo envía algo si la migración de modelo cambió datos
+    guardarMigracion();
   }
   saveCharacter();
   sync.empezarSondeo();
@@ -110,7 +110,14 @@ export async function loadState() {
 // Sustituye el estado por lo que diga el servidor (cambios de otros o tras un rechazo)
 export function applyServerData(datos) {
   state = normalizeState(sync.desdeServidor(datos, state.character));
-  sync.guardar(state);
+  guardarMigracion();
+}
+
+// Si al cargar se ha puesto al día el formato de los datos, el DM lo guarda en el servidor.
+// Un jugador no puede tocar lo común (catálogo, parámetros): se queda como "ya visto" y no se envía.
+function guardarMigracion() {
+  if (auth.esDM()) sync.guardar(state);
+  else sync.fijarBase(sync.aServidor(state));
 }
 
 function saveCharacter() {

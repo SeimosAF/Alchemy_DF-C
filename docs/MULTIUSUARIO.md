@@ -55,6 +55,10 @@ El superusuario no es un personaje: no aparece en «Inventarios de la mesa».
 - En **Usuarios en línea** puede ponerle una contraseña nueva a quien la olvide y abrir su
   inventario, libros y nivel. Dar o quitar poderes de DM es cosa del superusuario.
 - Solo el DM ve **Borrar todo** con servidor.
+- Lo común a la mesa lo protege el servidor: un jugador puede **dar de alta** componentes,
+  poner apodos a pociones y añadir tipos de daño, pero solo el DM (o el superusuario) puede
+  **editar, identificar o borrar** componentes del catálogo, borrar fichas de pociones, quitar
+  tipos de daño y cambiar los **parámetros**.
 
 ¿Se te olvidó la contraseña del DM? En la carpeta del repo:
 

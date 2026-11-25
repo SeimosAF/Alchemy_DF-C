@@ -121,6 +121,13 @@ function aplicarRol() {
   if (document.getElementById('tab-usuarios')?.classList.contains('active')) panel.renderUsuarios();
 }
 
+// Acciones que con servidor solo puede hacer el DM (el servidor también lo comprueba)
+function soloDM(que) {
+  if (sync.modo !== 'servidor' || auth.esDM()) return false;
+  alert(`Solo el DM puede ${que}: afecta a toda la mesa.`);
+  return true;
+}
+
 // ---- Cauldron toggle ----
 // Re-hide text panels after anything that might call renderCrafteo() internally
 function hideCauldronTextPanels() {
@@ -297,6 +304,12 @@ document.addEventListener('DOMContentLoaded', async () => {
           if (sync.modo === 'servidor' && !auth.esDM()) {
             // El nivel de alquimia y las tiradas de los libros solo los cambia el DM: se conservan los de ahora
             imported.perfil = state.perfil;
+            // Lo común de la mesa (catálogo, parámetros) solo lo cambia el DM: se conserva el de ahora
+            imported.catalog = state.catalog;
+            imported.potionCatalog = { ...imported.potionCatalog, ...state.potionCatalog };
+            imported.settings = state.settings;
+            imported.damageTypes = [...new Set([...(state.damageTypes || []), ...(imported.damageTypes || [])])];
+            for (const mid in imported.inventory) if (!state.catalog[mid]) delete imported.inventory[mid];
             for (const [lid, l] of Object.entries(imported.libros || {})) {
               const ya = state.libros?.[lid];
               l.pruebas = ya ? ya.pruebas || {} : Object.fromEntries(Object.keys(l.pruebas || {}).map(k => [k, { cd: null }]));
@@ -347,10 +360,12 @@ document.addEventListener('DOMContentLoaded', async () => {
       case 'cancel-edit-mat':
         resetForm(); break;
       case 'edit-mat':
+        if (soloDM('editar o identificar componentes del catálogo')) break;
         editMat(id);
         showInfoSubtab('identificacion');
         break;
       case 'delete-mat':
+        if (soloDM('borrar componentes del catálogo')) break;
         deleteMat(id, craftSelectedBase, craftSelectedMods, renderCrafteo);
         break;
       case 'cancel-delete':

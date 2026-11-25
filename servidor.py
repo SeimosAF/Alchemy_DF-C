@@ -517,7 +517,7 @@ def aplicar_op(con, op, actor, rev):
         # (control de concurrencia optimista: "compara y cambia").
         esperado, nuevo = op.get('e'), op.get('v')
         if not es_dm(actor):
-            permiso_jugador(col, actual, nuevo)
+            permiso_jugador(col, actual, nuevo, id_)
         if actual != esperado and actual != nuevo:
             raise Rechazo('conflicto',
                 f'Otra persona ha modificado {nombre_entrada(con, col, id_, actual or esperado or nuevo)} mientras tanto{quien(autor_prev, autor)}.',
@@ -530,8 +530,20 @@ def aplicar_op(con, op, actor, rev):
         raise Rechazo('invalida', 'Operación desconocida.')
 
 
-def permiso_jugador(col, actual, nuevo):
-    """Lo que un jugador NO puede cambiar por su cuenta (solo el DM)."""
+def permiso_jugador(col, actual, nuevo, id_=''):
+    """Lo que un jugador NO puede cambiar por su cuenta (solo el DM o el superusuario).
+    Regla general de lo común a la mesa: un jugador puede AÑADIR, pero no editar ni borrar."""
+    if col == 'catalog' and actual is not None:
+        # Dar de alta un componente nuevo sí; cambiarlo o borrarlo afecta a toda la mesa
+        raise Rechazo('permiso', 'Solo el DM puede editar o borrar componentes del catálogo (afectan a toda la mesa).')
+    if col == 'potionCatalog' and actual is not None and nuevo is None:
+        raise Rechazo('permiso', 'Solo el DM puede borrar pociones del catálogo.')
+    if col == 'meta':
+        if id_ == 'settings' and actual is not None:
+            raise Rechazo('permiso', 'Solo el DM puede cambiar los parámetros (disolventes y dificultades).')
+        if id_ == 'damageTypes' and actual is not None and not (
+                isinstance(nuevo, list) and all(t in nuevo for t in (actual if isinstance(actual, list) else []))):
+            raise Rechazo('permiso', 'Puedes añadir tipos de daño, pero solo el DM puede quitarlos.')
     if col == 'perfil':
         raise Rechazo('permiso', 'Solo el DM puede cambiar tu nivel de alquimia.')
     if col == 'libros' and isinstance(nuevo, dict):
