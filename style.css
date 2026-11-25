@@ -1270,3 +1270,13 @@ body.es-admin .solo-admin { display:inline !important; }
 .mesa-unirse { text-align:left; margin:6px 0 10px; }
 .mesa-unirse summary { cursor:pointer; font-family:var(--f-rotulo); color:#6b4420; text-align:center; }
 .mesa-unirse .mesa-crear { flex-wrap:wrap; }
+
+/* Historial de cambios de la campaña */
+.gestion-historial { border-color:#c9a96a; }
+.hist-lista { margin-top:8px; max-height:520px; overflow-y:auto; }
+.hist-fila { display:flex; gap:10px; align-items:center; padding:7px 4px; border-bottom:1px solid #e6d8bc; }
+.hist-fila:last-child { border-bottom:none; }
+.hist-icono { font-size:1.2em; flex:none; width:1.6em; text-align:center; }
+.hist-info { flex:1; min-width:0; }
+.hist-meta { font-size:.82em; color:#7a6247; }
+.hist-deshecho .hist-info > div:first-child { text-decoration:line-through; opacity:.65; }

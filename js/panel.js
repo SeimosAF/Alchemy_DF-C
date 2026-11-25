@@ -10,6 +10,7 @@ import * as sync from './sync.js';
 let presencia = [];
 let cuentas = null;        // cuentas que el DM puede invitar (se piden al abrir la sala)
 let admin = null;          // { campanas, cuentas } para el superusuario
+let historial = null;      // { lista, puedeDeshacer, fin } historial de cambios de la campaña (DM y superusuario)
 
 export const DISCIPLINAS = {
   alquimista: { icono: '⚗️', nombre: 'Alquimista' },
@@ -199,6 +200,43 @@ export async function cargarGestion() {
     admin = r?.j?.ok ? r.j : admin;
   }
   renderGestion();
+  await cargarHistorial();
+}
+
+// ---- Historial de cambios de la campaña ----
+// Lo ven el DM y el superusuario. Solo el superusuario puede deshacer, y nadie puede borrarlo.
+export async function cargarHistorial(mas = false) {
+  if (!auth.servidor || !auth.esDM()) { historial = null; renderHistorial(); return; }
+  const antes = mas && historial?.lista.length ? historial.lista[historial.lista.length - 1].id : 0;
+  const r = await sync.pedir('/api/historial' + (antes ? '?antes=' + antes : '')).catch(() => null);
+  if (!r?.j?.ok) return;
+  const lista = mas && historial ? [...historial.lista, ...r.j.historial] : r.j.historial;
+  historial = { lista, puedeDeshacer: r.j.puedeDeshacer, fin: r.j.historial.length < 50 };
+  renderHistorial();
+}
+
+const ICONO_TIPO = { datos: '📦', perfil: '🧙', miembros: '👥', mesa: '🗺️', deshacer: '↩️' };
+function renderHistorial() {
+  const el = document.getElementById('historialMesa');
+  if (!el) return;
+  if (!historial) { el.innerHTML = ''; return; }
+  const fecha = f => { try { return new Date(f).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }); } catch (_) { return f; } };
+  const filas = historial.lista.map(h => `<div class="hist-fila ${h.deshechoPor ? 'hist-deshecho' : ''}">
+      <span class="hist-icono">${ICONO_TIPO[h.tipo] || '•'}</span>
+      <div class="hist-info">
+        <div><b>${esc(h.autor)}</b>: ${esc(h.resumen)}</div>
+        <div class="hist-meta">${fecha(h.fecha)}${h.afecta.length ? ` · afecta a ${h.afecta.map(esc).join(', ')}` : ''}${h.deshechoPor ? ' · <b>deshecho</b>' : ''}</div>
+      </div>
+      ${historial.puedeDeshacer && h.deshacible && !h.deshechoPor ? `<button class="btn btn-sm btn-edit" data-usr="deshacer" data-id="${h.id}" data-resumen="${esc(h.resumen)}" data-autor="${esc(h.autor)}">↩️ Deshacer</button>` : ''}
+    </div>`).join('');
+  el.innerHTML = `<div class="gestion-caja gestion-historial">
+      <h3>📜 Historial de cambios de «${esc(auth.mesa?.nombre || '')}»</h3>
+      <p class="muted">Quién cambió qué y cuándo en esta campaña: inventarios, catálogo, parámetros, niveles, libros, perfiles y jugadores.
+        Nadie puede borrarlo. ${historial.puedeDeshacer ? 'Como superusuario puedes deshacer un cambio si nadie ha tocado después lo mismo.' : 'Solo el superusuario puede deshacer cambios.'}</p>
+      <button class="btn btn-sm" data-usr="hist-recargar">🔄 Actualizar</button>
+      <div class="hist-lista">${filas || '<p class="muted">Todavía no hay cambios apuntados.</p>'}</div>
+      ${!historial.fin ? '<button class="btn btn-sm" data-usr="hist-mas">Ver más antiguos</button>' : ''}
+    </div>`;
 }
 
 function renderGestion() {
@@ -312,6 +350,17 @@ export function initUsuarios(verInventario, verPerfil = () => {}) {
       return;
     }
     if (accion === 'ir-mesa') { auth.cambiarMesa(b.dataset.id); return; }
+    if (accion === 'hist-recargar') { await cargarHistorial(); return; }
+    if (accion === 'hist-mas') { await cargarHistorial(true); return; }
+    if (accion === 'deshacer') {
+      if (!confirm(`¿Deshacer «${b.dataset.resumen}» (de ${b.dataset.autor})? Se vuelve a poner lo que había antes. También quedará apuntado en el historial.`)) return;
+      const r = await auth.apiMesa('/api/historial/deshacer', { id: parseInt(b.dataset.id) });
+      if (!r.ok) alert(r.mensaje);
+      else sync.aviso('Cambio deshecho.');
+      await sync.refrescar({ forzar: true });
+      await cargarHistorial();
+      return;
+    }
     if (accion === 'desbloquear') {
       const r = await auth.apiMesa('/api/registro/desbloquear', { origen: b.dataset.origen });
       if (!r.ok) alert(r.mensaje);

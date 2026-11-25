@@ -73,6 +73,15 @@ y, por cada jugador, su inventario, sus libros y su nivel. **No se mezcla nada e
   jugador (en Perfil o en la barra de arriba) y el DM o el superusuario el de cualquiera de su campaña.
   El nombre de usuario (la cuenta) no lo cambia nadie. En «En línea» se ve con qué personaje juega cada uno.
 
+## Historial de cambios
+
+Tabla `historial` (solo se añaden filas). Cada transacción guarda en `cambios` el valor de antes y de después
+de cada entrada que tocó (también el stock que se borra en cascada al quitar un material del catálogo);
+perfiles y disciplinas guardan su valor de antes y después en `miembros`. `deshacer()` en `servidor.py`
+solo vuelve atrás si el valor actual sigue siendo el «después» (si no, rechaza). Invitar, sacar, dar DM,
+contraseña de mesa y renombrar se apuntan, pero no se deshacen desde aquí. GET `/api/historial`
+(DM y superusuario), POST `/api/historial/deshacer` (solo superusuario).
+
 ## Disciplinas (la ranura de oficio)
 
 El DM asigna a cada jugador de su campaña una disciplina: ⚗️ alquimista (por defecto), 🍲 cocinero,

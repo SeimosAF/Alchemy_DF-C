@@ -19,6 +19,11 @@ Con servidor, lo primero que aparece es un pergamino para **Entrar** o **Crear c
   El superusuario las crea (en «En línea», abajo) y nombra a su DM; el DM **invita** a los jugadores
   desde «En línea». Una cuenta nueva no está en ninguna campaña hasta que la inviten. Si alguien
   juega en varias, elige mesa al entrar (y la cambia con el botón 🗺️ de arriba).
+- **Historial de cambios:** cada campaña apunta quién cambió qué y cuándo (inventarios, catálogo,
+  parámetros, niveles, libros, perfiles, disciplinas, jugadores y DM). Lo ven el DM y el superusuario al
+  final de «En línea». Nadie puede borrarlo desde la app. Solo el superusuario puede **deshacer** un
+  cambio, y solo si nadie ha tocado después lo mismo (si no, se deshacen antes los posteriores).
+  Deshacer también queda apuntado. El historial empieza a llenarse desde esta versión.
 - **Fallos de la palabra de paso:** si alguien falla 7 veces seguidas la palabra de paso al crear cuenta,
   desde ese sitio (su IP) no se pueden crear cuentas durante 24 h. Entrar con una cuenta ya creada sigue
   funcionando. El superusuario lo ve y lo levanta en «En línea» → Campañas («🔒 Creación de cuentas

@@ -153,6 +153,12 @@ def preparar_bd():
                 id TEXT PRIMARY KEY, nombre TEXT NOT NULL, creada TEXT, rev INTEGER NOT NULL DEFAULT 0,
                 clave_hash TEXT);
             -- Quién juega en cada campaña, con qué papel (dm / jugador) y con qué disciplina.
+            -- HISTORIAL de cada campaña: quién cambió qué y cuándo, con lo que había antes (para deshacer).
+            -- Solo se añaden filas: no hay forma de borrarlo ni editarlo desde la app.
+            CREATE TABLE IF NOT EXISTS historial (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, campana TEXT NOT NULL, fecha TEXT, autor TEXT, autor_nombre TEXT,
+                tipo TEXT, resumen TEXT, afecta TEXT, cambios TEXT, deshecho_por INTEGER);
+            CREATE INDEX IF NOT EXISTS historial_campana ON historial (campana, id);
             -- Quien falla la palabra de paso de la mesa al crear cuenta: tras 7 fallos seguidos, bloqueado.
             CREATE TABLE IF NOT EXISTS bloqueos_registro (
                 origen TEXT PRIMARY KEY, fallos INTEGER NOT NULL DEFAULT 0, ultimo REAL, hasta REAL);
@@ -574,8 +580,12 @@ def guardar_personaje(actor, cuerpo):
         if not es_miembro(con, camp, objetivo):
             raise Rechazo('invalida', 'Ese perfil no es de nadie de esta campaña.' if objetivo != actor['clave']
                           else 'El superusuario no tiene personaje propio en las campañas.')
-        con.execute('UPDATE miembros SET personaje=? WHERE campana=? AND usuario=?',
-                    (json.dumps(p, ensure_ascii=False), camp, objetivo))
+        antes = leer_miembro(con, camp, objetivo, 'personaje')
+        nuevo = json.dumps(p, ensure_ascii=False)
+        con.execute('UPDATE miembros SET personaje=? WHERE campana=? AND usuario=?', (nuevo, camp, objetivo))
+        if antes != nuevo:
+            apuntar(con, camp, actor, 'perfil', f'perfil de {nombre_de(con, objetivo)} ({p["nombre"] or "sin nombre"})',
+                    [{'k': 'pj', 'u': objetivo, 'antes': antes, 'despues': nuevo}], [nombre_de(con, objetivo)])
         subir_rev(con, camp)
         return {'ok': True, 'personaje': p}
     return con_escritura(hacer)
@@ -607,6 +617,7 @@ def poner_clave_mesa(actor, cuerpo):
 
     def hacer(con):
         con.execute('UPDATE campanas SET clave_hash=? WHERE id=?', (h, actor['campana']))
+        apuntar(con, actor['campana'], actor, 'mesa', 'puso o cambió la contraseña de la mesa' if h else 'quitó la contraseña de la mesa')
         subir_rev(con, actor['campana'])
         return {'ok': True, 'conClave': bool(h)}
     return con_escritura(hacer)
@@ -636,6 +647,7 @@ def unirse(u, cuerpo, ip):
             raise Rechazo('existe', f'Ya estás en «{c[1]}».')
         con.execute('INSERT INTO miembros (campana, usuario, rol, disciplina, unido) VALUES (?,?,?,?,?)',
                     (c[0], u['clave'], 'jugador', DISCIPLINA_DEFECTO, ahora()))
+        apuntar(con, c[0], u, 'miembros', 'se unió a la mesa con la contraseña', None, [u['nombre']])
         subir_rev(con, c[0])
         return {'ok': True, 'campana': {'id': c[0], 'nombre': c[1], 'rol': 'jugador', 'disciplina': DISCIPLINA_DEFECTO}}
     return con_escritura(hacer)
@@ -712,7 +724,9 @@ def renombrar_campana(u, cuerpo):
             raise Rechazo('invalida', 'Esa campaña no existe.')
         if con.execute('SELECT 1 FROM campanas WHERE nombre=? COLLATE NOCASE AND id!=?', (nombre, camp)).fetchone():
             raise Rechazo('existe', f'Ya hay una campaña llamada «{nombre}».')
+        viejo = con.execute('SELECT nombre FROM campanas WHERE id=?', (camp,)).fetchone()[0]
         con.execute('UPDATE campanas SET nombre=? WHERE id=?', (nombre, camp))
+        apuntar(con, camp, u, 'mesa', f'renombró la campaña: «{viejo}» → «{nombre}»')
         subir_rev(con, camp)
         return {'ok': True}
     return con_escritura(hacer)
@@ -738,6 +752,7 @@ def miembro(actor, cuerpo):
                 raise Rechazo('existe', f'«{fila[1]}» ya está en esta campaña.')
             con.execute('INSERT INTO miembros (campana, usuario, rol, disciplina, unido) VALUES (?,?,?,?,?)',
                         (camp, objetivo, 'jugador', DISCIPLINA_DEFECTO, ahora()))
+            apuntar(con, camp, actor, 'miembros', f'invitó a {fila[1]} a la mesa', None, [fila[1]])
         elif accion == 'quitar':
             m = con.execute('SELECT rol FROM miembros WHERE campana=? AND usuario=?', (camp, objetivo)).fetchone()
             if not m:
@@ -747,6 +762,7 @@ def miembro(actor, cuerpo):
             if m[0] == 'dm' and not es_admin(actor):
                 raise Rechazo('permiso', 'Solo el superusuario puede sacar a un DM de la campaña.')
             con.execute('DELETE FROM miembros WHERE campana=? AND usuario=?', (camp, objetivo))
+            apuntar(con, camp, actor, 'miembros', f'sacó a {fila[1]} de la mesa', None, [fila[1]])
             if (PRESENCIA.get(objetivo) or {}).get('campana') == camp:
                 PRESENCIA.pop(objetivo, None)
         else:
@@ -766,7 +782,11 @@ def cambiar_disciplina(actor, cuerpo):
     def hacer(con):
         if not es_miembro(con, camp, objetivo):
             raise Rechazo('invalida', 'Esa cuenta no está en esta campaña.')
+        antes = leer_miembro(con, camp, objetivo, 'disciplina')
         con.execute('UPDATE miembros SET disciplina=? WHERE campana=? AND usuario=?', (disc, camp, objetivo))
+        if antes != disc:
+            apuntar(con, camp, actor, 'miembros', f'disciplina de {nombre_de(con, objetivo)}: {antes} → {disc}',
+                    [{'k': 'disc', 'u': objetivo, 'antes': antes, 'despues': disc}], [nombre_de(con, objetivo)])
         subir_rev(con, camp)
         return {'ok': True}
     return con_escritura(hacer)
@@ -920,7 +940,83 @@ def dueno_de(con, op, col, actor):
     return objetivo
 
 
-def aplicar_op(con, op, actor, rev):
+# ------------------------------------------------------------------ historial
+def apuntar(con, camp, actor, tipo, resumen, cambios=None, afecta=()):
+    """Añade una línea al historial de la campaña. «cambios» es lo necesario para deshacerla
+    (lista de {k, ..., antes, despues}); None = no se puede deshacer (p. ej. invitar a alguien)."""
+    cur = con.execute('INSERT INTO historial (campana, fecha, autor, autor_nombre, tipo, resumen, afecta, cambios) '
+                      'VALUES (?,?,?,?,?,?,?,?)',
+                      (camp, ahora(), actor['clave'], actor['nombre'], tipo, str(resumen or '')[:500],
+                       json.dumps(sorted(set(a for a in afecta if a)), ensure_ascii=False),
+                       json.dumps(cambios, ensure_ascii=False) if cambios else None))
+    return cur.lastrowid
+
+
+def nombre_de(con, clave):
+    fila = con.execute('SELECT nombre FROM usuarios WHERE clave=?', (clave,)).fetchone()
+    return fila[0] if fila else clave
+
+
+def leer_miembro(con, camp, usuario, campo):
+    fila = con.execute(f'SELECT {campo} FROM miembros WHERE campana=? AND usuario=?', (camp, usuario)).fetchone()
+    return fila[0] if fila else None
+
+
+def deshacer(actor, cuerpo):
+    """Deshace una línea del historial: vuelve a poner lo que había antes. Solo el superusuario.
+    Solo si nada de lo que tocó ha cambiado después (si no, hay que deshacer antes lo posterior).
+    Deshacer también queda apuntado en el historial (y se puede deshacer a su vez)."""
+    if not es_admin(actor):
+        raise Rechazo('permiso', 'Solo el superusuario puede deshacer cambios del historial.')
+    hid, camp = cuerpo.get('id'), actor['campana']
+    if isinstance(hid, bool) or not isinstance(hid, int):
+        raise Rechazo('invalida', 'Línea del historial mal indicada.')
+
+    def hacer(con):
+        fila = con.execute('SELECT cambios, deshecho_por, resumen, autor_nombre FROM historial WHERE id=? AND campana=?',
+                           (hid, camp)).fetchone()
+        if not fila:
+            raise Rechazo('invalida', 'Esa línea del historial no existe en esta campaña.')
+        if fila[1]:
+            raise Rechazo('conflicto', 'Ese cambio ya se deshizo.')
+        if not fila[0]:
+            raise Rechazo('invalida', 'Ese tipo de cambio no se puede deshacer desde aquí.')
+        cambios = json.loads(fila[0])
+        rev = rev_actual(con, camp) + 1
+        inversos, afecta = [], set()
+        for c in cambios:
+            if c['k'] == 'e':
+                ahora_v, quien_ = leer(con, camp, c['c'], c['d'], c['id'])
+                if ahora_v != c['despues']:
+                    raise Rechazo('conflicto', f'No se puede deshacer: {nombre_entrada(con, camp, c["c"], c["id"], ahora_v or c["antes"])} '
+                                  f'ha cambiado después{quien(quien_, "")}. Deshaz antes los cambios posteriores.')
+                escribir(con, camp, c['c'], c['d'], c['id'], c['antes'], actor['nombre'], rev)
+            else:   # personaje o disciplina de un miembro
+                campo = {'pj': 'personaje', 'disc': 'disciplina'}[c['k']]
+                if not es_miembro(con, camp, c['u']):
+                    raise Rechazo('conflicto', f'No se puede deshacer: {nombre_de(con, c["u"])} ya no está en la campaña.')
+                if leer_miembro(con, camp, c['u'], campo) != c['despues']:
+                    raise Rechazo('conflicto', f'No se puede deshacer: el {campo} de {nombre_de(con, c["u"])} ha cambiado después.')
+                con.execute(f'UPDATE miembros SET {campo}=? WHERE campana=? AND usuario=?', (c['antes'], camp, c['u']))
+            inversos.append({**c, 'antes': c['despues'], 'despues': c['antes']})
+            afecta.add(c.get('d') or c.get('u'))
+        con.execute('UPDATE campanas SET rev=? WHERE id=?', (rev, camp))
+        nuevo = apuntar(con, camp, actor, 'deshacer', f'deshizo: «{fila[2]}» (de {fila[3]})', inversos,
+                        [nombre_de(con, a) for a in afecta if a])
+        con.execute('UPDATE historial SET deshecho_por=? WHERE id=?', (nuevo, hid))
+        return {'ok': True}
+    return con_escritura(hacer)
+
+
+def lista_historial(con, camp, antes_de=None, n=50):
+    q = ('SELECT id, fecha, autor_nombre, tipo, resumen, afecta, cambios IS NOT NULL, deshecho_por FROM historial '
+         'WHERE campana=?' + (' AND id<?' if antes_de else '') + ' ORDER BY id DESC LIMIT ?')
+    args = (camp, antes_de, n) if antes_de else (camp, n)
+    return [{'id': i, 'fecha': f, 'autor': a, 'tipo': t, 'resumen': r, 'afecta': json.loads(af or '[]'),
+             'deshacible': bool(d), 'deshechoPor': dp} for i, f, a, t, r, af, d, dp in con.execute(q, args)]
+
+
+def aplicar_op(con, op, actor, rev, registro=None):
     if not isinstance(op, dict):
         raise Rechazo('invalida', 'Operación mal formada.')
     autor = actor['nombre']
@@ -936,6 +1032,8 @@ def aplicar_op(con, op, actor, rev):
     tipo = COLECCIONES[col]
     dueno = dueno_de(con, op, col, actor)
     actual, autor_prev = leer(con, camp, col, dueno, id_)
+    if registro is not None:   # para el historial: lo que había ANTES de esta transacción
+        registro.setdefault((col, dueno, id_), actual)
 
     if t == 'num' and tipo == 'num':
         # Sumar o restar stock. Nunca puede quedar por debajo de 0.
@@ -995,6 +1093,9 @@ def aplicar_op(con, op, actor, rev):
         escribir(con, camp, col, dueno, id_, nuevo, autor, rev)
         if col == 'catalog' and nuevo is None:
             # Material borrado del catálogo: desaparece de los inventarios de todos
+            if registro is not None:   # también se apunta el stock que pierden todos
+                for d, v in con.execute("SELECT dueno, valor FROM entradas WHERE campana=? AND col='inventory' AND id=?", (camp, id_)):
+                    registro.setdefault(('inventory', d, id_), json.loads(v))
             con.execute("DELETE FROM entradas WHERE campana=? AND col='inventory' AND id=?", (camp, id_))
     else:
         raise Rechazo('invalida', 'Operación desconocida.')
@@ -1046,9 +1147,18 @@ def transaccion(cuerpo, actor):
                 con.execute('ROLLBACK')
                 return {'ok': True, 'rev': rev_actual(con, camp), 'repetida': True}
             rev = rev_actual(con, camp) + 1
+            registro = {}
             for op in ops:
-                aplicar_op(con, op, actor, rev)
+                aplicar_op(con, op, actor, rev, registro)
             con.execute('UPDATE campanas SET rev=? WHERE id=?', (rev, camp))
+            cambios = []
+            for (col, dueno, id_), antes in registro.items():
+                despues, _ = leer(con, camp, col, dueno, id_)
+                if antes != despues:
+                    cambios.append({'k': 'e', 'c': col, 'd': dueno, 'id': id_, 'antes': antes, 'despues': despues})
+            if cambios:
+                apuntar(con, camp, actor, 'datos', resumen or 'cambios', cambios,
+                        [nombre_de(con, c['d']) for c in cambios if c['d']])
             con.execute('INSERT INTO transacciones (id, rev, autor, fecha, resumen, ops, campana) VALUES (?,?,?,?,?,?,?)',
                         (tx_id, rev, actor['nombre'], ahora(), resumen, json.dumps(ops, ensure_ascii=False), camp))
             con.execute('COMMIT')
@@ -1083,6 +1193,7 @@ def cambiar_rol(actor, cuerpo):
                 "SELECT COUNT(*) FROM miembros WHERE campana=? AND rol='dm' AND usuario!=?", (camp, objetivo)).fetchone()[0] == 0:
             raise Rechazo('invalida', 'Tiene que quedar al menos un DM en la campaña.')
         con.execute('UPDATE miembros SET rol=? WHERE campana=? AND usuario=?', (rol, camp, objetivo))
+        apuntar(con, camp, actor, 'miembros', f'{"dio" if rol == "dm" else "quitó"} poderes de DM a {fila[1]}', None, [fila[1]])
         subir_rev(con, camp)
         return {'ok': True}
     return con_escritura(hacer)
@@ -1265,6 +1376,16 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     return self.json(200, {**base, 'datos': estado_completo(con, camp, actor['clave']), 'cambios': otros})
                 if ruta == '/api/presencia':
                     return self.json(200, {'ok': True, 'presencia': lista_presencia(con, camp)})
+                if ruta == '/api/historial':
+                    # El historial lo ven el DM de la campaña y el superusuario; nadie puede borrarlo
+                    if not es_dm(actor):
+                        return self.json(403, {'ok': False, 'motivo': 'permiso', 'mensaje': 'Solo para el DM.'})
+                    try:
+                        antes_de = int(q.get('antes', ['0'])[0]) or None
+                    except ValueError:
+                        antes_de = None
+                    return self.json(200, {'ok': True, 'historial': lista_historial(con, camp, antes_de),
+                                           'puedeDeshacer': es_admin(actor)})
                 if ruta == '/api/mesa/perfiles':
                     return self.json(200, {'ok': True, 'perfiles': perfiles(con, camp)})
                 if ruta == '/api/cuentas':
@@ -1310,7 +1431,7 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
         acciones = ('/api/transaccion', '/api/registro', '/api/entrar', '/api/salir',
                     '/api/usuarios/rol', '/api/usuarios/contrasena', '/api/usuarios/destierro',
                     '/api/campanas/crear', '/api/registro/desbloquear', '/api/campanas/renombrar', '/api/campanas/unirse',
-                    '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave')
+                    '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave', '/api/historial/deshacer')
         if ruta not in acciones:
             return self.json(404, {'ok': False, 'mensaje': 'No existe.'})
         largo = int(self.headers.get('Content-Length') or 0)
@@ -1372,6 +1493,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, guardar_personaje(actor, cuerpo))
             if ruta == '/api/mesa/clave':
                 return self.json(200, poner_clave_mesa(actor, cuerpo))
+            if ruta == '/api/historial/deshacer':
+                return self.json(200, deshacer(actor, cuerpo))
         except Rechazo as r:
             codigo = {'stock': 409, 'conflicto': 409, 'existe': 409, 'permiso': 403,
                       'credenciales': 401, 'clave': 401, 'espera': 429, 'baneado': 403, 'bloqueado': 429}.get(r.motivo, 400)
