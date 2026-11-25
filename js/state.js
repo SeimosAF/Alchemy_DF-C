@@ -17,6 +17,7 @@ export function getDefaultState() {
     potionCatalog: {},
     lootPotions: {},
     libros: {},          // libros del inventario (módulo Lectura)
+    objetos: {},         // inventario general: armas, armaduras, objetos mágicos... (js/objetos.js)
     perfil: {},          // lo que fija el DM: perfil.alquimia.nivel (módulo Alquimia)
     damageTypes: ['Fuego','Frío','Rayo','Ácido','Veneno','Necrótico','Radiante','Psíquico','Trueno'],
     settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
@@ -36,6 +37,7 @@ export function normalizeState(s) {
   if (!s.inventory)     s.inventory     = {};
   if (!s.potions)       s.potions       = {};
   if (!s.libros)        s.libros        = {};
+  if (!s.objetos)       s.objetos       = {};
   if (!s.perfil)        s.perfil        = {};
   if (!s.character)     s.character     = def.character;
   if (!s.settings)      s.settings      = def.settings;

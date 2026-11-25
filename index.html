@@ -57,21 +57,20 @@
 
 <header class="app-header">
   <div class="header-title-row">
-    <h1 class="app-titulo" data-action="switch-tab" data-id="panel" title="Volver a la mesa">🍺 La taberna de Jhon</h1>
+    <h1 class="app-titulo" data-action="switch-tab" data-id="panel" title="Volver a la mesa">🍺 <span class="app-titulo-txt">La taberna de Jhon</span></h1>
     <button class="mesa-chip" data-action="cambiar-mesa" id="mesaChip" hidden></button>
-    <span class="usuario-chip" id="usuarioChip" hidden></span>
-    <button class="mute-btn" data-action="toggle-sound" id="muteBtn" title="Silenciar/Activar sonidos">🔊</button>
-    <button class="salir-btn" data-action="salir" id="salirBtn" title="Cerrar sesión" hidden>🚪 Cerrar sesión</button>
+    <!-- Cuenta: avatar con menú (perfil, en línea, sonido, exportar, contraseña, cerrar sesión). Ver js/cuenta.js -->
+    <div class="cuenta" id="cuenta">
+      <button type="button" class="cuenta-btn" id="cuentaBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="cuentaMenu">
+        <span class="avatar cuenta-avatar" id="cuentaAvatar">🧙</span>
+        <span class="cuenta-punto" aria-hidden="true"></span>
+        <span class="cuenta-online" id="cuentaOnline" title="Personas en línea en esta mesa"></span>
+        <span class="cuenta-flecha" aria-hidden="true">▾</span>
+      </button>
+      <div class="cuenta-menu" id="cuentaMenu" role="menu" hidden></div>
+    </div>
   </div>
-  <div class="char-bar">
-    <label>Personaje: <input type="text" id="charName" value="Mi personaje"></label>
-    <label>Mod. INT: <input type="number" id="charInt" value="0" min="-5" max="10"></label>
-    <label>Bono alquimista: <input type="number" id="charBonus" value="0" min="0" max="20"></label>
-    <button class="btn btn-sm" data-action="export-data">💾 Exportar</button>
-    <button class="btn btn-sm" data-action="import-data">📂 Importar</button>
-    <button class="btn btn-sm solo-dm-o-local" style="background:#8a2a2a" data-action="reset-all">🗑️ Borrar todo</button>
-    <input type="file" id="importFile" accept=".json" style="display:none">
-  </div>
+  <input type="file" id="importFile" accept=".json" style="display:none">
 </header>
 
 <!-- Las pestañas y las tarjetas de la mesa salen del registro de módulos (js/modulos.js, js/app.js) -->
@@ -82,7 +81,7 @@
   <div class="mesa">
     <h2 class="mesa-saludo" id="mesaSaludo"></h2>
     <p class="mesa-campana" id="mesaCampana" hidden></p>
-    <p class="mesa-sub">¿Qué te trae hoy a la taberna? <button class="mesa-salir" data-action="salir" id="mesaSalir" hidden>¿No eres tú? Cerrar sesión</button></p>
+    <p class="mesa-sub">¿Qué te trae hoy a la taberna?</p>
     <div class="mesa-tarjetas" id="mesaTarjetas"></div>
   </div>
 </section>
@@ -95,6 +94,7 @@
       les asignas disciplina, pones una contraseña nueva a quien la olvide y abres su inventario, sus libros y su nivel.</span>
       <span class="solo-admin">Como superusuario, además, creas campañas, das o quitas poderes de DM y destierras (o readmites) cuentas.</span></p>
     <div id="mesaGestion"></div>
+    <div class="filtros" data-filtros="usuarios" data-estados data-texto="Buscar por nombre, personaje o disciplina…"></div>
     <div id="listaUsuarios"></div>
     <div id="adminCampanas"></div>
     <div id="historialMesa"></div>
@@ -116,8 +116,8 @@
   <div class="panel lectura-cab">
     <h2>📖 Lectura</h2>
     <p class="muted">En cada <b>descanso corto o largo</b> puedes avanzar una lectura de un libro. Las lecturas marcadas con 🌙 piden
-      <b>sí o sí un descanso largo</b> y una <b>tirada de comprensión</b>: d20 + mod. INT (<b id="lecturaIntMod">+0</b>, se cambia en la barra
-      de arriba) contra la dificultad que fija el DM. Al terminar el libro obtienes su bono.</p>
+      <b>sí o sí un descanso largo</b> y una <b>tirada de comprensión</b>: d20 + mod. INT (<b id="lecturaIntMod">+0</b>, se cambia en
+      <a href="#" data-action="switch-tab" data-id="perfil">tu perfil</a>) contra la dificultad que fija el DM. Al terminar el libro obtienes su bono.</p>
     <p class="muted">Los libros se dan de alta en <a href="#" data-action="ir-libros">Inventario → Libros</a>.</p>
   </div>
   <div id="lecturaAviso"></div>
@@ -381,6 +381,10 @@
 
   <!-- Catálogo Materiales -->
   <div id="infoSub-catalogo">
+    <div class="panel panel-filtros">
+      <div class="filtros" data-filtros="cat-mat" data-campos data-sin-id data-tipos data-texto="Buscar material por nombre, lugar, efecto…"></div>
+      <div id="catMatNada"></div>
+    </div>
     <div class="panel">
       <h2>❓ Sin identificar</h2>
       <div id="catUnknownList"><p class="muted">No hay componentes sin identificar.</p></div>
@@ -408,6 +412,7 @@
   <div id="infoSub-pociones" style="display:none">
     <div class="panel">
       <h2>📚 Pociones descubiertas</h2>
+      <div class="filtros" data-filtros="cat-pot" data-campos data-texto="Buscar poción por nombre, apodo o ingrediente…"></div>
       <div id="potionCatalogList"><p class="muted">Todavía no has creado ninguna poción.</p></div>
     </div>
   </div>
@@ -417,15 +422,29 @@
 <section id="tab-inventario" class="tab-content">
   <div class="panel">
     <div class="subtab-bar">
-      <button class="subtab-btn active" data-action="inv-subtab" data-id="materiales">📦 Materiales</button>
+      <button class="subtab-btn active" data-action="inv-subtab" data-id="objetos">🎒 Objetos</button>
+      <button class="subtab-btn" data-action="inv-subtab" data-id="materiales">📦 Materiales</button>
       <button class="subtab-btn" data-action="inv-subtab" data-id="pociones">🧪 Pociones</button>
       <button class="subtab-btn" data-action="inv-subtab" data-id="loot">🔍 Loot</button>
       <button class="subtab-btn" data-action="inv-subtab" data-id="libros">📚 Libros</button>
       <button class="subtab-btn subtab-dm solo-dm" data-action="inv-subtab" data-id="dm">👑 Inventarios de la mesa (DM)</button>
     </div>
     <div id="invSub-dm" style="display:none"><div id="dmPanel"></div></div>
-    <div id="invSub-materiales"><div id="invMatList"></div></div>
+    <!-- Inventario general (js/objetos.js): armas, armaduras, objetos mágicos, equipo... -->
+    <div id="invSub-objetos">
+      <div class="obj-cabecera">
+        <div class="obj-resumen" id="objetosResumen"></div>
+        <button class="btn" data-obj="nuevo">➕ Nuevo objeto</button>
+      </div>
+      <div class="filtros" data-filtros="objetos" data-texto="Buscar objeto por nombre, efecto, propiedad…"></div>
+      <div id="invObjetosList"></div>
+    </div>
+    <div id="invSub-materiales" style="display:none">
+      <div class="filtros" data-filtros="inv-mat" data-campos data-sin-id data-tipos data-tengo data-texto="Buscar material por nombre, lugar, tipo…"></div>
+      <div id="invMatList"></div>
+    </div>
     <div id="invSub-pociones" style="display:none">
+      <div class="filtros" data-filtros="inv-pot" data-campos data-texto="Buscar poción por nombre o apodo…"></div>
       <div id="invPotList"></div>
       <div id="drinkResult"></div>
     </div>
@@ -460,7 +479,8 @@
         </div>
       </div>
       <button class="btn" data-action="add-loot">➕ Añadir poción loot</button>
-      <div id="lootPotList" style="margin-top:12px"></div>
+      <div class="filtros" data-filtros="loot" data-texto="Buscar en el botín…" style="margin-top:12px"></div>
+      <div id="lootPotList"></div>
       <div id="lootResult"></div>
     </div>
   </div>

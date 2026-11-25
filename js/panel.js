@@ -6,6 +6,9 @@ import * as auth from './auth.js';
 import * as modulos from './modulos.js';
 import * as niveles from './niveles.js';
 import * as sync from './sync.js';
+import * as avatar from './avatar.js';
+import * as cuenta from './cuenta.js';
+import * as filtros from './filtros.js';
 
 let presencia = [];
 let cuentas = null;        // cuentas que el DM puede invitar (se piden al abrir la sala)
@@ -37,7 +40,8 @@ function contar() {
 export function resumenInventario() {
   const c = contar();
   const libros = Object.keys(state.libros || {}).length;
-  return `<b>${c.mats}</b> material${c.mats === 1 ? '' : 'es'} de ${c.tipos} tipo${c.tipos === 1 ? '' : 's'}<br><b>${c.pots}</b> poci${c.pots === 1 ? 'ón' : 'ones'}${c.loot ? ` · <b>${c.loot}</b> de botín` : ''}${libros ? ` · <b>${libros}</b> libro${libros === 1 ? '' : 's'}` : ''}`;
+  const objs = Object.values(state.objetos || {}).reduce((t, o) => t + (o.cantidad ?? 1), 0);
+  return `<b>${objs}</b> objeto${objs === 1 ? '' : 's'} · <b>${c.mats}</b> material${c.mats === 1 ? '' : 'es'} de ${c.tipos} tipo${c.tipos === 1 ? '' : 's'}<br><b>${c.pots}</b> poci${c.pots === 1 ? 'ón' : 'ones'}${c.loot ? ` · <b>${c.loot}</b> de botín` : ''}${libros ? ` · <b>${libros}</b> libro${libros === 1 ? '' : 's'}` : ''}`;
 }
 export function resumenAlquimia() {
   const c = contar();
@@ -51,14 +55,16 @@ export function resumenUsuarios() {
   const en = presencia.filter(p => p.estado === 'en-linea');
   const aus = presencia.filter(p => p.estado === 'ausente');
   return `<span class="avatares">${en.concat(aus).slice(0, 6).map(p =>
-    `<span class="avatar avatar-${p.estado}" title="${esc(p.nombre)}">${esc(inicial(p.nombre))}</span>`).join('')}</span>` +
+    avatar.html(p.clave, p.avatar, inicial(p.nombre), `avatar avatar-${p.estado}`, p.nombre)).join('')}</span>` +
     `<b>${en.length}</b> en línea${aus.length ? ` · ${aus.length} ausente${aus.length === 1 ? '' : 's'}` : ''}`;
 }
 
 export function pintarTarjetas() {
   modulos.pintarResumenes();
+  const n = presencia.filter(p => p.estado === 'en-linea').length;
   const badge = document.getElementById('navOnlineCount');
-  if (badge) badge.textContent = auth.servidor ? String(presencia.filter(p => p.estado === 'en-linea').length) : '';
+  if (badge) badge.textContent = auth.servidor ? String(n) : '';
+  cuenta.setEnLinea(n);   // el numerito del icono de la cuenta
 }
 
 // Las tarjetas aparecen una a una cada vez que se vuelve a la mesa
@@ -88,20 +94,12 @@ export function pintarSaludo() {
   }
 }
 
+// Cabecera: la mesa (pulsar = cambiar de mesa). Quién eres, el perfil y cerrar sesión están en el menú de la cuenta (cuenta.js).
 export function pintarCabecera() {
-  const u = document.getElementById('usuarioChip');
-  if (u) {
-    u.hidden = !auth.usuario;
-    if (auth.usuario) u.innerHTML = `${auth.esAdmin() ? '🛡️' : auth.esDM() ? '👑' : '⚔️'} ${esc(auth.usuario.nombre)}`;
-  }
   const m = document.getElementById('mesaChip');
   if (m) {
     m.hidden = !auth.mesa;
     if (auth.mesa) { m.textContent = '🗺️ ' + auth.mesa.nombre; m.title = 'Estás en la campaña «' + auth.mesa.nombre + '». Pulsa para cambiar de mesa.'; }
-  }
-  for (const id of ['salirBtn', 'mesaSalir']) {
-    const salir = document.getElementById(id);
-    if (salir) salir.hidden = !auth.usuario;
   }
   document.body.classList.toggle('es-dm', auth.esDM());
   document.body.classList.toggle('es-admin', auth.esAdmin());
@@ -133,16 +131,20 @@ export function renderUsuarios() {
   }
   const orden = { 'en-linea': 0, ausente: 1, desconectado: 2 };
   // Las cuentas desterradas solo las ve el superusuario (para poder readmitirlas)
-  const lista = [...presencia].filter(p => !p.baneado || auth.esAdmin())
+  const todos = [...presencia].filter(p => !p.baneado || auth.esAdmin());
+  const en = filtros.estado('usuarios').en;
+  const lista = todos.filter(p => filtros.coincide('usuarios', p.nombre, p.personaje, DISCIPLINAS[p.disciplina]?.nombre, p.rol === 'dm' ? 'DM' : '')
+      && (!en || (en === 'dm' ? p.rol === 'dm' || p.rol === 'admin' : p.estado === en)))
     .sort((a, b) => (a.baneado - b.baneado) || orden[a.estado] - orden[b.estado] || a.nombre.localeCompare(b.nombre));
+  filtros.cuenta('usuarios', lista.length, todos.length);
   const txtEstado = { 'en-linea': 'En línea', ausente: 'Ausente', desconectado: 'Desconectado' };
   el.innerHTML = lista.map(p => {
     const yo = p.clave === auth.usuario?.clave;
     const acciones = [];
     const admin = p.rol === 'admin';
-    if (yo && !admin) acciones.push(`<button class="btn btn-sm" data-usr="pass-propia">🔑 Cambiar mi contraseña</button>`);
     if (!admin && !p.baneado) acciones.push(`<button class="btn btn-sm" data-usr="ver-perfil" data-clave="${esc(p.clave)}">🧙 Perfil</button>`);
     if (auth.esAdmin() && !yo && !admin) {
+      if (p.avatar) acciones.push(`<button class="btn btn-sm" data-usr="quitar-foto" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}" title="Por si alguien sube una foto que no toca">🖼️ Quitar foto</button>`);
       if (!p.baneado) acciones.push(p.rol === 'dm'
         ? `<button class="btn btn-sm btn-edit" data-usr="rol" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}" data-rol="jugador">Quitar DM</button>`
         : `<button class="btn btn-sm btn-edit" data-usr="rol" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}" data-rol="dm">👑 Hacer DM</button>`);
@@ -173,7 +175,7 @@ export function renderUsuarios() {
       <div class="usr-acciones">${acciones.join('')}</div>
     </div>`;
     return `<div class="usr-fila usr-${p.estado}">
-      <span class="avatar avatar-${p.estado} avatar-grande">${esc(inicial(p.nombre))}</span>
+      ${avatar.html(p.clave, p.avatar, inicial(p.nombre), `avatar avatar-${p.estado} avatar-grande`)}
       <div class="usr-info">
         <div class="usr-nombre">${esc(p.nombre)}${yo ? ' <span class="muted">(tú)</span>' : ''}
           ${rolTxt} ${disc}</div>
@@ -184,7 +186,7 @@ export function renderUsuarios() {
       </div>
       <div class="usr-acciones">${acciones.join('')}</div>
     </div>`;
-  }).join('') || '<p class="muted">Todavía no hay nadie más en la mesa.</p>';
+  }).join('') || (todos.length ? filtros.vacio('usuarios') : '<p class="muted">Todavía no hay nadie más en la mesa.</p>');
 }
 
 // ---- Gestión de la campaña (DM) y de las campañas (superusuario) ----
@@ -409,14 +411,22 @@ export function initUsuarios(verInventario, verPerfil = () => {}) {
       alert(r.ok ? `Hecho. Dile a ${b.dataset.nombre} su nueva contraseña.` : r.mensaje);
       return;
     }
-    if (accion === 'pass-propia') {
-      const actual = prompt('Tu contraseña actual:');
-      if (actual == null) return;
-      const nueva = prompt('Tu contraseña nueva (mínimo 6 caracteres):');
-      if (nueva == null) return;
-      if (prompt('Repite la contraseña nueva:') !== nueva) { alert('No coinciden. No se ha cambiado nada.'); return; }
-      const r = await auth.cambiarContrasena({ actual, nueva });
-      alert(r.ok ? 'Contraseña cambiada.' : r.mensaje);
+    if (accion === 'quitar-foto') {
+      if (!confirm(`¿Quitar la foto de ${b.dataset.nombre}? Podrá poner otra.`)) return;
+      const r = await avatar.quitar(b.dataset.clave);
+      if (!r.ok) alert(r.mensaje);
+      await sync.refrescar({ presencia: true });
     }
   });
+}
+
+// Cambiar la contraseña propia (desde el menú de la cuenta)
+export async function cambiarMiContrasena() {
+  const actual = prompt('Tu contraseña actual:');
+  if (actual == null) return;
+  const nueva = prompt('Tu contraseña nueva (mínimo 6 caracteres):');
+  if (nueva == null) return;
+  if (prompt('Repite la contraseña nueva:') !== nueva) { alert('No coinciden. No se ha cambiado nada.'); return; }
+  const r = await auth.cambiarContrasena({ actual, nueva });
+  alert(r.ok ? 'Contraseña cambiada.' : r.mensaje);
 }

@@ -21,7 +21,7 @@ import * as auth from './auth.js';
 
 // Colecciones que se guardan en el servidor. Un módulo nuevo con datos propios se añade aquí
 // (y en COLECCIONES / POR_JUGADOR de servidor.py).
-export const COLS = { inventory: 'num', potions: 'qty', lootPotions: 'qty', catalog: 'obj', potionCatalog: 'obj', libros: 'obj', perfil: 'obj' };
+export const COLS = { inventory: 'num', potions: 'qty', lootPotions: 'qty', catalog: 'obj', potionCatalog: 'obj', libros: 'obj', perfil: 'obj', objetos: 'obj' };
 export const META = ['version', 'settings', 'damageTypes'];
 
 const K_COLA_VIEJA = 'alquimiaColaPendiente';            // de antes de las cuentas
@@ -107,6 +107,7 @@ export function diferencias(antes, despues) {
         else if (c === 'potionCatalog') texto.push('ficha de poción');
         else if (c === 'libros') texto.push(!va ? `nuevo libro ${vb.name}` : !vb ? `quitó el libro ${va.name}` : `lectura de ${vb.name}`);
         else if (c === 'perfil') texto.push('nivel de alquimia');
+        else if (c === 'objetos') texto.push(!va ? `nuevo objeto ${vb.name}` : !vb ? `quitó ${va.name}` : `editó ${vb.name}`);
         else texto.push('ajustes');
       }
     }
@@ -296,7 +297,7 @@ function pintarEstado(forzado) {
     el = document.createElement('span');
     el.id = 'syncEstado';
     el.className = 'sync-estado';
-    fila.insertBefore(el, document.getElementById('muteBtn'));
+    fila.insertBefore(el, document.getElementById('cuenta'));
   }
   let cls, txt, tit;
   if (modo !== 'servidor') { cls = 'local'; txt = '💾 Solo este navegador'; tit = 'Los datos se guardan en este navegador. Arranca servidor.py para compartirlos.'; }
@@ -304,6 +305,7 @@ function pintarEstado(forzado) {
   else if (cola.length || enviando) { cls = 'pend'; txt = '🟡 Guardando…'; tit = 'Enviando al servidor'; }
   else { cls = 'ok'; txt = '🟢 Conectado'; tit = 'Conectado al servidor como ' + autor() + (auth.mesa ? ' en «' + auth.mesa.nombre + '»' : '') + '. Los cambios de los demás aparecen solos.'; }
   el.className = 'sync-estado sync-' + cls;
+  document.body.dataset.sync = cls;   // el punto del icono de la cuenta (verde, amarillo, rojo); el cartel solo sale si algo va mal
   el.textContent = txt;
   el.title = tit;
 }

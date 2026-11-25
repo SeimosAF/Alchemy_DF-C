@@ -1,5 +1,5 @@
 // dm.js — herramientas del DM: ver y cambiar el inventario de cada jugador,
-// sus libros (casillas con tirada y su CD) y su nivel de alquimia.
+// sus objetos (inventario general), sus libros (casillas con tirada y su CD) y su nivel de alquimia.
 //
 // Todo cambio es una transacción del servidor (todo o nada), igual que las de
 // los jugadores:
@@ -13,6 +13,7 @@ import * as auth from './auth.js';
 import { rarityBadge, campoClass, nombreMat as nombreDe, notaSinIdentificar } from './utils.js';
 import * as niveles from './niveles.js';
 import * as lectura from './lectura.js';
+import * as objetos from './objetos.js';
 import { nombreDisciplina } from './panel.js';
 
 let jugadores = [];
@@ -127,10 +128,20 @@ export function render() {
     </div>`;
   }).join('') || '<p class="muted">No lleva libros.</p>';
 
+  // Objetos (inventario general) de este jugador
+  const listaObj = objetos.ordenar(j.objetos);
+  const nSint = objetos.sintonizados(j.objetos);
+  const bloqueObjetos = `<div class="dm-objetos">
+      <div class="obj-cabecera"><h3>🎒 Objetos <span class="muted">· ${listaObj.length} · 🔗 ${nSint}/${objetos.MAX_SINTONIA} sintonizados</span></h3>
+        <button class="btn btn-sm" data-obj="nuevo">🎁 Dar un objeto</button></div>
+      ${listaObj.map(([id, o]) => objetos.tarjeta(id, o, true)).join('') || '<p class="muted">No lleva objetos.</p>'}
+    </div>`;
+
   el.innerHTML = `
     <div class="dm-chips">${chips}</div>
     <p class="muted dm-ayuda">Estás cambiando el inventario de <strong>${esc(j.nombre)}</strong> (${nombreDisciplina(j.disciplina)}) en «${esc(auth.mesa?.nombre || '')}»${j.baneado ? ' <b>(desterrado)</b>' : ''}. Cada cambio se guarda al momento y ${esc(j.nombre)} lo ve en unos segundos. La disciplina se cambia en «En línea».</p>
     ${bloqueNivel}
+    ${bloqueObjetos}
     <div class="dm-grid">
       <div class="dm-col">
         <h3>📦 Materiales</h3>
@@ -186,6 +197,12 @@ export function init() {
   const el = document.getElementById('dmPanel');
   if (!el) return;
   el.addEventListener('click', e => {
+    const bo = e.target.closest('[data-obj]');
+    if (bo && !bo.disabled) {
+      const j = jugadores.find(x => x.clave === elegido);
+      if (j) objetos.accionDM(bo, j, (ops, resumen) => ops ? enviar(ops, resumen) : render());
+      return;
+    }
     const b = e.target.closest('[data-dm]');
     if (!b || b.disabled) return;
     const j = jugadores.find(x => x.clave === elegido);

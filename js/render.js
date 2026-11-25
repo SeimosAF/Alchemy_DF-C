@@ -8,6 +8,7 @@ import {
 import { CAMPOS, CAMPO_NAMES, EFFECT_KINDS, MOD_KIND_ICONS } from './data.js';
 import * as niveles from './niveles.js';
 import * as auth from './auth.js';
+import * as filtros from './filtros.js';
 import {
   effectText, durationText, saveText, formatDice, rollPool, getDisolvente, modCompat, elabDC, hasMaleficio,
 } from './model.js';
@@ -107,13 +108,34 @@ function makeMatCard(id, m, deletePendingId) {
   return div;
 }
 
+// Texto en el que busca el buscador de un material (nombre, lugar, tipo, campo...)
+function textoMat(m) {
+  return m.unknown ? [m.name, m.lugar, m.type, 'sin identificar']
+    : [m.name, m.lugar, m.type, m.modKind, m.campo, m.polaridad, m.rarity, m.description];
+}
+function matPasa(lista, m) {
+  const e = filtros.estado(lista);
+  return filtros.coincide(lista, ...textoMat(m))
+    && filtros.campoOk(lista, m.campo, !!m.unknown)
+    && (!e.tipo || m.type === e.tipo);
+}
+
 export function renderCatMateriales(deletePendingId = null) {
   const bases = [], mods = [], unknowns = [];
+  const total = Object.keys(state.catalog).length;
   for (const id in state.catalog) {
     const m = state.catalog[id];
+    if (!matPasa('cat-mat', m)) continue;
     if (m.unknown) unknowns.push({ id, m });
     else (m.type === 'Reactivo' ? bases : mods).push({ id, m });
   }
+  filtros.cuenta('cat-mat', bases.length + mods.length + unknowns.length, total);
+  const filtrando = filtros.activo('cat-mat');
+  // Con filtro, las secciones que se quedan vacías se esconden
+  for (const [id, n] of [['catUnknownList', unknowns.length], ['catBaseList', bases.length], ['catModList', mods.length]])
+    document.getElementById(id)?.closest('.panel')?.toggleAttribute('hidden', filtrando && !n);
+  const nadaEl = document.getElementById('catMatNada');
+  if (nadaEl) nadaEl.innerHTML = filtrando && !(bases.length + mods.length + unknowns.length) ? filtros.vacio('cat-mat') : '';
   const uEl = document.getElementById('catUnknownList');
   if (uEl) {
     if (!unknowns.length) uEl.innerHTML = '<p class="muted">No hay componentes sin identificar.</p>';
@@ -142,10 +164,15 @@ export function renderCatPociones() {
   if (!catKeys.length) { el.innerHTML = '<p class="muted">Todavía no has creado ninguna poción.</p>'; return; }
 
   const groups = {};
+  let vistos = 0;
   catKeys.forEach(ck => {
     const parsed = parseCatKey(ck); if (!parsed) return;
     const base = state.catalog[parsed.baseId]; if (!base) return;
     const cat = base.campo || 'Mágico';
+    const mods = (parsed.mods || '').split(',').filter(Boolean).map(mid => state.catalog[mid]?.name);
+    if (!filtros.coincide('cat-pot', base.name, state.potionCatalog[ck]?.apodo, base.polaridad, cat, ...mods)
+      || !filtros.campoOk('cat-pot', cat)) return;
+    vistos++;
     const sub = base.polaridad || '(Sin polaridad)';
     if (!groups[cat]) groups[cat] = {};
     if (!groups[cat][sub]) groups[cat][sub] = [];
@@ -197,28 +224,62 @@ export function renderCatPociones() {
     }
     html += '</div>';
   });
-  el.innerHTML = html || '<p class="muted">Sin resultados.</p>';
+  filtros.cuenta('cat-pot', vistos, catKeys.length);
+  el.innerHTML = html || (filtros.activo('cat-pot') ? filtros.vacio('cat-pot') : '<p class="muted">Sin resultados.</p>');
 }
 
 // ---- INV MATERIALES ----
+// Cada fila dice en claro qué es: un sello con el icono y el color de su campo
+// (💪 Cuerpo, 🧠 Mente, 👻 Alma, ✨ Mágico, ❔ sin identificar) y etiquetas legibles.
+const escR = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+function filaMaterial(id, m, qty) {
+  const sinId = !!m.unknown;
+  const cc = sinId ? 'sin-id' : campoClass(m.campo);   // sin identificar: no se delata su campo
+  const icono = sinId ? '❔' : (CAMPOS[m.campo]?.icon || '✨');
+  const tipo = m.type === 'Reactivo' ? '🌿 Reactivo' : `🧪 Modificador${m.modKind && !sinId ? ' · ' + escR(m.modKind) : ''}`;
+  const pol = !sinId && m.polaridad
+    ? `<span class="etq etq-${m.polaridad === 'Maleficioso' ? 'malef' : m.polaridad === 'Neutro' ? 'neutro' : 'benef'}">${m.polaridad === 'Maleficioso' ? '☠️' : m.polaridad === 'Neutro' ? '⚖️' : '💚'} ${escR(m.polaridad)}</span>` : '';
+  const etqs = sinId
+    ? `<span class="etq">${tipo}</span><span class="etq etq-sin-id">❔ Sin identificar</span>${m.lugar ? `<span class="etq">📍 ${escR(m.lugar)}</span>` : ''}`
+    : `<span class="etq">${tipo}</span><span class="etq etq-${cc}">${icono} ${escR(m.campo)}</span>${pol}`;
+  return `<div class="inv-item inv-${cc}${qty ? '' : ' inv-vacio'}">
+      <span class="inv-sello" title="${sinId ? 'Sin identificar' : 'Campo: ' + escR(m.campo)}">${icono}</span>
+      <div class="inv-info">
+        <div class="inv-nombre">${escR(nombreMat(m))} ${m.rarity ? rarityBadge(m.rarity) : ''}</div>
+        <div class="inv-etiquetas">${etqs}</div>
+      </div>
+      <div class="inv-stepper">
+        <button class="btn btn-sm" data-action="inv-dec" data-id="${id}" aria-label="Quitar uno" ${qty ? '' : 'disabled'}>−</button>
+        <span class="stepper-count" title="Cantidad">${qty}</span>
+        <button class="btn btn-sm" data-action="inv-inc" data-id="${id}" aria-label="Añadir uno">+</button>
+      </div>
+    </div>`;
+}
+
 export function renderInvMateriales() {
   const el = document.getElementById('invMatList'); if (!el) return;
   const ids = Object.keys(state.catalog);
-  if (!ids.length) { el.innerHTML = '<p class="muted">No hay materiales. Ve a Info → Identificación.</p>'; return; }
-  el.innerHTML = ids.map(id => {
-    const m = state.catalog[id];
-    const qty = state.inventory[id] || 0;
-    const dn = nombreMat(m);
-    const cc = m.unknown ? 'sin-id' : campoClass(m.campo);   // sin identificar: no se delata su campo
-    return `<div class="inv-row">
-      <div class="inv-name"><span class="badge badge-${cc}" style="margin-right:4px" title="${m.unknown ? m.type : m.type + ' · ' + m.campo}">${m.type[0]}</span>${dn} ${rarityBadge(m.rarity)} ${notaSinIdentificar(m)}</div>
-      <div class="inv-stepper">
-        <button class="btn btn-sm" data-action="inv-dec" data-id="${id}">−</button>
-        <span class="stepper-count">${qty}</span>
-        <button class="btn btn-sm" data-action="inv-inc" data-id="${id}">+</button>
-      </div>
-    </div>`;
-  }).join('');
+  filtros.cuenta('inv-mat', 0, ids.length);
+  if (!ids.length) { el.innerHTML = '<p class="muted">No hay materiales en el catálogo. Se dan de alta en Compendio → Identificación.</p>'; return; }
+  const tengo = filtros.estado('inv-mat').tengo === 'si';
+  const vistos = ids.filter(id => matPasa('inv-mat', state.catalog[id]) && (!tengo || (state.inventory[id] || 0) > 0));
+  filtros.cuenta('inv-mat', vistos.length, ids.length);
+  if (!vistos.length) {
+    el.innerHTML = tengo && !filtros.estado('inv-mat').q && !filtros.estado('inv-mat').campo && !filtros.estado('inv-mat').tipo
+      ? '<p class="muted">No llevas ningún material encima.</p>' : filtros.vacio('inv-mat');
+    return;
+  }
+  // Primero lo que llevas encima; luego por nombre
+  const orden = (a, b) => ((state.inventory[b] || 0) > 0) - ((state.inventory[a] || 0) > 0)
+    || nombreMat(state.catalog[a]).localeCompare(nombreMat(state.catalog[b]), 'es');
+  const grupo = (tipo, titulo) => {
+    const lista = vistos.filter(id => state.catalog[id].type === tipo).sort(orden);
+    if (!lista.length) return '';
+    const unidades = lista.reduce((t, id) => t + (state.inventory[id] || 0), 0);
+    return `<div class="inv-grupo"><h3 class="inv-grupo-titulo">${titulo} <span class="muted">· ${lista.length} tipo${lista.length === 1 ? '' : 's'}, ${unidades} en total</span></h3>
+      ${lista.map(id => filaMaterial(id, state.catalog[id], state.inventory[id] || 0)).join('')}</div>`;
+  };
+  el.innerHTML = grupo('Reactivo', '🌿 Reactivos') + grupo('Modificador', '🧪 Modificadores');
 }
 
 // ---- INV POCIONES ----
@@ -254,11 +315,16 @@ export function buildPotDetail(pot) {
 
 export function renderInvPociones() {
   const el = document.getElementById('invPotList'); if (!el) return;
-  let html = '', hasPots = false;
+  let html = '', hasPots = false, total = 0, vistos = 0;
   for (const pk in state.potions) {
     const pot = state.potions[pk];
     if (!pot || pot.qty <= 0) continue;
+    total++;
+    const ckF = parsedToCatKey(parsePotKey(pk));
+    if (!filtros.coincide('inv-pot', pot.name, state.potionCatalog[ckF]?.apodo, pot.campo, pot.polaridad)
+      || !filtros.campoOk('inv-pot', pot.campo)) continue;
     hasPots = true;
+    vistos++;
     const parsed = parsePotKey(pk);
     const purityN = parsed ? parsed.purity : 0;
     const purity = purityN > 0 ? purityRoman(purityN) : 'Sin purificar';
@@ -287,7 +353,8 @@ export function renderInvPociones() {
       <div class="mat-card-detail" id="potdetail_${pkEsc}" style="display:none">${buildPotDetail(pot)}</div>
     </div>`;
   }
-  el.innerHTML = hasPots ? html : '<p class="muted">No tienes pociones. Ve a Crafteo para elaborar.</p>';
+  filtros.cuenta('inv-pot', vistos, total);
+  el.innerHTML = hasPots ? html : total ? filtros.vacio('inv-pot') : '<p class="muted">No tienes pociones. Ve a Alquimia para elaborar.</p>';
 }
 
 // ---- USE / APODO / DEL POTION ----
@@ -363,8 +430,13 @@ export function delPotion(pk) {
 // ---- LOOT ----
 export function renderLoot() {
   const el = document.getElementById('lootPotList'); if (!el) return;
-  const ids = Object.keys(state.lootPotions);
-  if (!ids.length) { el.innerHTML = '<p class="muted">No hay pociones loot.</p>'; return; }
+  const todos = Object.keys(state.lootPotions);
+  filtros.cuenta('loot', 0, todos.length);
+  if (!todos.length) { el.innerHTML = '<p class="muted">No hay pociones loot.</p>'; return; }
+  const ids = todos.filter(id => { const l = state.lootPotions[id];
+    return filtros.coincide('loot', l.name, l.tipo, l.descripcion, l.identificada ? 'identificada' : 'sin identificar'); });
+  filtros.cuenta('loot', ids.length, todos.length);
+  if (!ids.length) { el.innerHTML = filtros.vacio('loot'); return; }
   el.innerHTML = ids.map(id => {
     const loot = state.lootPotions[id];
     const tipoLabel = loot.identificada

@@ -39,7 +39,7 @@
 #
 # Solo usa la biblioteca estándar de Python 3: no hace falta instalar nada.
 
-import http.server, ipaddress, json, os, sqlite3, sys, threading, time, hmac, hashlib, secrets, re, unicodedata
+import base64, binascii, http.server, ipaddress, json, os, sqlite3, sys, threading, time, hmac, hashlib, secrets, re, unicodedata
 from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs, unquote
 
@@ -67,10 +67,11 @@ COLECCIONES = {
     'meta': 'obj',          # settings, damageTypes, version
     'libros': 'obj',        # libros del inventario y cuánto se ha leído de cada uno
     'perfil': 'obj',        # progreso del personaje que fija el DM (p. ej. nivel de alquimia)
+    'objetos': 'obj',       # inventario general: armas, armaduras, objetos mágicos, equipo... (V3.5)
 }
 # Estas son de cada jugador; las demás, de toda la mesa.
 # Un módulo nuevo (cocina, ficha...) que guarde cosas de cada jugador se añade aquí.
-POR_JUGADOR = ('inventory', 'potions', 'lootPotions', 'libros', 'perfil')
+POR_JUGADOR = ('inventory', 'potions', 'lootPotions', 'libros', 'perfil', 'objetos')
 COMUN = ''   # "dueño" de lo que es de toda la mesa
 
 # Campañas (mesas). Todo lo que hay en «entradas» y «transacciones» es de una campaña.
@@ -162,6 +163,10 @@ def preparar_bd():
             -- Quien falla la palabra de paso de la mesa al crear cuenta: tras 7 fallos seguidos, bloqueado.
             CREATE TABLE IF NOT EXISTS bloqueos_registro (
                 origen TEXT PRIMARY KEY, fallos INTEGER NOT NULL DEFAULT 0, ultimo REAL, hasta REAL);
+            -- Foto de perfil de cada cuenta (V3.5). Llega ya recortada y pequeña desde el navegador;
+            -- aquí solo se aceptan PNG, JPEG o WebP de hasta 512x512 px y 300 KB (ver guardar_avatar).
+            CREATE TABLE IF NOT EXISTS avatares (
+                usuario TEXT PRIMARY KEY, tipo TEXT NOT NULL, datos BLOB NOT NULL, version INTEGER NOT NULL, cambiado TEXT);
             CREATE TABLE IF NOT EXISTS miembros (
                 campana TEXT NOT NULL, usuario TEXT NOT NULL, rol TEXT NOT NULL DEFAULT 'jugador',
                 disciplina TEXT NOT NULL DEFAULT 'alquimista', unido TEXT, personaje TEXT,
@@ -594,13 +599,125 @@ def guardar_personaje(actor, cuerpo):
 def perfiles(con, camp):
     """Los perfiles de todos los de la campaña (todos los pueden ver; editar, ver guardar_personaje)."""
     out = []
+    fotos = versiones_avatar(con)
     for c, n, r, d, pj in con.execute('SELECT u.clave, u.nombre, m.rol, m.disciplina, m.personaje FROM miembros m '
                                       'JOIN usuarios u ON u.clave=m.usuario WHERE m.campana=? AND u.baneado=0 '
                                       'ORDER BY u.nombre COLLATE NOCASE', (camp,)).fetchall():
         nivel, _ = leer(con, camp, 'perfil', c, 'alquimia')
         out.append({'clave': c, 'nombre': n, 'rol': r, 'disciplina': d, 'personaje': leer_personaje(pj),
-                    'nivelAlquimia': (nivel or {}).get('nivel') if isinstance(nivel, dict) else None})
+                    'nivelAlquimia': (nivel or {}).get('nivel') if isinstance(nivel, dict) else None,
+                    'avatar': fotos.get(c, 0)})
     return out
+
+
+# ---- Fotos de perfil (avatares) ---------------------------------------------
+# Cada cuenta puede subir una foto. El navegador la recorta y la reduce a 256x256 antes de mandarla.
+# El servidor NO la abre ni la procesa: solo comprueba que es de verdad una imagen PNG, JPEG o WebP
+# (por sus primeros bytes), que pesa como mucho 300 KB y que mide como mucho 512x512 px (así nadie
+# puede colar un archivo enorme que cuelgue el navegador de los demás). Nada de SVG (puede llevar
+# código), ni GIF, ni nada más. Al servirla, va con su tipo exacto y con cabeceras que impiden que el
+# navegador la trate como otra cosa (nosniff, CSP sandbox). Solo la ven cuentas que han entrado.
+AVATAR_MAX_BYTES = 300 * 1024
+AVATAR_MAX_LADO = 512
+AVATAR_MIN_LADO = 16
+AVATAR_ESPERA_S = 3                # entre una subida y la siguiente de la misma cuenta
+AVATAR_ULTIMA = {}                 # clave -> momento de la última subida
+
+
+def medidas_imagen(b):
+    """(tipo MIME, ancho, alto) si los bytes son un PNG, JPEG o WebP bien formado; si no, None."""
+    if len(b) >= 24 and b[:8] == b'\x89PNG\r\n\x1a\n' and b[12:16] == b'IHDR':
+        return 'image/png', int.from_bytes(b[16:20], 'big'), int.from_bytes(b[20:24], 'big')
+    if len(b) >= 4 and b[:3] == b'\xff\xd8\xff':
+        i = 2
+        while i + 9 < len(b):
+            if b[i] != 0xFF:
+                return None
+            marca = b[i + 1]
+            if marca == 0xFF:          # relleno
+                i += 1
+                continue
+            if marca in (0xD8, 0x01) or 0xD0 <= marca <= 0xD7:
+                i += 2
+                continue
+            largo = int.from_bytes(b[i + 2:i + 4], 'big')
+            if largo < 2:
+                return None
+            if marca in (0xC0, 0xC1, 0xC2, 0xC3, 0xC5, 0xC6, 0xC7, 0xC9, 0xCA, 0xCB, 0xCD, 0xCE, 0xCF):
+                return 'image/jpeg', int.from_bytes(b[i + 7:i + 9], 'big'), int.from_bytes(b[i + 5:i + 7], 'big')
+            if marca == 0xDA:          # empiezan los datos de la imagen sin haber dicho su tamaño
+                return None
+            i += 2 + largo
+        return None
+    if len(b) >= 30 and b[:4] == b'RIFF' and b[8:12] == b'WEBP':
+        trozo = b[12:16]
+        if trozo == b'VP8 ' and b[23:26] == b'\x9d\x01\x2a':
+            return 'image/webp', int.from_bytes(b[26:28], 'little') & 0x3FFF, int.from_bytes(b[28:30], 'little') & 0x3FFF
+        if trozo == b'VP8L' and b[20] == 0x2F:
+            bits = int.from_bytes(b[21:25], 'little')
+            return 'image/webp', (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+        if trozo == b'VP8X':
+            return 'image/webp', int.from_bytes(b[24:27], 'little') + 1, int.from_bytes(b[27:30], 'little') + 1
+    return None
+
+
+def versiones_avatar(con):
+    """clave -> versión de su foto (para que el navegador sepa si la tiene y si ha cambiado)."""
+    return dict(con.execute('SELECT usuario, version FROM avatares').fetchall())
+
+
+def guardar_avatar(actor, cuerpo):
+    """Sube o quita la foto propia. El superusuario puede además quitar la de cualquiera (moderación)."""
+    if not isinstance(cuerpo, dict):
+        raise Rechazo('invalida', 'Petición no válida.')
+    clave = actor['clave']
+    otro = cuerpo.get('usuario')
+    if otro not in (None, '', clave):
+        if not es_admin(actor) or not cuerpo.get('quitar'):
+            raise Rechazo('permiso', 'Solo puedes cambiar tu propia foto.')
+        clave = str(otro)
+    if cuerpo.get('quitar'):
+        con = conectar()
+        try:
+            con.execute('DELETE FROM avatares WHERE usuario=?', (clave,))
+        finally:
+            con.close()
+        return {'ok': True, 'avatar': 0}
+    ahora_s = time.time()
+    if ahora_s - AVATAR_ULTIMA.get(clave, 0) < AVATAR_ESPERA_S:
+        raise Rechazo('espera', 'Espera un momento antes de volver a cambiar la foto.')
+    texto = cuerpo.get('imagen')
+    if not isinstance(texto, str) or len(texto) > AVATAR_MAX_BYTES * 2:
+        raise Rechazo('invalida', 'La foto es demasiado grande (máximo 300 KB).')
+    m = re.match(r'^data:(image/(?:png|jpeg|webp));base64,([A-Za-z0-9+/=]+)$', texto)
+    if not m:
+        raise Rechazo('invalida', 'Solo se admiten fotos PNG, JPEG o WebP.')
+    try:
+        datos = base64.b64decode(m.group(2), validate=True)
+    except (binascii.Error, ValueError):
+        raise Rechazo('invalida', 'La foto llegó dañada. Prueba otra vez.')
+    if len(datos) > AVATAR_MAX_BYTES:
+        raise Rechazo('invalida', 'La foto es demasiado grande (máximo 300 KB).')
+    info = medidas_imagen(datos)
+    if not info:
+        raise Rechazo('invalida', 'Eso no parece una foto PNG, JPEG o WebP.')
+    tipo, ancho, alto = info
+    if not (AVATAR_MIN_LADO <= ancho <= AVATAR_MAX_LADO and AVATAR_MIN_LADO <= alto <= AVATAR_MAX_LADO):
+        raise Rechazo('invalida', f'La foto debe medir entre {AVATAR_MIN_LADO} y {AVATAR_MAX_LADO} px de lado.')
+    AVATAR_ULTIMA[clave] = ahora_s
+    con = conectar()
+    try:
+        con.execute('BEGIN IMMEDIATE')
+        v = (con.execute('SELECT version FROM avatares WHERE usuario=?', (clave,)).fetchone() or (0,))[0] + 1
+        con.execute('INSERT OR REPLACE INTO avatares VALUES (?,?,?,?,?)', (clave, tipo, sqlite3.Binary(datos), v, ahora()))
+        con.execute('COMMIT')
+    except Exception:
+        if con.in_transaction:
+            con.execute('ROLLBACK')
+        raise
+    finally:
+        con.close()
+    return {'ok': True, 'avatar': v}
 
 
 # ---- Contraseña de la mesa: si la hay, quien la sepa puede unirse sin invitación
@@ -869,6 +986,7 @@ def lista_presencia(con, camp):
     adm = con.execute("SELECT clave, nombre, rol, baneado FROM usuarios WHERE rol='admin'").fetchone()
     if adm and ADMIN_CLAVE and (PRESENCIA.get(adm[0]) or {}).get('campana') == camp:
         filas.append((*adm, None, None))   # el superusuario sale solo mientras está en esta campaña
+    fotos = versiones_avatar(con)
     for clave, nombre, rol, baneado, disciplina, pj in filas:
         p = PRESENCIA.get(clave)
         if p and p.get('campana') != camp:
@@ -883,7 +1001,7 @@ def lista_presencia(con, camp):
         lista.append({'clave': clave, 'nombre': nombre, 'rol': rol, 'estado': estado, 'baneado': bool(baneado),
                       'disciplina': disciplina, 'personaje': (leer_personaje(pj) or {}).get('nombre') or '',
                       'lugar': p['lugar'] if p and estado != 'desconectado' else None,
-                      'hace': round(hace) if hace is not None else None})
+                      'hace': round(hace) if hace is not None else None, 'avatar': fotos.get(clave, 0)})
     return lista
 
 
@@ -901,7 +1019,7 @@ def nombre_entrada(con, camp, col, id_, valor):
     if isinstance(valor, dict) and valor.get('name'):
         return '«' + str(valor['name']) + '»'
     return {'potions': 'esa poción', 'lootPotions': 'esa poción de botín', 'catalog': 'ese material',
-            'potionCatalog': 'esa ficha de poción', 'meta': 'los ajustes', 'libros': 'ese libro',
+            'potionCatalog': 'esa ficha de poción', 'meta': 'los ajustes', 'libros': 'ese libro', 'objetos': 'ese objeto',
             'perfil': 'el nivel de alquimia'}.get(col, 'ese dato')
 
 
@@ -1084,6 +1202,8 @@ def aplicar_op(con, op, actor, rev, registro=None):
         # Reemplazar entero, solo si sigue como lo vio quien hace el cambio
         # (control de concurrencia optimista: "compara y cambia").
         esperado, nuevo = op.get('e'), op.get('v')
+        if col == 'objetos' and nuevo is not None:
+            validar_objeto(nuevo)
         if not es_dm(actor):
             permiso_jugador(col, actual, nuevo, id_)
         if actual != esperado and actual != nuevo:
@@ -1099,6 +1219,45 @@ def aplicar_op(con, op, actor, rev, registro=None):
             con.execute("DELETE FROM entradas WHERE campana=? AND col='inventory' AND id=?", (camp, id_))
     else:
         raise Rechazo('invalida', 'Operación desconocida.')
+
+
+# ---- Inventario general (objetos): forma y límites de cada objeto
+OBJ_TEXTO = {'name': 120, 'categoria': 30, 'rareza': 30, 'valor': 60, 'peso': 30, 'descripcion': 4000, 'notas': 2000, 'creado': 40}
+OBJ_SUB = {'arma': {'dano': 40, 'tipoDano': 40, 'propiedades': 300},
+           'armadura': {'ca': 60, 'tipo': 30},
+           'cargas': {'recarga': 120}}
+
+
+def validar_objeto(o):
+    """Un objeto del inventario general: textos acotados y números con sentido. Lo que sobre, fuera."""
+    if not isinstance(o, dict) or not isinstance(o.get('name'), str) or not o['name'].strip():
+        raise Rechazo('invalida', 'Un objeto necesita nombre.')
+    for k, v in o.items():
+        if k in OBJ_TEXTO:
+            if not isinstance(v, str) or len(v) > OBJ_TEXTO[k]:
+                raise Rechazo('invalida', f'El campo «{k}» del objeto no es válido o es demasiado largo.')
+        elif k in ('sintonizacion', 'sintonizado', 'equipado'):
+            if not isinstance(v, bool):
+                raise Rechazo('invalida', f'El campo «{k}» del objeto no es válido.')
+        elif k == 'cantidad':
+            if not isinstance(v, int) or isinstance(v, bool) or not 0 <= v <= 99999:
+                raise Rechazo('invalida', 'La cantidad de un objeto va de 0 a 99999.')
+        elif k in OBJ_SUB:
+            if v is None:
+                continue
+            if not isinstance(v, dict):
+                raise Rechazo('invalida', f'El bloque «{k}» del objeto no es válido.')
+            for k2, v2 in v.items():
+                if k2 in OBJ_SUB[k]:
+                    if not isinstance(v2, str) or len(v2) > OBJ_SUB[k][k2]:
+                        raise Rechazo('invalida', f'El campo «{k}.{k2}» del objeto no es válido.')
+                elif k2 in ('bonif', 'actual', 'max'):
+                    if not isinstance(v2, int) or isinstance(v2, bool) or not -10 <= v2 <= 9999:
+                        raise Rechazo('invalida', f'El campo «{k}.{k2}» del objeto no es válido.')
+                else:
+                    raise Rechazo('invalida', f'Campo desconocido en el objeto: {k}.{k2}.')
+        else:
+            raise Rechazo('invalida', f'Campo desconocido en el objeto: {k}.')
 
 
 def permiso_jugador(col, actual, nuevo, id_=''):
@@ -1271,6 +1430,7 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
     def end_headers(self):
         self.send_header('Cache-Control', 'no-store, must-revalidate')
         self.send_header('Expires', '0')
+        self.send_header('X-Content-Type-Options', 'nosniff')   # el navegador no adivina tipos
         super().end_headers()
 
     def log_message(self, fmt, *args):
@@ -1346,8 +1506,25 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
             try:
                 # --- sin campaña: quién soy y en qué campañas juego
                 if ruta == '/api/yo':
+                    u = {**u, 'avatar': versiones_avatar(con).get(u['clave'], 0)}
                     return self.json(200, {'ok': True, 'usuario': u, 'campanas': campanas_de(con, u),
                                            'puedeCrear': puede_crear_campanas(con, u)})
+                if ruta.startswith('/api/avatar/'):
+                    # La foto de una cuenta (solo para quien ha entrado). Va con su tipo exacto y sin
+                    # posibilidad de que el navegador la interprete como página o script.
+                    fila = con.execute('SELECT tipo, datos FROM avatares WHERE usuario=?',
+                                       (unquote(ruta[len('/api/avatar/'):]),)).fetchone()
+                    if not fila or fila[0] not in ('image/png', 'image/jpeg', 'image/webp'):
+                        return self.json(404, {'ok': False, 'mensaje': 'Sin foto.'})
+                    datos = bytes(fila[1])
+                    self.send_response(200)
+                    self.send_header('Content-Type', fila[0])
+                    self.send_header('Content-Length', str(len(datos)))
+                    self.send_header('Content-Security-Policy', "default-src 'none'; sandbox")
+                    self.send_header('Content-Disposition', 'inline; filename="avatar"')
+                    self.end_headers()
+                    self.wfile.write(datos)
+                    return
                 if ruta == '/api/campanas':
                     if not es_admin(u) and not puede_crear_campanas(con, u):
                         return self.json(200, {'ok': True, 'campanas': campanas_de(con, u)})
@@ -1431,7 +1608,7 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
         acciones = ('/api/transaccion', '/api/registro', '/api/entrar', '/api/salir',
                     '/api/usuarios/rol', '/api/usuarios/contrasena', '/api/usuarios/destierro',
                     '/api/campanas/crear', '/api/registro/desbloquear', '/api/campanas/renombrar', '/api/campanas/unirse',
-                    '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave', '/api/historial/deshacer')
+                    '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave', '/api/historial/deshacer', '/api/yo/avatar')
         if ruta not in acciones:
             return self.json(404, {'ok': False, 'mensaje': 'No existe.'})
         largo = int(self.headers.get('Content-Length') or 0)
@@ -1469,6 +1646,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, renombrar_campana(u, cuerpo))
             if ruta == '/api/campanas/unirse':
                 return self.json(200, unirse(u, cuerpo, self.origen()))
+            if ruta == '/api/yo/avatar':   # la foto es de la cuenta, no de una campaña
+                return self.json(200, guardar_avatar(u, cuerpo))
             con = conectar()
             try:
                 actor = self.actor_mesa(con, u)

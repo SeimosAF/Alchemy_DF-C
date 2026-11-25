@@ -7,13 +7,14 @@
 //   - el DM (y el superusuario) pueden editar el de cualquiera de su campaña;
 //   - el nombre de usuario no lo cambia nadie desde aquí.
 // Todos los de la campaña pueden ver los perfiles de los demás.
-// La barra de arriba (Personaje, Mod. INT, Bono) es un atajo de los mismos datos.
+// La foto (avatar) es de la CUENTA, no del personaje: si la hay, se ve en lugar del retrato (ver avatar.js).
 // Sin servidor, solo hay un perfil (el de este navegador, en state.character).
 import { state, saveState } from './state.js';
 import * as auth from './auth.js';
 import * as sync from './sync.js';
 import { nombreDisciplina } from './panel.js';
 import * as niveles from './niveles.js';
+import * as avatar from './avatar.js';
 
 let perfiles = [];
 let elegido = null;          // clave del perfil que se está mirando
@@ -39,7 +40,7 @@ export function aPersonaje(ch) {
 const tienePropio = () => auth.servidor && auth.mesa && !auth.esAdmin();
 export const nombrePersonaje = () => (auth.servidor ? auth.usuario?.personaje?.nombre : state.character?.name) || '';
 
-// ---- Guardar el propio (desde la barra de arriba o desde el perfil) ----
+// ---- Guardar el propio ----
 let espera = null;
 export function subirPropio() {
   if (!tienePropio()) return;
@@ -92,7 +93,7 @@ function puedeEditar(p) {
 function retrato(p, clase = '') {
   const r = p?.personaje?.retrato;
   const ini = (p?.personaje?.nombre || p?.nombre || '?').trim()[0]?.toUpperCase() || '?';
-  return `<span class="perfil-retrato ${clase}">${esc(r || ini)}</span>`;
+  return avatar.html(p?.clave, p?.avatar, r || ini, `perfil-retrato ${clase}`);
 }
 
 export function render() {
@@ -106,7 +107,7 @@ export function render() {
   if (auth.servidor && auth.esAdmin() && !lista.length) { el.innerHTML = '<p class="muted">Todavía no hay nadie en esta campaña.</p>'; return; }
   const p = lista.find(x => x.clave === elegido);
   const chips = auth.servidor ? `<div class="dm-chips">${lista.map(x => `<button class="dm-chip ${x.clave === elegido ? 'activo' : ''}" data-perfil="ver" data-clave="${esc(x.clave)}">
-      ${esc(x.personaje?.retrato || '')} ${esc(x.personaje?.nombre || x.nombre)}${x.personaje?.nombre ? ` <span class="muted">(${esc(x.nombre)})</span>` : ''}${x.clave === auth.usuario?.clave ? ' · tú' : ''}</button>`).join('')}</div>` : '';
+      ${x.avatar ? avatar.html(x.clave, x.avatar, '', 'avatar avatar-mini') : esc(x.personaje?.retrato || '')} ${esc(x.personaje?.nombre || x.nombre)}${x.personaje?.nombre ? ` <span class="muted">(${esc(x.nombre)})</span>` : ''}${x.clave === auth.usuario?.clave ? ' · tú' : ''}</button>`).join('')}</div>` : '';
   if (!p) { el.innerHTML = chips + '<p class="muted">Elige un perfil.</p>'; return; }
   const pj = { ...VACIO, ...(p.personaje || {}) };
   const yo = p.clave === auth.usuario?.clave || p.local;
@@ -130,7 +131,10 @@ export function render() {
           <div><span>Nivel</span><b>${pj.nivel}</b></div>
         </div>
         ${pj.notas ? `<div class="perfil-notas">${esc(pj.notas).replace(/\n/g, '<br>')}</div>` : '<p class="muted">Sin notas.</p>'}
-        ${puedeEditar(p) ? `<button class="btn" data-perfil="editar">✏️ ${yo ? 'Editar mi perfil' : 'Editar este perfil (como DM)'}</button>` : ''}
+        <div class="perfil-botones">
+          ${puedeEditar(p) ? `<button class="btn" data-perfil="editar">✏️ ${yo ? 'Editar mi perfil' : 'Editar este perfil (como DM)'}</button>` : ''}
+          ${yo && auth.servidor ? `<button class="btn" data-action="foto-perfil">📷 ${p.avatar ? 'Cambiar mi foto' : 'Poner una foto'}</button>` : ''}
+        </div>
       </div>`;
     return;
   }
@@ -145,7 +149,7 @@ export function render() {
         ${campo('nivel', 'Nivel', `<input type="number" data-pj="nivel" min="1" max="30" value="${pj.nivel}">`)}
         ${campo('intMod', 'Mod. INT', `<input type="number" data-pj="intMod" min="-5" max="10" value="${pj.intMod}">`)}
         ${campo('bono', 'Bono alquimista', `<input type="number" data-pj="bono" min="0" max="20" value="${pj.bono}">`)}
-        ${campo('retrato', 'Retrato (un emoji)', `<input type="text" data-pj="retrato" maxlength="8" value="${esc(pj.retrato)}" placeholder="🧙">`)}
+        ${campo('retrato', auth.servidor ? 'Emoji (si no hay foto)' : 'Retrato (un emoji)', `<input type="text" data-pj="retrato" maxlength="8" value="${esc(pj.retrato)}" placeholder="🧙">`)}
         <label class="perfil-campo perfil-campo-ancho"><span>Notas (historia, rasgos…)</span><textarea data-pj="notas" maxlength="2000" rows="5">${esc(pj.notas)}</textarea></label>
       </div>
       <div class="perfil-botones">

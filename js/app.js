@@ -23,6 +23,10 @@ import * as lectura from './lectura.js';
 import * as niveles from './niveles.js';
 import * as diario from './diario.js';
 import * as perfil from './perfil.js';
+import * as cuenta from './cuenta.js';
+import * as avatar from './avatar.js';
+import * as filtros from './filtros.js';
+import * as objetos from './objetos.js';
 
 // ---- Cauldron toggle state ----
 let caulActive = false;
@@ -47,14 +51,15 @@ function showInfoSubtab(id) {
 }
 
 function showInvSubtab(id) {
-  if (id === 'dm' && !auth.esDM()) id = 'materiales';
-  ['materiales','pociones','loot','libros','dm'].forEach(s => {
+  if (id === 'dm' && !auth.esDM()) id = 'objetos';
+  ['objetos','materiales','pociones','loot','libros','dm'].forEach(s => {
     const el = document.getElementById('invSub-' + s);
     if (el) el.style.display = s === id ? 'block' : 'none';
   });
   document.querySelectorAll('[data-action="inv-subtab"]').forEach(b => {
     b.className = 'subtab-btn' + (b.getAttribute('data-id') === id ? ' active' : '');
   });
+  if (id === 'objetos') objetos.render();
   if (id === 'pociones') renderInvPociones();
   if (id === 'loot') renderLoot();
   if (id === 'libros') lectura.renderInventario();
@@ -67,10 +72,10 @@ function showInvSubtab(id) {
 modulos.registrar({ id: 'panel', icono: '🏰', titulo: 'Mesa', lugar: 'panel', lugarTxt: 'en la mesa principal',
   alMostrar() { panel.pintarSaludo(); panel.animarEntrada(); } });
 modulos.registrar({ id: 'inventario', icono: '🎒', titulo: 'Inventario', lugar: 'inventario', lugarTxt: 'revisando su inventario',
-  tarjeta: { orden: 0, clase: 'tarjeta-inventario', texto: 'Tus materiales, pociones, botín y libros' },
+  tarjeta: { orden: 0, clase: 'tarjeta-inventario', texto: 'Tus objetos, materiales, pociones, botín y libros' },
   resumen: () => panel.resumenInventario(),
   alMostrar() {
-    renderInvMateriales(); renderInvPociones(); lectura.renderInventario();
+    objetos.render(); renderInvMateriales(); renderInvPociones(); lectura.renderInventario();
     if (document.getElementById('invSub-dm')?.style.display !== 'none') { dm.render(); dm.recargar(); }
   } });
 // Ranura de oficio (orden 1): cada jugador ve la de su disciplina, que le asigna el DM.
@@ -95,12 +100,13 @@ modulos.registrar({ id: 'lectura', icono: '📖', titulo: 'Lectura', lugar: 'lec
   tarjeta: { orden: 2, clase: 'tarjeta-lectura', texto: 'Tus libros y lo que llevas leído' },
   resumen: () => lectura.resumen(),
   alMostrar() { lectura.render(); } });
-modulos.registrar({ id: 'perfil', icono: '🧙', titulo: 'Perfil', lugar: 'perfil', lugarTxt: 'mirando perfiles',
+// Perfil y En línea no tienen pestaña: se abren desde el menú de la cuenta (arriba a la derecha)
+modulos.registrar({ id: 'perfil', icono: '🧙', titulo: 'Perfil', lugar: 'perfil', lugarTxt: 'mirando perfiles', pestana: false,
   alMostrar() { perfil.cargar(); } });
 modulos.registrar({ id: 'info', icono: '📜', titulo: 'Compendio', lugar: 'compendio', lugarTxt: 'consultando el compendio',
   alMostrar() {} });
 modulos.registrar({ id: 'usuarios', icono: '🟢', titulo: 'En línea', lugar: 'usuarios', lugarTxt: 'mirando quién anda por aquí',
-  contador: 'navOnlineCount',
+  contador: 'navOnlineCount', pestana: false,
   tarjeta: { orden: 3, clase: 'tarjeta-usuarios', icono: '🔮', titulo: 'Usuarios en línea', texto: 'Quién está en la mesa ahora' },
   resumen: () => panel.resumenUsuarios(),
   alMostrar() { panel.renderUsuarios(); panel.cargarGestion(); } });
@@ -129,8 +135,6 @@ function verPerfilDe(clave) {
 
 // Cuando cambia el personaje propio (desde el perfil, la barra o porque lo editó el DM)
 function alCambiarPersonaje() {
-  const barra = document.querySelector('.char-bar');
-  if (!barra?.contains(document.activeElement)) loadCharacterUI();
   panel.pintarSaludo();
   if (vistaActual() === 'lectura') lectura.render();
   if (vistaActual() === 'usuarios') panel.renderUsuarios();
@@ -156,10 +160,11 @@ function construirModulos() {
 // Cosas que solo ve el DM (o que cambian si el DM da o quita poderes)
 function aplicarRol() {
   panel.pintarCabecera();
+  cuenta.pintar();
   panel.pintarSaludo();
   diario.pintarBarra();
   lectura.render(); lectura.renderInventario();
-  if (!auth.esDM() && document.getElementById('invSub-dm')?.style.display !== 'none') showInvSubtab('materiales');
+  if (!auth.esDM() && document.getElementById('invSub-dm')?.style.display !== 'none') showInvSubtab('objetos');
   if (document.getElementById('tab-usuarios')?.classList.contains('active')) { panel.renderUsuarios(); panel.cargarGestion(); }
 }
 
@@ -206,20 +211,14 @@ function toggleCauldron() {
   caulActive ? hideCauldron() : showCauldron();
 }
 
-// ---- Character ----
-function syncCharacter() {
-  state.character.name   = document.getElementById('charName').value;
-  state.character.intMod = parseInt(document.getElementById('charInt').value) || 0;
-  state.character.bonus  = parseInt(document.getElementById('charBonus').value) || 0;
-  saveState();
-  perfil.subirPropio();   // con servidor, el personaje se guarda en la campaña (perfil)
-  if (vistaActual() === 'lectura') lectura.render();   // la tirada de comprensión usa el mod. INT
-}
-
-function loadCharacterUI() {
-  document.getElementById('charName').value  = state.character.name || '';
-  document.getElementById('charInt').value   = state.character.intMod || 0;
-  document.getElementById('charBonus').value = state.character.bonus || 0;
+// ---- Personaje ----
+// El personaje (nombre, mod. INT, bono) se edita en Perfil (perfil.js); ya no hay barra arriba.
+// Al poner o quitar la foto propia: se repinta donde sale
+function alCambiarFoto() {
+  cuenta.pintar();
+  panel.pintarTarjetas();
+  if (vistaActual() === 'usuarios') panel.renderUsuarios();
+  if (vistaActual() === 'perfil') perfil.cargar();
 }
 
 // ---- Import / Export ----
@@ -266,6 +265,7 @@ sync.setHooks({
     rerenderAfterServer();
     panel.pintarTarjetas();
     lectura.renderInventario();
+    objetos.render();
     if (vistaActual() === 'lectura' && !document.getElementById('tab-lectura')?.contains(document.activeElement)) lectura.render();
     const nivelAhora = niveles.nivelActual();
     if (nivelAhora !== nivelAntes) {
@@ -300,26 +300,29 @@ async function freshThenCraft() {
 // ---- Init ----
 document.addEventListener('DOMContentLoaded', async () => {
   await auth.iniciar();          // pantalla de entrada (solo si hay servidor)
+  avatar.init();                 // las fotos de perfil se cargan solas donde aparezcan
+  cuenta.init();                 // icono de la cuenta arriba a la derecha
   panel.pintarCabecera();
   await loadState();
   perfil.alCargar();             // con servidor, el personaje sale del perfil de esta campaña
-  loadCharacterUI();
   updateMatForm();
+  // Buscadores y filtros de las listas (ver filtros.js)
+  filtros.init({
+    'inv-mat': renderInvMateriales, 'inv-pot': renderInvPociones, 'loot': renderLoot,
+    'objetos': objetos.render, 'cat-mat': () => renderCatMateriales(), 'cat-pot': renderCatPociones, 'usuarios': () => panel.renderUsuarios(),
+  });
   renderAll();
   renderCrafteo();
   dm.init();
   lectura.init();
+  objetos.init();
+  objetos.render();
   panel.initUsuarios(verInventarioDe, verPerfilDe);
   perfil.init(alCambiarPersonaje);
   modulos.construirProximamente(document.querySelector('script[src="js/app.js"]'));
   construirModulos();
   diario.pintarBarra();
   switchTab('panel');            // las tarjetas aparecen una a una
-
-  // Character fields
-  ['charName','charInt','charBonus'].forEach(id => {
-    document.getElementById(id).addEventListener('change', syncCharacter);
-  });
 
   // Form triggers
   ['matCampo','matPolaridad','matUnknown','matType','matModKind'].forEach(id =>
@@ -368,11 +371,10 @@ document.addEventListener('DOMContentLoaded', async () => {
           }
           setState(imported);
           saveState();
-          loadCharacterUI();
-          resetForm();
+                  resetForm();
           renderAll();
           renderCrafteo();
-          lectura.render(); lectura.renderInventario(); diario.pintarBarra();
+          lectura.render(); lectura.renderInventario(); objetos.render(); diario.pintarBarra();
           alert('Datos importados.');
         } catch (err) { alert('Error al importar: ' + err.message); }
       };
@@ -391,6 +393,8 @@ document.addEventListener('DOMContentLoaded', async () => {
       case 'switch-tab':    switchTab(id); break;
       case 'salir':         if (confirm('¿Cerrar sesión en este navegador?')) auth.salir(); break;
       case 'cambiar-mesa':  auth.cambiarMesa(); break;
+      case 'foto-perfil':   cuenta.dialogoFoto(alCambiarFoto); break;
+      case 'pass-propia':   panel.cambiarMiContrasena(); break;
       case 'info-subtab':   showInfoSubtab(id); break;
       case 'inv-subtab':    showInvSubtab(id); break;
       case 'craft-set-mode':
@@ -579,7 +583,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       case 'toggle-sound':
         setSoundEnabled(!SOUND_ENABLED);
-        document.getElementById('muteBtn').textContent = SOUND_ENABLED ? '🔊' : '🔇';
+        cuenta.pintar();
         break;
       case 'export-data': exportData(); break;
       case 'import-data': document.getElementById('importFile').click(); break;
@@ -589,8 +593,8 @@ document.addEventListener('DOMContentLoaded', async () => {
             ? '¿Borrar TODOS los datos DEL SERVIDOR? Se borra el catálogo de materiales y pociones para toda la mesa y tu propio inventario (el de los demás jugadores pierde los materiales borrados). No se puede deshacer (salvo con las copias de seguridad).'
             : '¿Borrar TODOS los datos? Esta acción no se puede deshacer.')) {
           setState(getDefaultState());
-          saveState(); loadCharacterUI(); resetForm(); renderAll(); renderCrafteo();
-          lectura.render(); lectura.renderInventario(); diario.pintarBarra();
+          saveState(); resetForm(); renderAll(); renderCrafteo();
+          lectura.render(); lectura.renderInventario(); objetos.render(); diario.pintarBarra();
         }
         break;
     }

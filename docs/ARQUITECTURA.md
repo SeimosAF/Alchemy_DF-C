@@ -8,7 +8,7 @@ armas y sus efectos, y algún día mapas) sin tocar lo que ya funciona.
 
 | Capa | Archivos | Qué hace |
 |---|---|---|
-| Núcleo | `js/app.js`, `js/modulos.js`, `js/state.js`, `js/sync.js`, `js/auth.js`, `js/panel.js` | Arranque, registro de módulos, pestañas y tarjetas de la mesa, estado, guardado (local o servidor), cuentas y usuarios en línea |
+| Núcleo | `js/app.js`, `js/modulos.js`, `js/state.js`, `js/sync.js`, `js/auth.js`, `js/panel.js`, `js/cuenta.js`, `js/avatar.js` | Arranque, registro de módulos, pestañas y tarjetas de la mesa, estado, guardado (local o servidor), cuentas, usuarios en línea, menú de la cuenta y fotos de perfil |
 | Servidor | `servidor.py` | Web + base de datos SQLite con transacciones todo-o-nada, cuentas, campañas, roles (jugador, DM, superusuario), disciplinas y permisos |
 | Inventario | `js/render.js`, `js/form.js`, `js/dm.js` | Materiales, pociones, botín; herramientas del DM |
 | Alquimia | `js/data.js`, `js/model.js`, `js/crafting.js`, `js/cauldron.js`, `js/niveles.js`, `js/diario.js` | Reglas de pociones, caldero, niveles de alquimia y diario de Jhon Arbaquel |
@@ -70,7 +70,7 @@ y, por cada jugador, su inventario, sus libros y su nivel. **No se mezcla nada e
   cualquiera con cuenta se une solo desde el pergamino de elegir mesa (nombre de la mesa + contraseña).
   Sin contraseña, solo se entra por invitación. Se guarda cifrada en `campanas.clave_hash`.
 - El **personaje** es de cada jugador en cada campaña (`miembros.personaje`, JSON). Lo edita el propio
-  jugador (en Perfil o en la barra de arriba) y el DM o el superusuario el de cualquiera de su campaña.
+  jugador (en Perfil) y el DM o el superusuario el de cualquiera de su campaña.
   El nombre de usuario (la cuenta) no lo cambia nadie. En «En línea» se ve con qué personaje juega cada uno.
 
 ## Historial de cambios
@@ -109,3 +109,48 @@ polaridades de reactivo por campo, clases de modificador, modos de crafteo y apl
 último (`todo: true`) lo desbloquea todo. El resto de la app solo pregunta a `disolventeOk()`,
 `reactivoOk()`, `modOk()`, `modoOk()` y `aplicOk()`. Los textos del diario están en `js/diario.js`
 (una página por nivel); la lista «Lo que ahora sabes hacer» se genera sola desde la tabla.
+
+## Cabecera y menú de la cuenta (V3.5)
+
+Arriba solo quedan el título (vuelve a la mesa), la mesa en la que estás (pulsar = cambiar de mesa)
+y el **icono de la cuenta** (`js/cuenta.js`). El icono lleva la foto o la inicial, un punto de color
+con el estado de la conexión (verde conectado, amarillo guardando, rojo sin conexión; el cartel de
+texto solo aparece si algo va mal) y el número de personas en línea. Su menú reúne: perfil, foto,
+quién está en línea, cambiar de mesa, sonido, exportar/importar, borrar todo (DM), contraseña y
+cerrar sesión. Las opciones usan los mismos `data-action` que el resto de la app (los atiende `app.js`).
+Perfil y En línea siguen siendo módulos (`tab-perfil`, `tab-usuarios`) pero con `pestana: false`.
+La barra Personaje / Mod. INT / Bono desapareció: esos datos se editan en Perfil.
+
+## Fotos de perfil (V3.5)
+
+La foto es de la **cuenta** (sale en todas sus mesas), no del personaje. `js/avatar.js` la recorta en
+cuadrado y la reduce a 256×256 en el navegador (WebP o JPEG) antes de mandarla. El servidor
+(`guardar_avatar` en `servidor.py`, tabla `avatares`) no abre la imagen: comprueba por sus primeros bytes
+que es PNG, JPEG o WebP, que pesa ≤ 300 KB y que mide entre 16 y 512 px; nada de SVG ni GIF. La sirve en
+GET `/api/avatar/<cuenta>` solo a quien ha entrado, con `nosniff` y `Content-Security-Policy: sandbox`.
+POST `/api/yo/avatar` con `{imagen: dataURL}` o `{quitar: true}`; el superusuario puede quitar la de
+cualquiera (`{usuario, quitar: true}`). `presencia`, `perfiles` y `/api/yo` llevan `avatar` (versión, 0 = sin foto).
+Para pintar una foto en cualquier sitio: `avatar.html(clave, version, inicial, clases)`; se rellena sola.
+
+## Buscadores y filtros (V3.5)
+
+`js/filtros.js`. Encima de una lista se pone `<div class="filtros" data-filtros="NOMBRE" ...>` con las
+opciones que quieras (`data-campos`, `data-sin-id`, `data-tipos`, `data-tengo`, `data-estados`,
+`data-texto="texto de ayuda"`) y en `app.js` se dice qué función la repinta (`filtros.init({...})`).
+La función que pinta usa `filtros.coincide(lista, ...textos)` (sin mayúsculas ni tildes, todas las palabras),
+`filtros.campoOk()`, `filtros.estado(lista)` y al final `filtros.cuenta(lista, vistos, total)`.
+Hoy hay filtros en Inventario (materiales, pociones, botín), Compendio (materiales y pociones) y En línea.
+Un material sin identificar nunca sale al filtrar por campo: solo con «❔ Sin identificar».
+
+## Inventario general: objetos (V3.5)
+
+`js/objetos.js`, subpestaña «🎒 Objetos» del Inventario (la primera). Colección `objetos` por jugador
+y campaña (`POR_JUGADOR` en `servidor.py`, `COLS` en `sync.js`), así que queda en el historial y se puede
+deshacer como lo demás. El servidor comprueba la forma de cada objeto en `validar_objeto()` (campos
+conocidos, textos acotados, cantidad 0–99999). Cada jugador gestiona los suyos; el DM los da, edita y
+quita desde «Inventarios de la mesa (DM)».
+
+Un objeto: `name, categoria, cantidad, rareza, valor, peso, descripcion, notas, sintonizacion, sintonizado,
+equipado`, y tres bloques opcionales pensados para futuros módulos (fichas de armas, efectos):
+`arma {dano, tipoDano, propiedades, bonif}`, `armadura {ca, tipo}`, `cargas {actual, max, recarga}`.
+Para añadir un campo nuevo: tocar el formulario de `editor()` en objetos.js y `OBJ_TEXTO`/`OBJ_SUB` en servidor.py.
