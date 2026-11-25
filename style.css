@@ -1190,3 +1190,52 @@ body.es-admin .solo-admin { display:inline !important; }
 .dm-libro { padding:8px 0; border-bottom:1px solid #e8ddc8; }
 .dm-libro .lec-casilla { width:26px; height:26px; }
 .dm-dar-libro input[type=text] { min-width:120px; }
+
+/* ============================================================
+   CAMPAÑAS (mesas) Y DISCIPLINAS
+   ============================================================ */
+/* Cabecera: la mesa en la que se está (pulsar = cambiar de mesa) */
+.mesa-chip { margin-left:auto; margin-right:8px; font-family:var(--f-rotulo); font-size:.85em; padding:3px 12px; border-radius:14px;
+  border:1px dashed var(--oro); color:var(--oro-claro); background:rgba(0,0,0,.25); white-space:nowrap; cursor:pointer;
+  max-width:260px; overflow:hidden; text-overflow:ellipsis; }
+.mesa-chip:hover { background:rgba(0,0,0,.4); border-style:solid; }
+.mesa-chip:not([hidden]) ~ .usuario-chip { margin-left:0; }
+.mesa-campana { margin:4px 0 0; font-family:var(--f-rotulo); color:#e6cfa3; letter-spacing:.5px; }
+.mesa-campana b { color:var(--oro-claro); }
+
+/* Pergamino: elegir mesa */
+.entrada-mesas { text-align:center; }
+.mesa-opciones { display:flex; flex-direction:column; gap:10px; margin:12px 0 14px; }
+.mesa-opcion { display:flex; flex-direction:column; align-items:center; gap:2px; padding:12px 14px; cursor:pointer;
+  border:2px solid #8a6038; border-radius:6px; background:rgba(255,248,225,.45); font:inherit; color:var(--tinta);
+  transition:transform .15s, background .15s, box-shadow .15s; }
+.mesa-opcion:hover, .mesa-opcion:focus-visible { transform:translateY(-2px); background:rgba(255,248,225,.85);
+  box-shadow:0 0 0 2px var(--lacre), 0 6px 14px rgba(60,30,10,.25); outline:none; }
+.mesa-opcion-nombre { font-family:var(--f-rotulo); font-weight:700; font-size:1.12em; }
+.mesa-opcion-rol { font-family:var(--f-texto); font-style:italic; font-size:.92em; color:#6b4420; }
+.mesa-crear { display:flex; gap:8px; align-items:flex-end; text-align:left; margin:8px 0; }
+.mesa-crear .entrada-campo { flex:1; margin-bottom:0; }
+.mesa-pie { display:flex; justify-content:center; gap:16px; margin-top:6px; }
+.mesa-enlace { background:none; border:none; cursor:pointer; font-family:var(--f-rotulo); color:#8a6a45; font-size:.92em; text-decoration:underline; }
+.mesa-enlace:hover { color:var(--tinta); }
+.entrada-form[hidden], .entrada-pestanas[hidden] { display:none; }
+
+/* Sala de usuarios: disciplina y gestión de la campaña */
+.usr-disc, .usr-disciplina { margin-left:6px; font-size:.78em; font-family:var(--f-rotulo); vertical-align:middle; }
+.usr-disc { padding:2px 8px; border-radius:10px; background:#efe4cc; color:#5e4a34; }
+.usr-disciplina { padding:2px 4px; border-radius:6px; border:1px solid #b9a27c; background:#fffaf0; }
+.gestion-caja { border:1px solid #d6c4a2; border-radius:8px; padding:10px 14px; margin:10px 0 14px; background:rgba(255,250,235,.6); }
+.gestion-caja h3 { margin:0 0 4px; font-family:var(--f-rotulo); }
+.gestion-admin { border-color:#b39ad6; background:rgba(245,238,255,.55); }
+
+/* Tarjetas de las otras disciplinas (ranura de oficio) */
+.tarjeta-cocina     { --acento:#b5562a; }
+.tarjeta-hechiceria { --acento:#2a6db5; }
+.tarjeta-herreria   { --acento:#6b6b6b; }
+
+/* Módulos que aún no existen */
+.proximamente { text-align:center; padding:40px 20px; }
+.proximamente-icono { font-size:56px; filter:grayscale(.3); }
+.proximamente h2 { margin:6px 0; }
+.proximamente-sello { display:inline-block; margin:6px 0 12px; padding:4px 16px; border:2px solid #8a2a2a; color:#8a2a2a; border-radius:4px;
+  font-family:var(--f-rotulo); letter-spacing:3px; text-transform:uppercase; transform:rotate(-4deg); }

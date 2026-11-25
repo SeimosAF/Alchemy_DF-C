@@ -22,8 +22,14 @@
 //   resumen   () => html con el resumen de la tarjeta
 //   alMostrar () => lo que hay que pintar al abrir la pestaña
 //   pestana   false si no sale en la barra de pestañas (true por defecto)
+//   disciplina  si se indica, el módulo solo lo ve quien tiene esa disciplina
+//               ('alquimista', 'cocinero', 'hechicero', 'herrero'). Es la "ranura de oficio":
+//               cada jugador ve en ella el módulo de su disciplina (la asigna el DM).
+//   proximamente  { texto } para un módulo que aún no está hecho: su pestaña se crea sola
+//               con un cartel de "próximamente" (no hace falta sección en index.html)
 
 const lista = [];
+let disciplina = 'alquimista';
 
 export function registrar(m) {
   if (lista.some(x => x.id === m.id)) throw new Error('Módulo repetido: ' + m.id);
@@ -31,6 +37,11 @@ export function registrar(m) {
 }
 export const todos = () => lista;
 export const porId = id => lista.find(m => m.id === id);
+// La disciplina de quien juega decide qué módulos de oficio ve
+export function setDisciplina(d) { disciplina = d || 'alquimista'; }
+export const disciplinaActual = () => disciplina;
+export const visible = m => !!m && (!m.disciplina || m.disciplina === disciplina);
+const visibles = () => lista.filter(visible);
 export const lugarDe = id => porId(id)?.lugar || 'panel';
 export function textoLugar(lugar) {
   return lista.find(m => m.lugar === lugar)?.lugarTxt || 'en la mesa principal';
@@ -40,13 +51,13 @@ const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': 
 
 // Barra de pestañas
 export function construirPestanas(nav) {
-  nav.innerHTML = lista.filter(m => m.pestana).map(m =>
+  nav.innerHTML = visibles().filter(m => m.pestana).map(m =>
     `<button data-action="switch-tab" data-id="${esc(m.id)}">${m.icono} ${esc(m.nav || m.titulo)}${m.contador ? ` <span class="nav-contador" id="${esc(m.contador)}"></span>` : ''}</button>`).join('');
 }
 
 // Tarjetas de la mesa
 export function construirTarjetas(mesa) {
-  const conTarjeta = lista.filter(m => m.tarjeta).sort((a, b) => (a.tarjeta.orden ?? 99) - (b.tarjeta.orden ?? 99));
+  const conTarjeta = visibles().filter(m => m.tarjeta).sort((a, b) => (a.tarjeta.orden ?? 99) - (b.tarjeta.orden ?? 99));
   mesa.innerHTML = conTarjeta.map((m, i) => `
     <button class="tarjeta ${esc(m.tarjeta.clase || '')}" data-action="switch-tab" data-id="${esc(m.id)}" style="--i:${i}">
       <span class="tarjeta-esquinas" aria-hidden="true"></span>
@@ -57,8 +68,25 @@ export function construirTarjetas(mesa) {
     </button>`).join('');
 }
 
-export function pintarResumenes() {
+// Pestañas de los módulos que aún no existen: un cartel de "próximamente"
+export function construirProximamente(antesDe) {
   for (const m of lista) {
+    if (!m.proximamente || document.getElementById('tab-' + m.id)) continue;
+    const s = document.createElement('section');
+    s.id = 'tab-' + m.id;
+    s.className = 'tab-content';
+    s.innerHTML = `<div class="panel proximamente">
+        <div class="proximamente-icono">${m.icono}</div>
+        <h2>${esc(m.titulo)}</h2>
+        <p class="proximamente-sello">Próximamente</p>
+        <p class="muted">${esc(m.proximamente.texto || 'Este oficio todavía se está escribiendo.')}</p>
+      </div>`;
+    antesDe.parentNode.insertBefore(s, antesDe);
+  }
+}
+
+export function pintarResumenes() {
+  for (const m of visibles()) {
     if (!m.resumen) continue;
     const el = document.querySelector(`[data-resumen="${CSS.escape(m.id)}"]`);
     if (el) { try { el.innerHTML = m.resumen(); } catch (e) { console.error(e); } }

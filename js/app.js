@@ -72,10 +72,24 @@ modulos.registrar({ id: 'inventario', icono: '🎒', titulo: 'Inventario', lugar
     renderInvMateriales(); renderInvPociones(); lectura.renderInventario();
     if (document.getElementById('invSub-dm')?.style.display !== 'none') { dm.render(); dm.recargar(); }
   } });
+// Ranura de oficio (orden 1): cada jugador ve la de su disciplina, que le asigna el DM.
 modulos.registrar({ id: 'crafteo', icono: '⚗️', titulo: 'Alquimia', lugar: 'alquimia', lugarTxt: 'junto al caldero',
+  disciplina: 'alquimista',
   tarjeta: { orden: 1, clase: 'tarjeta-alquimia', texto: 'Enciende el caldero y elabora' },
   resumen: () => panel.resumenAlquimia(),
   alMostrar() { if (caulActive) renderCauldron(); else renderCrafteo(); diario.alEntrarEnAlquimia(); } });
+modulos.registrar({ id: 'cocina', icono: '🍲', titulo: 'Cocina', lugar: 'cocina', lugarTxt: 'entre fogones',
+  disciplina: 'cocinero', proximamente: { texto: 'Guisos, banquetes y raciones que dan fuerza para el camino. Los fogones de la taberna aún se están encendiendo.' },
+  tarjeta: { orden: 1, clase: 'tarjeta-cocina', texto: 'Guisos que dan fuerza' },
+  resumen: () => 'Próximamente' });
+modulos.registrar({ id: 'hechiceria', icono: '✨', titulo: 'Hechicería', lugar: 'hechiceria', lugarTxt: 'trazando runas',
+  disciplina: 'hechicero', proximamente: { texto: 'Pergaminos, runas y conjuros preparados. El grimorio todavía está en blanco.' },
+  tarjeta: { orden: 1, clase: 'tarjeta-hechiceria', texto: 'Runas, pergaminos y conjuros' },
+  resumen: () => 'Próximamente' });
+modulos.registrar({ id: 'herreria', icono: '⚒️', titulo: 'Herrería', lugar: 'herreria', lugarTxt: 'junto a la forja',
+  disciplina: 'herrero', proximamente: { texto: 'Armas, armaduras y sus efectos. La forja aún se está calentando.' },
+  tarjeta: { orden: 1, clase: 'tarjeta-herreria', texto: 'Armas, armaduras y temple' },
+  resumen: () => 'Próximamente' });
 modulos.registrar({ id: 'lectura', icono: '📖', titulo: 'Lectura', lugar: 'lectura', lugarTxt: 'leyendo un libro',
   tarjeta: { orden: 2, clase: 'tarjeta-lectura', texto: 'Tus libros y lo que llevas leído' },
   resumen: () => lectura.resumen(),
@@ -86,10 +100,10 @@ modulos.registrar({ id: 'usuarios', icono: '🟢', titulo: 'En línea', lugar: '
   contador: 'navOnlineCount',
   tarjeta: { orden: 3, clase: 'tarjeta-usuarios', icono: '🔮', titulo: 'Usuarios en línea', texto: 'Quién está en la mesa ahora' },
   resumen: () => panel.resumenUsuarios(),
-  alMostrar() { panel.renderUsuarios(); } });
+  alMostrar() { panel.renderUsuarios(); panel.cargarGestion(); } });
 
 function switchTab(id) {
-  if (!modulos.porId(id)) id = 'panel';
+  if (!modulos.visible(modulos.porId(id))) id = 'panel';
   modulos.todos().forEach(m => {
     const el = document.getElementById('tab-' + m.id);
     if (el) el.className = 'tab-content' + (m.id === id ? ' active' : '');
@@ -111,6 +125,16 @@ function verInventarioDe(clave) {
   dm.elegir(clave);
 }
 
+// Pestañas y tarjetas según la disciplina (la ranura de oficio)
+function construirModulos() {
+  modulos.setDisciplina(auth.usuario?.disciplina);
+  modulos.construirPestanas(document.getElementById('barraModulos'));
+  modulos.construirTarjetas(document.getElementById('mesaTarjetas'));
+  document.querySelectorAll('nav.tab-bar [data-action="switch-tab"]').forEach(b =>
+    b.classList.toggle('active', b.getAttribute('data-id') === vistaActual()));
+  panel.pintarTarjetas();
+}
+
 // Cosas que solo ve el DM (o que cambian si el DM da o quita poderes)
 function aplicarRol() {
   panel.pintarCabecera();
@@ -118,7 +142,7 @@ function aplicarRol() {
   diario.pintarBarra();
   lectura.render(); lectura.renderInventario();
   if (!auth.esDM() && document.getElementById('invSub-dm')?.style.display !== 'none') showInvSubtab('materiales');
-  if (document.getElementById('tab-usuarios')?.classList.contains('active')) panel.renderUsuarios();
+  if (document.getElementById('tab-usuarios')?.classList.contains('active')) { panel.renderUsuarios(); panel.cargarGestion(); }
 }
 
 // Acciones que con servidor solo puede hacer el DM (el servidor también lo comprueba)
@@ -207,9 +231,14 @@ function rerenderAfterServer() {
 }
 sync.setHooks({
   presencia(lista) { panel.setPresencia(lista); },
-  usuario() {
+  usuario(u, antes) {
     aplicarRol();
-    sync.aviso(auth.esDM() ? '👑 Ahora eres DM de la mesa.' : 'Ya no eres DM de la mesa.');
+    if (antes && antes.rol !== u.rol) sync.aviso(auth.esDM() ? '👑 Ahora eres DM de la mesa.' : 'Ya no eres DM de la mesa.');
+    if (antes && antes.disciplina !== u.disciplina) {
+      construirModulos();
+      if (!modulos.visible(modulos.porId(vistaActual()))) switchTab('panel');
+      sync.aviso(`El DM te ha asignado una disciplina nueva: ${panel.nombreDisciplina(u.disciplina)}.`);
+    }
   },
   remoto(datos, cambios) {
     const nivelAntes = niveles.nivelActual();
@@ -260,8 +289,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   dm.init();
   lectura.init();
   panel.initUsuarios(verInventarioDe);
-  modulos.construirPestanas(document.getElementById('barraModulos'));
-  modulos.construirTarjetas(document.getElementById('mesaTarjetas'));
+  modulos.construirProximamente(document.querySelector('script[src="js/app.js"]'));
+  construirModulos();
   diario.pintarBarra();
   switchTab('panel');            // las tarjetas aparecen una a una
 
@@ -339,6 +368,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     switch (action) {
       case 'switch-tab':    switchTab(id); break;
       case 'salir':         if (confirm('¿Cerrar sesión en este navegador?')) auth.salir(); break;
+      case 'cambiar-mesa':  auth.cambiarMesa(); break;
       case 'info-subtab':   showInfoSubtab(id); break;
       case 'inv-subtab':    showInvSubtab(id); break;
       case 'craft-set-mode':

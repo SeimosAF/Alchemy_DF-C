@@ -14,7 +14,14 @@ Arriba a la derecha se ve el modo: **🟢 Conectado**, **🟡 Guardando…**,
 
 Con servidor, lo primero que aparece es un pergamino para **Entrar** o **Crear cuenta**.
 
-- **La primera cuenta que se crea es la del DM** (👑). Créala tú antes que nadie.
+- **La primera cuenta que se crea es la del DM** (👑) de la primera campaña. Créala tú antes que nadie.
+- **Campañas:** cada campaña (mesa) tiene su catálogo, inventarios, libros y niveles, sin mezclarse.
+  El superusuario las crea (en «En línea», abajo) y nombra a su DM; el DM **invita** a los jugadores
+  desde «En línea». Una cuenta nueva no está en ninguna campaña hasta que la inviten. Si alguien
+  juega en varias, elige mesa al entrar (y la cambia con el botón 🗺️ de arriba).
+- **Disciplinas:** el DM asigna a cada jugador alquimista, cocinero, hechicero o herrero (en «En línea»).
+  Su tarjeta de oficio en la mesa cambia según la disciplina. De momento solo Alquimia está hecha;
+  las demás salen como «Próximamente».
 - Las contraseñas se guardan cifradas (PBKDF2-SHA256 con sal): ni el servidor las conoce.
 - Si `ALQUIMIA_CLAVE` está puesta, hace falta esa **palabra de paso de la mesa** para crear
   una cuenta (también la primera). Para entrar después solo hace falta la contraseña de cada uno.
@@ -108,6 +115,11 @@ se aplican los dos y cada uno ve lo del otro en unos segundos, con un aviso abaj
 - **De toda la mesa:** el catálogo de materiales, las pociones descubiertas (con sus apodos)
   y los parámetros.
 - El **personaje** (nombre, mod. INT, bono) se guarda en el navegador de cada cuenta.
+
+Al pasar de la V3 a la versión con campañas, el servidor hace una copia
+(`datos/copias/antes-de-campanas-....db`) y **todo lo que había pasa a «La primera campaña»**,
+con las mismas cuentas, inventarios y DM. Con Docker, `docker-iniciar.bat` además saca antes una
+copia a `datos\copias\ultima-antes-de-actualizar.db` en tu carpeta.
 
 Al pasar de la versión sin cuentas a esta, el servidor hace una copia
 (`datos/copias/antes-de-cuentas-....db`) y **el inventario que había pasa a ser del DM**

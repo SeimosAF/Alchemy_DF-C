@@ -25,7 +25,8 @@ export const COLS = { inventory: 'num', potions: 'qty', lootPotions: 'qty', cata
 export const META = ['version', 'settings', 'damageTypes'];
 
 const K_COLA_VIEJA = 'alquimiaColaPendiente';            // de antes de las cuentas
-const kCola = () => 'alquimiaColaPendiente:' + (auth.usuario?.clave || '-');   // una cola por cuenta
+const kColaCuenta = () => 'alquimiaColaPendiente:' + (auth.usuario?.clave || '-');   // de antes de las campañas
+const kCola = () => kColaCuenta() + '@' + (auth.mesa?.id || '-');   // una cola por cuenta y campaña
 
 const clone = x => (x === undefined ? undefined : JSON.parse(JSON.stringify(x)));
 function stable(x) {
@@ -127,6 +128,10 @@ export async function pedir(ruta, opciones = {}) {
     auth.caducada();   // la sesión ya no vale (caducó o el DM cambió la contraseña): vuelta a la entrada
     throw new Error('Sin sesión');
   }
+  if (r.status === 403 && j?.motivo === 'mesa') {
+    auth.fueraDeMesa(j.mensaje);   // le han sacado de la campaña (o ya no existe): a elegir mesa
+    throw new Error('Sin mesa');
+  }
   return { status: r.status, j };
 }
 
@@ -137,10 +142,12 @@ export async function conectar() {
   modo = 'servidor';
   // Transacciones que quedaron sin confirmar (p. ej. se cerró la pestaña sin conexión)
   try { cola = JSON.parse(lsGet(kCola()) || '[]'); } catch (_) { cola = []; }
-  const vieja = lsGet(K_COLA_VIEJA);   // cola de antes de las cuentas: se manda con esta cuenta
-  if (vieja) {
+  // Colas de antes (sin cuentas o sin campañas): eran de la primera campaña, se mandan solo allí
+  for (const k of [K_COLA_VIEJA, kColaCuenta()]) {
+    const vieja = auth.mesa?.id === 'primera' ? lsGet(k) : null;
+    if (!vieja) continue;
     try { cola = [...JSON.parse(vieja), ...cola]; } catch (_) {}
-    lsSet(K_COLA_VIEJA, null);
+    lsSet(k, null);
     lsSet(kCola(), cola.length ? JSON.stringify(cola) : null);
   }
   while (cola.length) {
@@ -245,9 +252,9 @@ export async function refrescar({ forzar = false, silencioso = false, presencia 
   catch (_) { pintarEstado('sin-conexion'); return false; }
   if (r.status !== 200 || !r.j?.ok) { pintarEstado('sin-conexion'); return false; }
   if (r.j.presencia) hooks.presencia(r.j.presencia);
-  if (r.j.usuario && auth.usuario && r.j.usuario.rol !== auth.usuario.rol) {   // le han cambiado el rol
-    auth.usuario.rol = r.j.usuario.rol;
-    hooks.usuario(auth.usuario);
+  if (r.j.usuario && auth.usuario) {   // le han cambiado el rol, la disciplina o el nombre de la mesa
+    const antes = { rol: auth.usuario.rol, disciplina: auth.usuario.disciplina };
+    if (auth.actualizarDesdeServidor(r.j.usuario)) hooks.usuario(auth.usuario, antes);
   }
   pintarEstado();
   if (r.j.igual) return false;
@@ -294,7 +301,7 @@ function pintarEstado(forzado) {
   if (modo !== 'servidor') { cls = 'local'; txt = '💾 Solo este navegador'; tit = 'Los datos se guardan en este navegador. Arranca servidor.py para compartirlos.'; }
   else if (forzado === 'sin-conexion') { cls = 'off'; txt = cola.length ? `🔴 Sin conexión · ${cola.length} pendiente(s)` : '🔴 Sin conexión'; tit = 'Se reintenta solo. Lo pendiente no se pierde ni se duplica.'; }
   else if (cola.length || enviando) { cls = 'pend'; txt = '🟡 Guardando…'; tit = 'Enviando al servidor'; }
-  else { cls = 'ok'; txt = '🟢 Conectado'; tit = 'Conectado al servidor como ' + autor() + '. Los cambios de los demás aparecen solos.'; }
+  else { cls = 'ok'; txt = '🟢 Conectado'; tit = 'Conectado al servidor como ' + autor() + (auth.mesa ? ' en «' + auth.mesa.nombre + '»' : '') + '. Los cambios de los demás aparecen solos.'; }
   el.className = 'sync-estado sync-' + cls;
   el.textContent = txt;
   el.title = tit;

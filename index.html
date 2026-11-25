@@ -58,6 +58,7 @@
 <header class="app-header">
   <div class="header-title-row">
     <h1 class="app-titulo" data-action="switch-tab" data-id="panel" title="Volver a la mesa">🍺 La taberna de Jhon</h1>
+    <button class="mesa-chip" data-action="cambiar-mesa" id="mesaChip" hidden></button>
     <span class="usuario-chip" id="usuarioChip" hidden></span>
     <button class="mute-btn" data-action="toggle-sound" id="muteBtn" title="Silenciar/Activar sonidos">🔊</button>
     <button class="salir-btn" data-action="salir" id="salirBtn" title="Cerrar sesión" hidden>🚪 Cerrar sesión</button>
@@ -80,6 +81,7 @@
 <section id="tab-panel" class="tab-content active">
   <div class="mesa">
     <h2 class="mesa-saludo" id="mesaSaludo"></h2>
+    <p class="mesa-campana" id="mesaCampana" hidden></p>
     <p class="mesa-sub">¿Qué te trae hoy a la taberna? <button class="mesa-salir" data-action="salir" id="mesaSalir" hidden>¿No eres tú? Cerrar sesión</button></p>
     <div class="mesa-tarjetas" id="mesaTarjetas"></div>
   </div>
@@ -89,9 +91,12 @@
 <section id="tab-usuarios" class="tab-content">
   <div class="panel">
     <h2>🔮 Usuarios en línea</h2>
-    <p class="muted">Se actualiza solo cada pocos segundos. <span class="solo-dm">Como DM puedes poner una contraseña nueva a quien la olvide y abrir su inventario, sus libros y su nivel de alquimia.</span>
-      <span class="solo-admin">Como superusuario, además, das o quitas poderes de DM y destierras (o readmites) cuentas.</span></p>
+    <p class="muted">Aquí está quien juega en esta campaña. Se actualiza solo cada pocos segundos. <span class="solo-dm">Como DM invitas a jugadores a la campaña (o los sacas),
+      les asignas disciplina, pones una contraseña nueva a quien la olvide y abres su inventario, sus libros y su nivel.</span>
+      <span class="solo-admin">Como superusuario, además, creas campañas, das o quitas poderes de DM y destierras (o readmites) cuentas.</span></p>
+    <div id="mesaGestion"></div>
     <div id="listaUsuarios"></div>
+    <div id="adminCampanas"></div>
   </div>
 </section>
 

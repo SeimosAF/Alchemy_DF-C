@@ -9,7 +9,7 @@ armas y sus efectos, y algún día mapas) sin tocar lo que ya funciona.
 | Capa | Archivos | Qué hace |
 |---|---|---|
 | Núcleo | `js/app.js`, `js/modulos.js`, `js/state.js`, `js/sync.js`, `js/auth.js`, `js/panel.js` | Arranque, registro de módulos, pestañas y tarjetas de la mesa, estado, guardado (local o servidor), cuentas y usuarios en línea |
-| Servidor | `servidor.py` | Web + base de datos SQLite con transacciones todo-o-nada, cuentas, roles (jugador, DM, superusuario) y permisos |
+| Servidor | `servidor.py` | Web + base de datos SQLite con transacciones todo-o-nada, cuentas, campañas, roles (jugador, DM, superusuario), disciplinas y permisos |
 | Inventario | `js/render.js`, `js/form.js`, `js/dm.js` | Materiales, pociones, botín; herramientas del DM |
 | Alquimia | `js/data.js`, `js/model.js`, `js/crafting.js`, `js/cauldron.js`, `js/niveles.js`, `js/diario.js` | Reglas de pociones, caldero, niveles de alquimia y diario de Jhon Arbaquel |
 | Lectura | `js/lectura.js` | Libros, progreso, descansos y tiradas de comprensión |
@@ -27,8 +27,13 @@ modulos.registrar({
   tarjeta: { orden: 4, clase: 'tarjeta-cocina', texto: 'Guisos que dan fuerza' },  // o nada: sin tarjeta
   resumen: () => cocina.resumen(),              // texto de la tarjeta
   alMostrar() { cocina.render(); },             // al abrir la pestaña
+  disciplina: 'cocinero',                       // opcional: solo lo ve quien tenga esta disciplina
 });
 ```
+
+Hoy Cocina, Hechicería y Herrería ya están registrados como **próximamente** (`proximamente: { texto }`):
+su pestaña se crea sola con un cartel. Cuando se construya uno de verdad, se le quita `proximamente`,
+se le da su `<section>` y su `js/…`, y listo.
 
 ## Receta: añadir un módulo nuevo (ejemplo: Cocina)
 
@@ -44,13 +49,36 @@ modulos.registrar({
    - Si hay campos que solo puede cambiar el DM, compruébalo en `permiso_jugador()` de `servidor.py`.
 5. **Estilo.** Si tiene tarjeta, dale color en `style.css` (`.tarjeta-cocina { --acento: … }`).
 
+## Campañas (mesas)
+
+Cada campaña es una mesa aparte: su catálogo de materiales, sus pociones conocidas, sus parámetros
+y, por cada jugador, su inventario, sus libros y su nivel. **No se mezcla nada entre campañas.**
+
+- En la base de datos, cada fila de `entradas` y de `transacciones` lleva su `campana`. Las tablas
+  `campanas` (id, nombre, rev) y `miembros` (campana, usuario, rol, disciplina) dicen quién juega dónde.
+- El navegador manda la campaña elegida en la cabecera `X-Campana`. El servidor comprueba en cada
+  petición que la cuenta juega en ella (función `actor_en_mesa()` de `servidor.py`).
+- Al entrar: si la cuenta juega en una sola campaña, entra directa; si juega en varias, elige en el
+  pergamino (`js/auth.js`). Con el botón 🗺️ de la cabecera se cambia de mesa.
+- Al pasar de la V3 a esta versión, todo lo que había pasa a **«La primera campaña»** (id `primera`),
+  con copia previa en `datos/copias/antes-de-campanas-FECHA.db`. Los DM siguen siendo DM en ella.
+
+## Disciplinas (la ranura de oficio)
+
+El DM asigna a cada jugador de su campaña una disciplina: ⚗️ alquimista (por defecto), 🍲 cocinero,
+✨ hechicero o ⚒️ herrero. La segunda tarjeta de la mesa (y su pestaña) es la de su disciplina:
+los módulos con `disciplina:` en `modulos.registrar` solo los ve quien la tiene. La disciplina se
+guarda en `miembros.disciplina` (una por campaña) y llega al navegador en `auth.usuario.disciplina`.
+
 ## Roles
 
 | Rol | Quién | Puede |
 |---|---|---|
-| Jugador | Cualquier cuenta | Su inventario, sus libros, elaborar hasta su nivel de alquimia |
-| DM (👑) | La primera cuenta, o quien nombre el superusuario | Lo anterior + inventarios, libros (tiradas y CD) y nivel de alquimia de todos |
-| Superusuario «DM» (🛡️) | La cuenta `DM`, contraseña fija `ALQUIMIA_ADMIN` | Lo anterior + dar/quitar DM, desterrar y readmitir cuentas |
+| Jugador | Cualquier cuenta invitada a una campaña | Su inventario, sus libros, elaborar hasta su nivel (en esa campaña) |
+| DM (👑) de una campaña | La primera cuenta (en la primera campaña), o quien nombre el superusuario | Lo anterior + invitar y sacar jugadores, asignar disciplinas, inventarios, libros (tiradas y CD), nivel y lo común (catálogo, parámetros) **de su campaña** |
+| Superusuario «DM» (🛡️) | La cuenta `DM`, contraseña fija `ALQUIMIA_ADMIN` | Entra en todas las campañas como DM + crear y renombrar campañas, dar/quitar DM, desterrar y readmitir cuentas |
+
+Ser DM es **por campaña**: se puede ser DM en una y jugador en otra.
 
 En el navegador se pregunta con `auth.esDM()` (DM o superusuario) y `auth.esAdmin()`.
 El servidor lo vuelve a comprobar siempre: la interfaz solo esconde botones.

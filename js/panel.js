@@ -1,10 +1,23 @@
 // panel.js — la mesa principal (4 tarjetas) y la sala "Usuarios en línea".
+// En "Usuarios en línea" el DM también invita jugadores a su campaña, los saca
+// y les asigna disciplina; el superusuario además crea y renombra campañas.
 import { state } from './state.js';
 import * as auth from './auth.js';
 import * as modulos from './modulos.js';
 import * as niveles from './niveles.js';
+import * as sync from './sync.js';
 
 let presencia = [];
+let cuentas = null;        // cuentas que el DM puede invitar (se piden al abrir la sala)
+let admin = null;          // { campanas, cuentas } para el superusuario
+
+export const DISCIPLINAS = {
+  alquimista: { icono: '⚗️', nombre: 'Alquimista' },
+  cocinero:   { icono: '🍲', nombre: 'Cocinero' },
+  hechicero:  { icono: '✨', nombre: 'Hechicero' },
+  herrero:    { icono: '⚒️', nombre: 'Herrero' },
+};
+export const nombreDisciplina = d => { const x = DISCIPLINAS[d] || DISCIPLINAS.alquimista; return `${x.icono} ${x.nombre}`; };
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // ---- Tarjetas de la mesa ----
@@ -65,6 +78,11 @@ export function pintarSaludo() {
   el.innerHTML = auth.usuario
     ? `${franja}, <span class="mesa-nombre">${esc(auth.usuario.nombre)}</span>${auth.esAdmin() ? ' <span class="rol-dm rol-admin">🛡️ Superusuario</span>' : auth.esDM() ? ' <span class="rol-dm">👑 DM</span>' : ''}`
     : `${franja}, alquimista`;
+  const sub = document.getElementById('mesaCampana');
+  if (sub) {
+    sub.hidden = !auth.mesa;
+    if (auth.mesa) sub.innerHTML = `Mesa de <b>${esc(auth.mesa.nombre)}</b>${auth.esAdmin() ? '' : ` · ${nombreDisciplina(auth.usuario.disciplina)}`}`;
+  }
 }
 
 export function pintarCabecera() {
@@ -72,6 +90,11 @@ export function pintarCabecera() {
   if (u) {
     u.hidden = !auth.usuario;
     if (auth.usuario) u.innerHTML = `${auth.esAdmin() ? '🛡️' : auth.esDM() ? '👑' : '⚔️'} ${esc(auth.usuario.nombre)}`;
+  }
+  const m = document.getElementById('mesaChip');
+  if (m) {
+    m.hidden = !auth.mesa;
+    if (auth.mesa) { m.textContent = '🗺️ ' + auth.mesa.nombre; m.title = 'Estás en la campaña «' + auth.mesa.nombre + '». Pulsa para cambiar de mesa.'; }
   }
   for (const id of ['salirBtn', 'mesaSalir']) {
     const salir = document.getElementById(id);
@@ -100,6 +123,7 @@ export function setPresencia(lista) {
 export function renderUsuarios() {
   const el = document.getElementById('listaUsuarios');
   if (!el) return;
+  if (el.contains(document.activeElement) && document.activeElement.matches('select')) return;   // no cerrar un desplegable abierto
   if (!auth.servidor) {
     el.innerHTML = '<p class="muted">La app está funcionando sin servidor, solo en este navegador. Arráncala con <code>iniciar.bat</code> o con Docker para jugar con otras personas.</p>';
     return;
@@ -126,12 +150,20 @@ export function renderUsuarios() {
       acciones.push(`<button class="btn btn-sm btn-info" data-usr="pass" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}">🔑 Nueva contraseña</button>`);
       acciones.push(`<button class="btn btn-sm" data-usr="ver-inv" data-clave="${esc(p.clave)}">🎒 Inventario, libros y nivel</button>`);
     }
+    if (auth.esDM() && !yo && !admin && (p.rol !== 'dm' || auth.esAdmin()))
+      acciones.push(`<button class="btn btn-sm btn-danger" data-usr="sacar" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}" title="Sale de esta campaña. No se borra nada: si vuelve, lo recupera todo.">🚪 Sacar de la mesa</button>`);
     const rolTxt = admin ? '<span class="usr-rol rol-dm rol-admin">🛡️ Superusuario</span>'
       : p.rol === 'dm' ? '<span class="usr-rol rol-dm">👑 DM</span>' : '<span class="usr-rol rol-jugador">⚔️ Jugador</span>';
+    // Disciplina: el DM la elige en un desplegable; los demás solo la ven
+    const disc = admin ? '' : auth.esDM()
+      ? `<select class="usr-disciplina" data-usr-disc="${esc(p.clave)}" data-nombre="${esc(p.nombre)}" title="Disciplina (la ranura de oficio que ve en su mesa)">
+          ${Object.entries(DISCIPLINAS).map(([k, d]) => `<option value="${k}" ${k === (p.disciplina || 'alquimista') ? 'selected' : ''}>${d.icono} ${d.nombre}</option>`).join('')}
+        </select>`
+      : `<span class="usr-disc">${nombreDisciplina(p.disciplina)}</span>`;
     if (p.baneado) return `<div class="usr-fila usr-desterrado">
       <span class="avatar avatar-grande">🚫</span>
       <div class="usr-info">
-        <div class="usr-nombre">${esc(p.nombre)} ${rolTxt}</div>
+        <div class="usr-nombre">${esc(p.nombre)} ${rolTxt} ${disc}</div>
         <div class="usr-estado">Desterrado de la mesa: no puede entrar</div>
       </div>
       <div class="usr-acciones">${acciones.join('')}</div>
@@ -140,7 +172,7 @@ export function renderUsuarios() {
       <span class="avatar avatar-${p.estado} avatar-grande">${esc(inicial(p.nombre))}</span>
       <div class="usr-info">
         <div class="usr-nombre">${esc(p.nombre)}${yo ? ' <span class="muted">(tú)</span>' : ''}
-          ${rolTxt}</div>
+          ${rolTxt} ${disc}</div>
         <div class="usr-estado"><span class="punto punto-${p.estado}"></span>${txtEstado[p.estado]}
           ${p.estado !== 'desconectado' && p.lugar ? ' · ' + esc(modulos.textoLugar(p.lugar)) : ''}
           ${p.estado === 'desconectado' ? ' · visto ' + haceTxt(p.hace) : ''}</div>
@@ -150,18 +182,125 @@ export function renderUsuarios() {
   }).join('') || '<p class="muted">Todavía no hay nadie más en la mesa.</p>';
 }
 
+// ---- Gestión de la campaña (DM) y de las campañas (superusuario) ----
+// Se pinta al abrir la sala y tras cada cambio, no en cada sondeo (hay casillas de texto).
+export async function cargarGestion() {
+  if (!auth.servidor) return;
+  if (auth.esDM()) {
+    const r = await sync.pedir('/api/cuentas').catch(() => null);
+    cuentas = r?.j?.ok ? r.j.cuentas : cuentas;
+  }
+  if (auth.esAdmin()) {
+    const r = await sync.pedir('/api/campanas').catch(() => null);
+    admin = r?.j?.ok ? r.j : admin;
+  }
+  renderGestion();
+}
+
+function renderGestion() {
+  const el = document.getElementById('mesaGestion');
+  if (el) {
+    if (!auth.servidor || !auth.esDM() || !auth.mesa) el.innerHTML = '';
+    else {
+      const fuera = (cuentas || []).filter(c => !c.enMesa && !c.baneado);
+      el.innerHTML = `<div class="gestion-caja">
+        <h3>📜 Invitar a «${esc(auth.mesa.nombre)}»</h3>
+        <p class="muted">Cada campaña tiene su propio catálogo, inventarios, libros y niveles. Quien invites empieza aquí con el inventario vacío y como alquimista; cámbiale la disciplina en la lista de abajo.</p>
+        ${fuera.length ? `<div class="dm-dar">
+            <select id="mesaInvitar">${fuera.map(c => `<option value="${esc(c.clave)}">${esc(c.nombre)}</option>`).join('')}</select>
+            <button class="btn btn-sm" data-usr="invitar">➕ Invitar a la mesa</button>
+          </div>` : '<p class="muted">Todas las cuentas ya están en esta mesa. Quien quiera unirse tiene que crearse una cuenta primero (con la palabra de paso de la mesa).</p>'}
+      </div>`;
+    }
+  }
+  const ad = document.getElementById('adminCampanas');
+  if (!ad) return;
+  if (!auth.esAdmin() || !admin) { ad.innerHTML = ''; return; }
+  const optsCuentas = admin.cuentas.filter(c => !c.baneado).map(c => `<option value="${esc(c.clave)}">${esc(c.nombre)}</option>`).join('');
+  const filas = admin.campanas.map(c => `<div class="usr-fila">
+      <span class="avatar avatar-grande">🗺️</span>
+      <div class="usr-info">
+        <div class="usr-nombre">${esc(c.nombre)}${auth.mesa?.id === c.id ? ' <span class="muted">(aquí estás)</span>' : ''}</div>
+        <div class="usr-estado">${c.jugadores} cuenta${c.jugadores === 1 ? '' : 's'} · DM: ${c.dms.length ? c.dms.map(esc).join(', ') : '<b>sin DM</b>'}</div>
+      </div>
+      <div class="usr-acciones">
+        ${auth.mesa?.id === c.id ? '' : `<button class="btn btn-sm" data-usr="ir-mesa" data-id="${esc(c.id)}">🚪 Entrar</button>`}
+        <button class="btn btn-sm btn-edit" data-usr="renombrar" data-id="${esc(c.id)}" data-nombre="${esc(c.nombre)}">✏️ Renombrar</button>
+      </div></div>`).join('');
+  const desterrados = admin.cuentas.filter(c => c.baneado);
+  ad.innerHTML = `<div class="gestion-caja gestion-admin">
+      <h3>🛡️ Campañas</h3>
+      <p class="muted">Para nombrar DM o invitar gente a una campaña, entra en ella y usa la lista de abajo. Como superusuario entras en todas con poderes de DM.</p>
+      ${filas}
+      <div class="dm-dar dm-dar-libro">
+        <input type="text" id="campNueva" maxlength="40" placeholder="Nombre de la nueva campaña">
+        <select id="campNuevaDM"><option value="">DM: (lo nombro después)</option>${optsCuentas}</select>
+        <select id="campNuevaCopia"><option value="">Catálogo vacío</option>${admin.campanas.map(c => `<option value="${esc(c.id)}">Copiar catálogo de «${esc(c.nombre)}»</option>`).join('')}</select>
+        <button class="btn btn-sm" data-usr="crear-campana">➕ Crear campaña</button>
+      </div>
+      ${desterrados.length ? `<h3>🚫 Cuentas desterradas</h3>${desterrados.map(c => `<div class="usr-fila usr-desterrado">
+          <span class="avatar avatar-grande">🚫</span><div class="usr-info"><div class="usr-nombre">${esc(c.nombre)}</div></div>
+          <div class="usr-acciones"><button class="btn btn-sm" data-usr="readmitir" data-clave="${esc(c.clave)}" data-nombre="${esc(c.nombre)}">🕊️ Readmitir</button></div>
+        </div>`).join('')}` : ''}
+    </div>`;
+}
+
 // Acciones de la lista de usuarios (cambiar rol, contraseñas)
 export function initUsuarios(verInventario) {
-  document.getElementById('listaUsuarios')?.addEventListener('click', async e => {
+  const sala = document.getElementById('tab-usuarios');
+  sala?.addEventListener('change', async e => {
+    const s = e.target.closest('[data-usr-disc]');
+    if (!s) return;
+    const r = await auth.apiMesa('/api/mesa/disciplina', { usuario: s.dataset.usrDisc, disciplina: s.value });
+    s.blur();
+    if (!r.ok) { alert(r.mensaje); }
+    await sync.refrescar({ presencia: true });
+  });
+  sala?.addEventListener('click', async e => {
     const b = e.target.closest('[data-usr]');
     if (!b) return;
     const accion = b.dataset.usr;
     if (accion === 'ver-inv') { verInventario(b.dataset.clave); return; }
+    if (accion === 'invitar') {
+      const clave = document.getElementById('mesaInvitar')?.value;
+      if (!clave) return;
+      const r = await auth.apiMesa('/api/mesa/miembro', { usuario: clave, accion: 'invitar' });
+      if (!r.ok) alert(r.mensaje);
+      await cargarGestion(); await sync.refrescar({ presencia: true });
+      return;
+    }
+    if (accion === 'sacar') {
+      if (!confirm(`¿Sacar a ${b.dataset.nombre} de «${auth.mesa?.nombre}»? No se borra nada: si le vuelves a invitar, recupera su inventario, sus libros y su nivel.`)) return;
+      const r = await auth.apiMesa('/api/mesa/miembro', { usuario: b.dataset.clave, accion: 'quitar' });
+      if (!r.ok) alert(r.mensaje);
+      await cargarGestion(); await sync.refrescar({ presencia: true });
+      return;
+    }
+    if (accion === 'ir-mesa') { auth.cambiarMesa(b.dataset.id); return; }
+    if (accion === 'renombrar') {
+      const n = prompt('Nuevo nombre de la campaña:', b.dataset.nombre);
+      if (!n?.trim()) return;
+      const r = await auth.apiMesa('/api/campanas/renombrar', { campana: b.dataset.id, nombre: n.trim() });
+      if (!r.ok) alert(r.mensaje);
+      await cargarGestion(); await sync.refrescar({ presencia: true });
+      return;
+    }
+    if (accion === 'crear-campana') {
+      const nombre = document.getElementById('campNueva')?.value.trim();
+      if (!nombre) { alert('Ponle un nombre a la campaña.'); return; }
+      const r = await auth.apiMesa('/api/campanas/crear', { nombre, dm: document.getElementById('campNuevaDM')?.value || '',
+        copiarDe: document.getElementById('campNuevaCopia')?.value || '' });
+      if (!r.ok) { alert(r.mensaje); return; }
+      alert(`Campaña «${r.campana.nombre}» creada. Entra en ella desde esta lista para invitar a los jugadores.`);
+      await cargarGestion();
+      return;
+    }
     if (accion === 'rol') {
       const dm = b.dataset.rol === 'dm';
-      if (!confirm(dm ? `¿Dar poderes de DM a ${b.dataset.nombre}? Podrá cambiar el inventario, los libros y el nivel de alquimia de todos.` : `¿Quitarle los poderes de DM a ${b.dataset.nombre}?`)) return;
+      if (!confirm(dm ? `¿Dar poderes de DM en «${auth.mesa?.nombre}» a ${b.dataset.nombre}? Podrá cambiar el inventario, los libros, el nivel y la disciplina de todos los de esta campaña.` : `¿Quitarle los poderes de DM en «${auth.mesa?.nombre}» a ${b.dataset.nombre}?`)) return;
       const r = await auth.cambiarRol(b.dataset.clave, b.dataset.rol);
       if (!r.ok) alert(r.mensaje);
+      await cargarGestion(); await sync.refrescar({ presencia: true });
       return;
     }
     if (accion === 'desterrar' || accion === 'readmitir') {
@@ -170,6 +309,7 @@ export function initUsuarios(verInventario) {
         : `¿Readmitir a ${b.dataset.nombre} en la mesa? Podrá volver a entrar con su contraseña.`)) return;
       const r = await auth.desterrar(b.dataset.clave, ban);
       if (!r.ok) alert(r.mensaje);
+      await cargarGestion(); await sync.refrescar({ presencia: true });
       return;
     }
     if (accion === 'pass') {

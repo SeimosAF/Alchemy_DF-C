@@ -13,6 +13,7 @@ import * as auth from './auth.js';
 import { rarityBadge, campoClass } from './utils.js';
 import * as niveles from './niveles.js';
 import * as lectura from './lectura.js';
+import { nombreDisciplina } from './panel.js';
 
 let jugadores = [];
 let elegido = null;       // clave del jugador que se está mirando
@@ -55,7 +56,7 @@ export function render() {
   if (el.contains(document.activeElement) && document.activeElement.matches('[data-dm-pruebas], #dmLibroNombre, #dmLibroBono, #dmLibroN, #dmLibroPruebas')) return;
 
   const chips = jugadores.map(x => `<button class="dm-chip ${x.clave === elegido ? 'activo' : ''}" data-dm="elegir" data-clave="${esc(x.clave)}">
-      ${x.rol === 'dm' ? '👑' : '⚔️'} ${esc(x.nombre)}${x.clave === auth.usuario.clave ? ' (tú)' : ''}</button>`).join('');
+      ${x.rol === 'dm' ? '👑' : '⚔️'} ${esc(x.nombre)}${x.clave === auth.usuario.clave ? ' (tú)' : ''} <span class="muted">${nombreDisciplina(x.disciplina).split(' ')[0]}</span></button>`).join('');
   if (!j) { el.innerHTML = `<div class="dm-chips">${chips}</div><p class="muted">No hay jugadores todavía.</p>`; return; }
 
   // Materiales: todos los del catálogo, con lo que tiene este jugador
@@ -128,7 +129,7 @@ export function render() {
 
   el.innerHTML = `
     <div class="dm-chips">${chips}</div>
-    <p class="muted dm-ayuda">Estás cambiando el inventario de <strong>${esc(j.nombre)}</strong>${j.baneado ? ' <b>(desterrado)</b>' : ''}. Cada cambio se guarda al momento y ${esc(j.nombre)} lo ve en unos segundos.</p>
+    <p class="muted dm-ayuda">Estás cambiando el inventario de <strong>${esc(j.nombre)}</strong> (${nombreDisciplina(j.disciplina)}) en «${esc(auth.mesa?.nombre || '')}»${j.baneado ? ' <b>(desterrado)</b>' : ''}. Cada cambio se guarda al momento y ${esc(j.nombre)} lo ve en unos segundos. La disciplina se cambia en «En línea».</p>
     ${bloqueNivel}
     <div class="dm-grid">
       <div class="dm-col">

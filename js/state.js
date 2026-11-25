@@ -49,8 +49,9 @@ export function normalizeState(s) {
   return migrateState(s);
 }
 
-const CHARACTER_KEY = 'alquimiaPersonaje';   // en modo servidor el personaje es de cada cuenta (en este navegador)
-const characterKey = () => CHARACTER_KEY + (auth.usuario ? ':' + auth.usuario.clave : '');
+const CHARACTER_KEY = 'alquimiaPersonaje';   // en modo servidor el personaje es de cada cuenta y campaña (en este navegador)
+const characterKeyCuenta = () => CHARACTER_KEY + (auth.usuario ? ':' + auth.usuario.clave : '');   // de antes de las campañas
+const characterKey = () => characterKeyCuenta() + (auth.mesa ? '@' + auth.mesa.id : '');
 
 function readLocal() {
   try {
@@ -71,6 +72,11 @@ function localCharacter(fallback) {
   try {
     const c = JSON.parse(localStorage.getItem(characterKey()) || 'null');
     if (c) return c;
+    // El personaje de antes de las campañas es el de la primera campaña
+    if (auth.mesa?.id === 'primera') {
+      const deCuenta = JSON.parse(localStorage.getItem(characterKeyCuenta()) || 'null');
+      if (deCuenta) return deCuenta;
+    }
     // Primera vez con cuentas: el personaje que tuviera este navegador pasa a la primera cuenta que entre
     const viejo = JSON.parse(localStorage.getItem(CHARACTER_KEY) || 'null');
     if (viejo && auth.usuario) { localStorage.removeItem(CHARACTER_KEY); return viejo; }
@@ -95,7 +101,7 @@ export async function loadState() {
   const datos = conn.datos;
   sync.fijarBase(datos);
   if (sync.servidorVacio(datos) && local && !sync.servidorVacio(sync.aServidor(local)) &&
-      confirm('El servidor compartido está vacío y este navegador tiene datos guardados.\n\n¿Subirlos al servidor para que los vea todo el mundo?')) {
+      confirm(`La campaña «${auth.mesa?.nombre || ''}» está vacía y este navegador tiene datos guardados (de cuando se usaba sin servidor).\n\n¿Subirlos a esta campaña para que los vea toda su mesa?`)) {
     state = local;
     state.character = character;
     sync.guardar(state, [{ t: 'vacio', c: 'meta', id: '-' }]);

@@ -7,6 +7,14 @@ if errorlevel 1 (
   pause
   exit /b 1
 )
+rem Antes de actualizar: copia de la base de datos fuera de Docker (por si acaso).
+rem Solo si la app ya estaba en marcha; si no, no hace nada.
+if not exist "datos\copias" mkdir "datos\copias"
+docker compose exec -T app python -c "import sqlite3; o=sqlite3.connect('/data/alquimia.db'); d=sqlite3.connect('/tmp/copia.db'); o.backup(d); d.close()" >nul 2>&1
+if not errorlevel 1 (
+  docker compose cp app:/tmp/copia.db "datos\copias\ultima-antes-de-actualizar.db" >nul 2>&1
+  if not errorlevel 1 echo Copia de la base guardada en datos\copias\ultima-antes-de-actualizar.db
+)
 echo Construyendo y arrancando la app. La primera vez tarda unos minutos...
 docker compose up -d --build --force-recreate
 if errorlevel 1 (
