@@ -81,7 +81,9 @@ export function pintarSaludo() {
   const sub = document.getElementById('mesaCampana');
   if (sub) {
     sub.hidden = !auth.mesa;
-    if (auth.mesa) sub.innerHTML = `Mesa de <b>${esc(auth.mesa.nombre)}</b>${auth.esAdmin() ? '' : ` · ${nombreDisciplina(auth.usuario.disciplina)}`}`;
+    const pj = auth.usuario?.personaje?.nombre;
+    if (auth.mesa) sub.innerHTML = `Mesa de <b>${esc(auth.mesa.nombre)}</b>${auth.esAdmin() ? '' : ` · ${nombreDisciplina(auth.usuario.disciplina)}`}`
+      + (pj ? ` · jugando con <b>${esc(auth.usuario.personaje.retrato || '')} ${esc(pj)}</b>` : auth.esAdmin() ? '' : ' · <a href="#" data-action="switch-tab" data-id="perfil">crea tu personaje en Perfil</a>');
   }
 }
 
@@ -138,6 +140,7 @@ export function renderUsuarios() {
     const acciones = [];
     const admin = p.rol === 'admin';
     if (yo && !admin) acciones.push(`<button class="btn btn-sm" data-usr="pass-propia">🔑 Cambiar mi contraseña</button>`);
+    if (!admin && !p.baneado) acciones.push(`<button class="btn btn-sm" data-usr="ver-perfil" data-clave="${esc(p.clave)}">🧙 Perfil</button>`);
     if (auth.esAdmin() && !yo && !admin) {
       if (!p.baneado) acciones.push(p.rol === 'dm'
         ? `<button class="btn btn-sm btn-edit" data-usr="rol" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}" data-rol="jugador">Quitar DM</button>`
@@ -173,6 +176,7 @@ export function renderUsuarios() {
       <div class="usr-info">
         <div class="usr-nombre">${esc(p.nombre)}${yo ? ' <span class="muted">(tú)</span>' : ''}
           ${rolTxt} ${disc}</div>
+        ${p.personaje ? `<div class="usr-pj">juega con <b>${esc(p.personaje)}</b></div>` : ''}
         <div class="usr-estado"><span class="punto punto-${p.estado}"></span>${txtEstado[p.estado]}
           ${p.estado !== 'desconectado' && p.lugar ? ' · ' + esc(modulos.textoLugar(p.lugar)) : ''}
           ${p.estado === 'desconectado' ? ' · visto ' + haceTxt(p.hace) : ''}</div>
@@ -210,6 +214,15 @@ function renderGestion() {
             <select id="mesaInvitar">${fuera.map(c => `<option value="${esc(c.clave)}">${esc(c.nombre)}</option>`).join('')}</select>
             <button class="btn btn-sm" data-usr="invitar">➕ Invitar a la mesa</button>
           </div>` : '<p class="muted">Todas las cuentas ya están en esta mesa. Quien quiera unirse tiene que crearse una cuenta primero (con la palabra de paso de la mesa).</p>'}
+        <h3>🔑 Contraseña de la mesa</h3>
+        <p class="muted">${auth.mesa.conClave
+          ? 'Esta mesa <b>tiene contraseña</b>: quien sepa su nombre y la contraseña puede unirse solo, sin invitación (entra como jugador alquimista).'
+          : 'Esta mesa <b>no tiene contraseña</b>: solo se entra por invitación. Si le pones una, quien la sepa podrá unirse solo.'}</p>
+        <div class="dm-dar">
+          <input type="password" id="mesaClaveNueva" maxlength="100" autocomplete="new-password" placeholder="${auth.mesa.conClave ? 'Nueva contraseña' : 'Contraseña (mínimo 4)'}">
+          <button class="btn btn-sm" data-usr="clave-mesa">${auth.mesa.conClave ? 'Cambiar' : 'Poner'} contraseña</button>
+          ${auth.mesa.conClave ? '<button class="btn btn-sm btn-danger" data-usr="quitar-clave-mesa">Quitar contraseña</button>' : ''}
+        </div>
       </div>`;
     }
   }
@@ -246,7 +259,7 @@ function renderGestion() {
 }
 
 // Acciones de la lista de usuarios (cambiar rol, contraseñas)
-export function initUsuarios(verInventario) {
+export function initUsuarios(verInventario, verPerfil = () => {}) {
   const sala = document.getElementById('tab-usuarios');
   sala?.addEventListener('change', async e => {
     const s = e.target.closest('[data-usr-disc]');
@@ -261,6 +274,18 @@ export function initUsuarios(verInventario) {
     if (!b) return;
     const accion = b.dataset.usr;
     if (accion === 'ver-inv') { verInventario(b.dataset.clave); return; }
+    if (accion === 'ver-perfil') { verPerfil(b.dataset.clave); return; }
+    if (accion === 'clave-mesa' || accion === 'quitar-clave-mesa') {
+      const clave = accion === 'quitar-clave-mesa' ? '' : document.getElementById('mesaClaveNueva')?.value || '';
+      if (accion === 'clave-mesa' && clave.length < 4) { alert('La contraseña de la mesa debe tener al menos 4 caracteres.'); return; }
+      if (accion === 'quitar-clave-mesa' && !confirm('¿Quitar la contraseña? Solo se podrá entrar en la mesa por invitación.')) return;
+      const r = await auth.apiMesa('/api/mesa/clave', { clave });
+      if (!r.ok) { alert(r.mensaje); return; }
+      if (auth.mesa) auth.mesa.conClave = r.conClave;
+      alert(r.conClave ? `Contraseña puesta. Quien sepa el nombre de la mesa («${auth.mesa?.nombre}») y esta contraseña podrá unirse desde la pantalla de elegir mesa.` : 'Contraseña quitada.');
+      renderGestion();
+      return;
+    }
     if (accion === 'invitar') {
       const clave = document.getElementById('mesaInvitar')?.value;
       if (!clave) return;

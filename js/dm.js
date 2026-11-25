@@ -56,7 +56,7 @@ export function render() {
   if (el.contains(document.activeElement) && document.activeElement.matches('[data-dm-pruebas], #dmLibroNombre, #dmLibroBono, #dmLibroN, #dmLibroPruebas')) return;
 
   const chips = jugadores.map(x => `<button class="dm-chip ${x.clave === elegido ? 'activo' : ''}" data-dm="elegir" data-clave="${esc(x.clave)}">
-      ${x.rol === 'dm' ? '👑' : '⚔️'} ${esc(x.nombre)}${x.clave === auth.usuario.clave ? ' (tú)' : ''} <span class="muted">${nombreDisciplina(x.disciplina).split(' ')[0]}</span></button>`).join('');
+      ${x.rol === 'dm' ? '👑' : '⚔️'} ${esc(x.nombre)}${x.clave === auth.usuario.clave ? ' (tú)' : ''}${x.personaje ? ` · ${esc(x.personaje)}` : ''} <span class="muted">${nombreDisciplina(x.disciplina).split(' ')[0]}</span></button>`).join('');
   if (!j) { el.innerHTML = `<div class="dm-chips">${chips}</div><p class="muted">No hay jugadores todavía.</p>`; return; }
 
   // Materiales: todos los del catálogo, con lo que tiene este jugador

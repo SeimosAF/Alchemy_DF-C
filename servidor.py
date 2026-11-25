@@ -148,13 +148,19 @@ def preparar_bd():
             INSERT OR IGNORE INTO ajustes VALUES ('rev', '0');
             -- Campañas (mesas): cada una con su propio contador de revisiones.
             CREATE TABLE IF NOT EXISTS campanas (
-                id TEXT PRIMARY KEY, nombre TEXT NOT NULL, creada TEXT, rev INTEGER NOT NULL DEFAULT 0);
+                id TEXT PRIMARY KEY, nombre TEXT NOT NULL, creada TEXT, rev INTEGER NOT NULL DEFAULT 0,
+                clave_hash TEXT);
             -- Quién juega en cada campaña, con qué papel (dm / jugador) y con qué disciplina.
             CREATE TABLE IF NOT EXISTS miembros (
                 campana TEXT NOT NULL, usuario TEXT NOT NULL, rol TEXT NOT NULL DEFAULT 'jugador',
-                disciplina TEXT NOT NULL DEFAULT 'alquimista', unido TEXT,
+                disciplina TEXT NOT NULL DEFAULT 'alquimista', unido TEXT, personaje TEXT,
                 PRIMARY KEY (campana, usuario));
         ''')
+        # Columnas añadidas después (V3.2): contraseña de la mesa y personaje de cada jugador en cada campaña
+        if 'clave_hash' not in [f[1] for f in con.execute('PRAGMA table_info(campanas)')]:
+            con.execute('ALTER TABLE campanas ADD COLUMN clave_hash TEXT')
+        if 'personaje' not in [f[1] for f in con.execute('PRAGMA table_info(miembros)')]:
+            con.execute('ALTER TABLE miembros ADD COLUMN personaje TEXT')
         if 'baneado' not in [f[1] for f in con.execute('PRAGMA table_info(usuarios)')]:
             con.execute('ALTER TABLE usuarios ADD COLUMN baneado INTEGER NOT NULL DEFAULT 0')
         if not nueva_bd and 'campana' not in [f[1] for f in con.execute('PRAGMA table_info(entradas)')]:
@@ -477,15 +483,126 @@ def actor_en_mesa(con, u, camp):
     """La persona dentro de una campaña: con su papel en ella (rol) y su disciplina. None si no juega ahí."""
     if not u or not isinstance(camp, str) or not CAMPANA_OK.match(camp):
         return None
-    c = con.execute('SELECT nombre FROM campanas WHERE id=?', (camp,)).fetchone()
+    c = con.execute('SELECT nombre, clave_hash FROM campanas WHERE id=?', (camp,)).fetchone()
     if not c:
         return None
     if es_admin(u):
-        return {**u, 'campana': camp, 'mesa': c[0], 'disciplina': DISCIPLINA_DEFECTO}
-    m = con.execute('SELECT rol, disciplina FROM miembros WHERE campana=? AND usuario=?', (camp, u['clave'])).fetchone()
+        return {**u, 'campana': camp, 'mesa': c[0], 'disciplina': DISCIPLINA_DEFECTO, 'personaje': None, 'conClave': bool(c[1])}
+    m = con.execute('SELECT rol, disciplina, personaje FROM miembros WHERE campana=? AND usuario=?', (camp, u['clave'])).fetchone()
     if not m:
         return None
-    return {**u, 'rol': m[0], 'campana': camp, 'mesa': c[0], 'disciplina': m[1]}
+    return {**u, 'rol': m[0], 'campana': camp, 'mesa': c[0], 'disciplina': m[1], 'personaje': leer_personaje(m[2]),
+            'conClave': bool(c[1])}
+
+
+# ---- Personaje de cada jugador en cada campaña (lo que se ve en su perfil)
+CAMPOS_TEXTO = {'nombre': 40, 'raza': 40, 'clase': 40, 'retrato': 8, 'notas': 2000}
+CAMPOS_NUM = {'nivel': (1, 30), 'intMod': (-5, 10), 'bono': (0, 20)}
+
+
+def leer_personaje(texto):
+    try:
+        p = json.loads(texto) if texto else None
+    except ValueError:
+        p = None
+    return p if isinstance(p, dict) else None
+
+
+def limpiar_personaje(p):
+    if not isinstance(p, dict):
+        raise Rechazo('invalida', 'Perfil mal formado.')
+    out = {}
+    for k, largo in CAMPOS_TEXTO.items():
+        v = re.sub(r'[\x00-\x08\x0b-\x1f]', '', unicodedata.normalize('NFC', str(p.get(k) or ''))).strip()
+        if len(v) > largo:
+            raise Rechazo('invalida', f'El campo «{k}» es demasiado largo (máximo {largo}).')
+        out[k] = v
+    for k, (lo, hi) in CAMPOS_NUM.items():
+        v = p.get(k, lo if k != 'intMod' else 0)
+        if isinstance(v, bool) or not isinstance(v, int) or not lo <= v <= hi:
+            raise Rechazo('invalida', f'El campo «{k}» debe ser un número entre {lo} y {hi}.')
+        out[k] = v
+    return out
+
+
+def guardar_personaje(actor, cuerpo):
+    """Cada uno edita su personaje; el DM (o el superusuario) el de cualquiera de su campaña.
+    El nombre de USUARIO (la cuenta) no se toca aquí: no lo puede cambiar nadie."""
+    camp = actor['campana']
+    objetivo = clave_de(cuerpo.get('usuario')) if cuerpo.get('usuario') else actor['clave']
+    if objetivo != actor['clave'] and not es_dm(actor):
+        raise Rechazo('permiso', 'Solo el DM puede cambiar el perfil de otro jugador.')
+    p = limpiar_personaje(cuerpo.get('personaje'))
+
+    def hacer(con):
+        if not es_miembro(con, camp, objetivo):
+            raise Rechazo('invalida', 'Ese perfil no es de nadie de esta campaña.' if objetivo != actor['clave']
+                          else 'El superusuario no tiene personaje propio en las campañas.')
+        con.execute('UPDATE miembros SET personaje=? WHERE campana=? AND usuario=?',
+                    (json.dumps(p, ensure_ascii=False), camp, objetivo))
+        subir_rev(con, camp)
+        return {'ok': True, 'personaje': p}
+    return con_escritura(hacer)
+
+
+def perfiles(con, camp):
+    """Los perfiles de todos los de la campaña (todos los pueden ver; editar, ver guardar_personaje)."""
+    out = []
+    for c, n, r, d, pj in con.execute('SELECT u.clave, u.nombre, m.rol, m.disciplina, m.personaje FROM miembros m '
+                                      'JOIN usuarios u ON u.clave=m.usuario WHERE m.campana=? AND u.baneado=0 '
+                                      'ORDER BY u.nombre COLLATE NOCASE', (camp,)).fetchall():
+        nivel, _ = leer(con, camp, 'perfil', c, 'alquimia')
+        out.append({'clave': c, 'nombre': n, 'rol': r, 'disciplina': d, 'personaje': leer_personaje(pj),
+                    'nivelAlquimia': (nivel or {}).get('nivel') if isinstance(nivel, dict) else None})
+    return out
+
+
+# ---- Contraseña de la mesa: si la hay, quien la sepa puede unirse sin invitación
+def poner_clave_mesa(actor, cuerpo):
+    if not es_dm(actor):
+        raise Rechazo('permiso', 'Solo el DM o el superusuario pueden poner la contraseña de la mesa.')
+    clave = cuerpo.get('clave')
+    if clave in (None, ''):
+        h = None
+    else:
+        if not isinstance(clave, str) or not 4 <= len(clave) <= 100:
+            raise Rechazo('invalida', 'La contraseña de la mesa debe tener entre 4 y 100 caracteres.')
+        h = hash_contrasena(clave)
+
+    def hacer(con):
+        con.execute('UPDATE campanas SET clave_hash=? WHERE id=?', (h, actor['campana']))
+        subir_rev(con, actor['campana'])
+        return {'ok': True, 'conClave': bool(h)}
+    return con_escritura(hacer)
+
+
+def unirse(u, cuerpo, ip):
+    """Unirse a una campaña con su nombre y su contraseña (sin invitación)."""
+    if es_admin(u):
+        raise Rechazo('invalida', 'El superusuario ya entra en todas las campañas.')
+    fallos, desde = FALLOS.get(ip, (0, 0))
+    if fallos >= 5 and time.time() - desde < 60:
+        raise Rechazo('espera', 'Demasiados intentos fallidos. Espera un minuto y vuelve a probar.')
+    nombre = re.sub(r'\s+', ' ', unicodedata.normalize('NFC', str(cuerpo.get('nombre') or '')).strip())
+    clave = str(cuerpo.get('clave') or '')
+
+    def hacer(con):
+        c = con.execute('SELECT id, nombre, clave_hash FROM campanas WHERE nombre=? COLLATE NOCASE', (nombre,)).fetchone()
+        # Mismo mensaje si no existe, si no tiene contraseña o si es incorrecta: no se delata qué mesas hay
+        if not c or not c[2] or not comprobar_contrasena(clave, c[2]):
+            if not c or not c[2]:
+                comprobar_contrasena(clave, HASH_FALSO)
+            FALLOS[ip] = (fallos + 1 if time.time() - desde < 60 else 1, desde if time.time() - desde < 60 else time.time())
+            raise Rechazo('credenciales', 'No hay ninguna mesa con ese nombre y esa contraseña. '
+                          'Si la mesa no tiene contraseña, pide al DM que te invite.')
+        FALLOS.pop(ip, None)
+        if es_miembro(con, c[0], u['clave']):
+            raise Rechazo('existe', f'Ya estás en «{c[1]}».')
+        con.execute('INSERT INTO miembros (campana, usuario, rol, disciplina, unido) VALUES (?,?,?,?,?)',
+                    (c[0], u['clave'], 'jugador', DISCIPLINA_DEFECTO, ahora()))
+        subir_rev(con, c[0])
+        return {'ok': True, 'campana': {'id': c[0], 'nombre': c[1], 'rol': 'jugador', 'disciplina': DISCIPLINA_DEFECTO}}
+    return con_escritura(hacer)
 
 
 def es_miembro(con, camp, clave):
@@ -670,12 +787,12 @@ def lista_presencia(con, camp):
     """Quién juega en esta campaña y si está ahora en ella (alguien en otra campaña sale como desconectado aquí)."""
     ahora_s = time.time()
     lista = []
-    filas = con.execute('SELECT u.clave, u.nombre, m.rol, u.baneado, m.disciplina FROM miembros m JOIN usuarios u ON u.clave=m.usuario '
-                        'WHERE m.campana=? ORDER BY u.nombre COLLATE NOCASE', (camp,)).fetchall()
+    filas = con.execute('SELECT u.clave, u.nombre, m.rol, u.baneado, m.disciplina, m.personaje FROM miembros m '
+                        'JOIN usuarios u ON u.clave=m.usuario WHERE m.campana=? ORDER BY u.nombre COLLATE NOCASE', (camp,)).fetchall()
     adm = con.execute("SELECT clave, nombre, rol, baneado FROM usuarios WHERE rol='admin'").fetchone()
     if adm and ADMIN_CLAVE and (PRESENCIA.get(adm[0]) or {}).get('campana') == camp:
-        filas.append((*adm, None))   # el superusuario sale solo mientras está en esta campaña
-    for clave, nombre, rol, baneado, disciplina in filas:
+        filas.append((*adm, None, None))   # el superusuario sale solo mientras está en esta campaña
+    for clave, nombre, rol, baneado, disciplina, pj in filas:
         p = PRESENCIA.get(clave)
         if p and p.get('campana') != camp:
             p = {**p, 'visible': False, 't': p['t'] - AUSENTE_S}   # está en otra campaña
@@ -687,7 +804,7 @@ def lista_presencia(con, camp):
         else:
             estado = 'desconectado'
         lista.append({'clave': clave, 'nombre': nombre, 'rol': rol, 'estado': estado, 'baneado': bool(baneado),
-                      'disciplina': disciplina,
+                      'disciplina': disciplina, 'personaje': (leer_personaje(pj) or {}).get('nombre') or '',
                       'lugar': p['lugar'] if p and estado != 'desconectado' else None,
                       'hace': round(hace) if hace is not None else None})
     return lista
@@ -1073,6 +1190,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     return self.json(200, {**base, 'datos': estado_completo(con, camp, actor['clave']), 'cambios': otros})
                 if ruta == '/api/presencia':
                     return self.json(200, {'ok': True, 'presencia': lista_presencia(con, camp)})
+                if ruta == '/api/mesa/perfiles':
+                    return self.json(200, {'ok': True, 'perfiles': perfiles(con, camp)})
                 if ruta == '/api/cuentas':
                     # Para invitar a la campaña: el DM ve las cuentas (sin los desterrados)
                     if not es_dm(actor):
@@ -1082,9 +1201,10 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     if not es_dm(actor):
                         return self.json(403, {'ok': False, 'motivo': 'permiso', 'mensaje': 'Solo para el DM.'})
                     # Solo los de esta campaña. El superusuario no es un personaje: no sale en la lista de inventarios
-                    jugadores = [{'clave': c, 'nombre': n, 'rol': r, 'disciplina': d, 'baneado': bool(b), **inventario_de(con, camp, c)}
-                                 for c, n, r, d, b in con.execute(
-                                     'SELECT u.clave, u.nombre, m.rol, m.disciplina, u.baneado FROM miembros m '
+                    jugadores = [{'clave': c, 'nombre': n, 'rol': r, 'disciplina': d, 'baneado': bool(b),
+                                  'personaje': (leer_personaje(pj) or {}).get('nombre') or '', **inventario_de(con, camp, c)}
+                                 for c, n, r, d, b, pj in con.execute(
+                                     'SELECT u.clave, u.nombre, m.rol, m.disciplina, u.baneado, m.personaje FROM miembros m '
                                      'JOIN usuarios u ON u.clave=m.usuario WHERE m.campana=? '
                                      'ORDER BY u.nombre COLLATE NOCASE', (camp,)).fetchall()]
                     return self.json(200, {'ok': True, 'rev': rev_actual(con, camp), 'jugadores': jugadores})
@@ -1114,7 +1234,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
         ruta = urlparse(self.path).path
         acciones = ('/api/transaccion', '/api/registro', '/api/entrar', '/api/salir',
                     '/api/usuarios/rol', '/api/usuarios/contrasena', '/api/usuarios/destierro',
-                    '/api/campanas/crear', '/api/campanas/renombrar', '/api/mesa/miembro', '/api/mesa/disciplina')
+                    '/api/campanas/crear', '/api/campanas/renombrar', '/api/campanas/unirse',
+                    '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave')
         if ruta not in acciones:
             return self.json(404, {'ok': False, 'mensaje': 'No existe.'})
         largo = int(self.headers.get('Content-Length') or 0)
@@ -1148,6 +1269,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, crear_campana(u, cuerpo))
             if ruta == '/api/campanas/renombrar':
                 return self.json(200, renombrar_campana(u, cuerpo))
+            if ruta == '/api/campanas/unirse':
+                return self.json(200, unirse(u, cuerpo, self.client_address[0]))
             con = conectar()
             try:
                 actor = self.actor_mesa(con, u)
@@ -1168,6 +1291,10 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, miembro(actor, cuerpo))
             if ruta == '/api/mesa/disciplina':
                 return self.json(200, cambiar_disciplina(actor, cuerpo))
+            if ruta == '/api/mesa/personaje':
+                return self.json(200, guardar_personaje(actor, cuerpo))
+            if ruta == '/api/mesa/clave':
+                return self.json(200, poner_clave_mesa(actor, cuerpo))
         except Rechazo as r:
             codigo = {'stock': 409, 'conflicto': 409, 'existe': 409, 'permiso': 403,
                       'credenciales': 401, 'clave': 401, 'espera': 429, 'baneado': 403}.get(r.motivo, 400)

@@ -19,6 +19,10 @@ Con servidor, lo primero que aparece es un pergamino para **Entrar** o **Crear c
   El superusuario las crea (en «En línea», abajo) y nombra a su DM; el DM **invita** a los jugadores
   desde «En línea». Una cuenta nueva no está en ninguna campaña hasta que la inviten. Si alguien
   juega en varias, elige mesa al entrar (y la cambia con el botón 🗺️ de arriba).
+- **Contraseña de mesa (opcional):** el DM o el superusuario la ponen en «En línea». Quien sepa el
+  nombre de la mesa y su contraseña se une solo desde la pantalla de elegir mesa.
+- **Perfil:** cada jugador tiene un personaje por campaña (pestaña 🧙 Perfil). El DM puede editar el de
+  los demás, pero nadie puede cambiar el nombre de usuario de una cuenta.
 - **Disciplinas:** el DM asigna a cada jugador alquimista, cocinero, hechicero o herrero (en «En línea»).
   Su tarjeta de oficio en la mesa cambia según la disciplina. De momento solo Alquimia está hecha;
   las demás salen como «Próximamente».

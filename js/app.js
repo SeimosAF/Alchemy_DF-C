@@ -22,6 +22,7 @@ import * as modulos from './modulos.js';
 import * as lectura from './lectura.js';
 import * as niveles from './niveles.js';
 import * as diario from './diario.js';
+import * as perfil from './perfil.js';
 
 // ---- Cauldron toggle state ----
 let caulActive = false;
@@ -94,6 +95,8 @@ modulos.registrar({ id: 'lectura', icono: '📖', titulo: 'Lectura', lugar: 'lec
   tarjeta: { orden: 2, clase: 'tarjeta-lectura', texto: 'Tus libros y lo que llevas leído' },
   resumen: () => lectura.resumen(),
   alMostrar() { lectura.render(); } });
+modulos.registrar({ id: 'perfil', icono: '🧙', titulo: 'Perfil', lugar: 'perfil', lugarTxt: 'mirando perfiles',
+  alMostrar() { perfil.cargar(); } });
 modulos.registrar({ id: 'info', icono: '📜', titulo: 'Compendio', lugar: 'compendio', lugarTxt: 'consultando el compendio',
   alMostrar() {} });
 modulos.registrar({ id: 'usuarios', icono: '🟢', titulo: 'En línea', lugar: 'usuarios', lugarTxt: 'mirando quién anda por aquí',
@@ -117,6 +120,21 @@ function switchTab(id) {
   window.scrollTo({ top: 0, behavior: 'smooth' });
 }
 const vistaActual = () => document.body.dataset.vista;
+
+// "Ver perfil" en la lista de usuarios
+function verPerfilDe(clave) {
+  switchTab('perfil');
+  perfil.ver(clave);
+}
+
+// Cuando cambia el personaje propio (desde el perfil, la barra o porque lo editó el DM)
+function alCambiarPersonaje() {
+  const barra = document.querySelector('.char-bar');
+  if (!barra?.contains(document.activeElement)) loadCharacterUI();
+  panel.pintarSaludo();
+  if (vistaActual() === 'lectura') lectura.render();
+  if (vistaActual() === 'usuarios') panel.renderUsuarios();
+}
 
 // El DM pulsa "Ver inventario" en la lista de usuarios
 function verInventarioDe(clave) {
@@ -194,6 +212,7 @@ function syncCharacter() {
   state.character.intMod = parseInt(document.getElementById('charInt').value) || 0;
   state.character.bonus  = parseInt(document.getElementById('charBonus').value) || 0;
   saveState();
+  perfil.subirPropio();   // con servidor, el personaje se guarda en la campaña (perfil)
   if (vistaActual() === 'lectura') lectura.render();   // la tirada de comprensión usa el mod. INT
 }
 
@@ -234,6 +253,7 @@ sync.setHooks({
   usuario(u, antes) {
     aplicarRol();
     if (antes && antes.rol !== u.rol) sync.aviso(auth.esDM() ? '👑 Ahora eres DM de la mesa.' : 'Ya no eres DM de la mesa.');
+    if (antes && antes.personaje !== JSON.stringify(u.personaje || null)) perfil.alCambiarEnServidor();
     if (antes && antes.disciplina !== u.disciplina) {
       construirModulos();
       if (!modulos.visible(modulos.porId(vistaActual()))) switchTab('panel');
@@ -282,13 +302,15 @@ document.addEventListener('DOMContentLoaded', async () => {
   await auth.iniciar();          // pantalla de entrada (solo si hay servidor)
   panel.pintarCabecera();
   await loadState();
+  perfil.alCargar();             // con servidor, el personaje sale del perfil de esta campaña
   loadCharacterUI();
   updateMatForm();
   renderAll();
   renderCrafteo();
   dm.init();
   lectura.init();
-  panel.initUsuarios(verInventarioDe);
+  panel.initUsuarios(verInventarioDe, verPerfilDe);
+  perfil.init(alCambiarPersonaje);
   modulos.construirProximamente(document.querySelector('script[src="js/app.js"]'));
   construirModulos();
   diario.pintarBarra();

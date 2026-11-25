@@ -131,11 +131,15 @@ function ponerMesa(c) {
 // Lo que dice el servidor en cada sondeo (le han hecho DM, le han cambiado la disciplina...)
 export function actualizarDesdeServidor(u) {
   if (!u || !usuario || !mesa) return false;
-  const cambia = u.rol !== usuario.rol || (u.disciplina || 'alquimista') !== usuario.disciplina || (u.mesa && u.mesa !== mesa.nombre);
+  const pj = JSON.stringify(u.personaje || null);
+  const cambia = u.rol !== usuario.rol || (u.disciplina || 'alquimista') !== usuario.disciplina || (u.mesa && u.mesa !== mesa.nombre)
+    || pj !== JSON.stringify(usuario.personaje || null) || !!u.conClave !== !!mesa.conClave;
   usuario.rol = u.rol;
   usuario.disciplina = mesa.disciplina = u.disciplina || 'alquimista';
+  usuario.personaje = u.personaje || null;   // su personaje en esta campaña (perfil.js)
   if (u.mesa) mesa.nombre = u.mesa;
   mesa.rol = u.rol;
+  mesa.conClave = !!u.conClave;               // ¿la mesa tiene contraseña para unirse?
   return cambia;
 }
 
@@ -177,8 +181,16 @@ function elegirMesa(pantalla) {
         <p class="entrada-nota">${campanas.length
           ? `Bienvenido, <strong>${esc(usuario.nombre)}</strong>. ¿A qué mesa te sientas hoy?`
           : `<strong>${esc(usuario.nombre)}</strong>, todavía no te has sentado en ninguna mesa.<br>
-             ${puedeCrear ? 'Crea la primera campaña aquí abajo.' : `Pide al DM de tu campaña que te invite: dile tu nombre, <strong>${esc(usuario.nombre)}</strong>.`}`}</p>
+             ${puedeCrear ? 'Crea la primera campaña aquí abajo.' : `Pide al DM de tu campaña que te invite (dile tu nombre, <strong>${esc(usuario.nombre)}</strong>) o únete con la contraseña de la mesa.`}`}</p>
         <div class="mesa-opciones">${lista}</div>
+        ${!puedeCrear ? `<details class="mesa-unirse" ${campanas.length ? '' : 'open'}>
+            <summary>🔑 Unirme a una mesa con su contraseña</summary>
+            <form class="mesa-crear" id="mesaUnirseForm">
+              <label class="entrada-campo"><span>Nombre de la mesa</span><input type="text" id="mesaUnirseNombre" maxlength="40"></label>
+              <label class="entrada-campo"><span>Contraseña de la mesa</span><input type="password" id="mesaUnirseClave" maxlength="100" autocomplete="off"></label>
+              <button type="submit" class="btn btn-sm">Unirme</button>
+            </form>
+          </details>` : ''}
         ${puedeCrear ? `<form class="mesa-crear" id="mesaCrearForm">
             <label class="entrada-campo"><span>Nueva campaña</span>
               <input type="text" id="mesaCrearNombre" maxlength="40" placeholder="Nombre de la campaña"></label>
@@ -207,6 +219,14 @@ function elegirMesa(pantalla) {
     };
     caja.onsubmit = async e => {
       e.preventDefault();
+      if (e.target.id === 'mesaUnirseForm') {   // unirse con la contraseña de la mesa
+        const r = await api('/api/campanas/unirse', { nombre: caja.querySelector('#mesaUnirseNombre').value,
+          clave: caja.querySelector('#mesaUnirseClave').value }, true).catch(() => ({ j: null }));
+        if (!r.j?.ok) return pintar(r.j?.mensaje || 'No se pudo entrar en la mesa.');
+        try { await cargarYo(); } catch (_) {}
+        caja.onclick = null;
+        return resolve(campanas.find(c => c.id === r.j.campana.id) || r.j.campana);
+      }
       const nombre = caja.querySelector('#mesaCrearNombre')?.value.trim();
       if (!nombre) return pintar('Ponle un nombre a la campaña.');
       const r = await api('/api/campanas/crear', { nombre }, true).catch(() => ({ j: null }));

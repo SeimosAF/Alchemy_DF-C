@@ -13,6 +13,7 @@ armas y sus efectos, y algún día mapas) sin tocar lo que ya funciona.
 | Inventario | `js/render.js`, `js/form.js`, `js/dm.js` | Materiales, pociones, botín; herramientas del DM |
 | Alquimia | `js/data.js`, `js/model.js`, `js/crafting.js`, `js/cauldron.js`, `js/niveles.js`, `js/diario.js` | Reglas de pociones, caldero, niveles de alquimia y diario de Jhon Arbaquel |
 | Lectura | `js/lectura.js` | Libros, progreso, descansos y tiradas de comprensión |
+| Perfil | `js/perfil.js` | El personaje de cada jugador en cada campaña (nombre, raza, clase, nivel, mod. INT, bono, retrato, notas) |
 
 ## El registro de módulos (`js/modulos.js`)
 
@@ -62,6 +63,15 @@ y, por cada jugador, su inventario, sus libros y su nivel. **No se mezcla nada e
   pergamino (`js/auth.js`). Con el botón 🗺️ de la cabecera se cambia de mesa.
 - Al pasar de la V3 a esta versión, todo lo que había pasa a **«La primera campaña»** (id `primera`),
   con copia previa en `datos/copias/antes-de-campanas-FECHA.db`. Los DM siguen siendo DM en ella.
+
+## Contraseña de la mesa y personajes
+
+- Una campaña puede tener **contraseña** (la ponen el DM o el superusuario en «En línea»). Con ella,
+  cualquiera con cuenta se une solo desde el pergamino de elegir mesa (nombre de la mesa + contraseña).
+  Sin contraseña, solo se entra por invitación. Se guarda cifrada en `campanas.clave_hash`.
+- El **personaje** es de cada jugador en cada campaña (`miembros.personaje`, JSON). Lo edita el propio
+  jugador (en Perfil o en la barra de arriba) y el DM o el superusuario el de cualquiera de su campaña.
+  El nombre de usuario (la cuenta) no lo cambia nadie. En «En línea» se ve con qué personaje juega cada uno.
 
 ## Disciplinas (la ranura de oficio)
 

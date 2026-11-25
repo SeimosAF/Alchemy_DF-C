@@ -155,6 +155,7 @@ export async function conectar() {
     if (ok === 'reintentar') break;
   }
   const r = await pedir('/api/estado');
+  if (r.j.usuario) auth.actualizarDesdeServidor(r.j.usuario);   // su papel, disciplina y personaje en esta mesa
   rev = r.j.rev;
   base = clone(r.j.datos);
   if (r.j.presencia) hooks.presencia(r.j.presencia);
@@ -253,7 +254,7 @@ export async function refrescar({ forzar = false, silencioso = false, presencia 
   if (r.status !== 200 || !r.j?.ok) { pintarEstado('sin-conexion'); return false; }
   if (r.j.presencia) hooks.presencia(r.j.presencia);
   if (r.j.usuario && auth.usuario) {   // le han cambiado el rol, la disciplina o el nombre de la mesa
-    const antes = { rol: auth.usuario.rol, disciplina: auth.usuario.disciplina };
+    const antes = { rol: auth.usuario.rol, disciplina: auth.usuario.disciplina, personaje: JSON.stringify(auth.usuario.personaje || null) };
     if (auth.actualizarDesdeServidor(r.j.usuario)) hooks.usuario(auth.usuario, antes);
   }
   pintarEstado();
