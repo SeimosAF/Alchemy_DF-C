@@ -6,6 +6,9 @@ services:
     environment:
       ALQUIMIA_CLAVE: ${ALQUIMIA_CLAVE:-}
       ALQUIMIA_ADMIN: ${ALQUIMIA_ADMIN:-}
+      DISCORD_CLIENT_ID: ${DISCORD_CLIENT_ID:-}
+      DISCORD_CLIENT_SECRET: ${DISCORD_CLIENT_SECRET:-}
+      ALQUIMIA_URL: ${ALQUIMIA_URL:-}
     volumes:
       - datos:/data
     read_only: true

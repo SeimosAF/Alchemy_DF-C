@@ -10,6 +10,14 @@
 // en una sola, se entra directamente; si juega en varias, se elige en el
 // pergamino. La mesa elegida viaja en cada petición (cabecera X-Campana) y el
 // servidor comprueba siempre que la cuenta juega en ella.
+//
+// V3.6: DISCORD (si el servidor tiene DISCORD_CLIENT_ID y DISCORD_CLIENT_SECRET). Se entra siempre
+// con nombre y contraseña; Discord sirve para CREAR la cuenta sin la palabra de paso (queda pendiente
+// hasta que la apruebe un DM; una cuenta por cada Discord) y para VINCULARLO desde el Perfil.
+// Discord vuelve a la app con #discord=... en la dirección:
+//   pendiente&n=NOMBRE  -> cuenta creada: espera a que un DM la apruebe en «En línea»
+//   vinculado           -> la cuenta que ya tenía sesión ha quedado vinculada
+//   error&m=...&modo=   -> se enseña el mensaje
 
 const K_SESION = 'alquimiaSesion';
 const K_ELEGIR = 'alquimiaElegirMesa';            // sessionStorage: "enséñame el pergamino de mesas"
@@ -22,6 +30,7 @@ export let mesa = null;         // { id, nombre, rol, disciplina } la campaña e
 export let campanas = [];       // las campañas de esta cuenta
 export let puedeCrear = false;  // ¿puede crear campañas? (el superusuario)
 let info = {};
+export let mensajeDiscord = null;   // { texto, tipo } para enseñar al arrancar la app (vinculado, error...)
 
 const lsGet = k => { try { return localStorage.getItem(k); } catch (_) { return null; } };
 const lsSet = (k, v) => { try { v == null ? localStorage.removeItem(k) : localStorage.setItem(k, v); } catch (_) {} };
@@ -60,9 +69,33 @@ async function pedirInfo() {
   finally { clearTimeout(t); }
 }
 
+// Lo que trae la dirección al volver de Discord (y se borra de la barra de direcciones)
+function leerVueltaDiscord() {
+  if (!location.hash.startsWith('#discord=')) return null;
+  const p = new URLSearchParams(location.hash.slice(1));
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (_) {}
+  return { estado: p.get('discord'), nombre: p.get('n'), mensaje: p.get('m'), modo: p.get('modo') };
+}
+
+// Ir a Discord: modo 'crear' (con nombre y contraseña, sin sesión) o 'vincular' (con sesión, desde el Perfil)
+export async function empezarDiscord(modo, datos = {}) {
+  const r = await api('/api/discord/empezar', { ...datos, modo, origen: location.origin }, modo === 'vincular')
+    .catch(() => ({ j: { mensaje: 'No se puede hablar con el servidor. ¿Está encendido?' } }));
+  if (!r.j?.ok || !r.j.url) return r.j?.mensaje || 'No se pudo ir a Discord.';
+  location.href = r.j.url;
+  return null;
+}
+
+export async function desvincularDiscord() {
+  const r = await api('/api/discord/desvincular', {}, true).catch(() => null);
+  if (r?.j?.ok && usuario) usuario.discord = { vinculado: false, nombre: '' };
+  return r?.j || { ok: false, mensaje: 'No hay conexión con el servidor.' };
+}
+
 // Resuelve cuando ya se puede arrancar la app: con cuenta (servidor) o sin servidor (local).
 export async function iniciar() {
   const pantalla = document.getElementById('pantallaEntrada');
+  const vuelta = leerVueltaDiscord();
   info = await pedirInfo();
   if (info?.antiguo) {
     document.body.classList.remove('sin-sesion');
@@ -82,6 +115,17 @@ export async function iniciar() {
     return { modo: 'local' };
   }
   servidor = true;
+  let avisoEntrada = null;   // lo que se enseña en el pergamino (cuenta pendiente, error de Discord)
+  if (vuelta?.estado === 'pendiente') {
+    avisoEntrada = { modo: 'entrar', nombre: vuelta.nombre || '',
+      nota: `⏳ Cuenta <strong>${escH(vuelta.nombre || '')}</strong> creada con Discord. <strong>Tiene que aprobarla el DM</strong>:
+      avísale, y cuando lo haga entra aquí con tu nombre y tu contraseña.` };
+  } else if (vuelta?.estado === 'vinculado') {
+    mensajeDiscord = { texto: '🎮 Discord vinculado a tu cuenta.', tipo: 'info' };
+  } else if (vuelta?.estado === 'error') {
+    if (vuelta.modo === 'vincular') mensajeDiscord = { texto: vuelta.mensaje || 'No se pudo vincular Discord.', tipo: 'error' };
+    else avisoEntrada = { modo: 'crear', error: vuelta.mensaje || 'No se pudo crear la cuenta con Discord.' };
+  }
   if (token()) {
     try {
       if (await cargarYo()) {
@@ -98,9 +142,11 @@ export async function iniciar() {
     } catch (_) {}
     if (!usuario) lsSet(K_SESION, null);
   }
-  await mostrarPantalla(pantalla);
+  await mostrarPantalla(pantalla, false, avisoEntrada);
   return { modo: 'servidor', recienEntrado: true };
 }
+
+const escH = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // Quién soy y en qué campañas juego
 async function cargarYo() {
@@ -160,7 +206,7 @@ export function fueraDeMesa(mensaje) {
   location.reload();
 }
 
-const NOMBRE_DISC = { alquimista: '⚗️ Alquimista', cocinero: '🍲 Cocinero', hechicero: '✨ Hechicero', herrero: '⚒️ Herrero' };
+const NOMBRE_DISC = { alquimista: '⚗️ Alquimista', cocinero: '🍲 Cocinero', hechicero: '✨ Hechicero', herrero: '⚒️ Herrero', desempleado: '🪑 Desempleado', pluriempleado: '🧰 Pluriempleado' };
 
 // El pergamino cambia el formulario de entrada por la lista de mesas. Resuelve con la mesa elegida.
 function elegirMesa(pantalla) {
@@ -168,6 +214,7 @@ function elegirMesa(pantalla) {
     const hoja = pantalla.querySelector('.pergamino-hoja');
     hoja.querySelector('.entrada-pestanas')?.setAttribute('hidden', '');
     hoja.querySelector('#entradaForm')?.setAttribute('hidden', '');
+    hoja.querySelector('#entradaDiscord')?.setAttribute('hidden', '');
     let caja = hoja.querySelector('.entrada-mesas');
     if (!caja) { caja = document.createElement('div'); caja.className = 'entrada-mesas'; hoja.appendChild(caja); }
     const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -237,7 +284,7 @@ function elegirMesa(pantalla) {
   });
 }
 
-function mostrarPantalla(pantalla, soloMesa = false) {
+function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
   return new Promise(resolve => {
     document.body.classList.add('sin-sesion');
     pantalla.classList.add('visible');
@@ -260,7 +307,9 @@ function mostrarPantalla(pantalla, soloMesa = false) {
     const claveMesa = pantalla.querySelector('#entradaClave');
     const boton = pantalla.querySelector('#entradaBoton');
     const nota = pantalla.querySelector('#entradaNota');
-    let modo = info.hayUsuarios ? 'entrar' : 'crear';
+    let modo = aviso?.modo || (info.hayUsuarios ? 'entrar' : 'crear');
+    const cajaDiscord = pantalla.querySelector('#entradaDiscord');
+    const conDiscord = !!(cajaDiscord && info.discord && info.pideClave && info.hayUsuarios);
 
     function pintarModo() {
       pantalla.dataset.modo = modo;
@@ -268,16 +317,30 @@ function mostrarPantalla(pantalla, soloMesa = false) {
         b.classList.toggle('activo', b.dataset.entradaModo === modo));
       pantalla.querySelector('#filaPass2').hidden = modo !== 'crear';
       pantalla.querySelector('#filaClave').hidden = !(modo === 'crear' && info.pideClave);
+      if (cajaDiscord) cajaDiscord.hidden = !(conDiscord && modo === 'crear');
       pass.autocomplete = modo === 'crear' ? 'new-password' : 'current-password';
       boton.querySelector('span').textContent = modo === 'crear' ? 'Inscribir mi nombre' : 'Cruzar el umbral';
       nota.innerHTML = modo === 'crear'
         ? (info.hayUsuarios
             ? 'Tu nombre quedará escrito en el libro de la mesa.' + (info.pideClave ? ' La <strong>palabra de paso</strong> te la da el DM.' : '')
             : '👑 Eres el primero en llegar: <strong>tu cuenta será la del DM</strong>, el señor de la mesa.')
+          + (conDiscord ? '<br>¿No tienes la palabra de paso? Rellena nombre y contraseña y usa <strong>Crear con Discord</strong>: el DM tendrá que aprobar tu cuenta.' : '')
         : 'Escribe el nombre y la contraseña de tu cuenta.';
       error.textContent = '';
     }
     pintarModo();
+    if (aviso?.nombre) nombre.value = aviso.nombre;
+    if (aviso?.nota) nota.innerHTML = aviso.nota;
+    if (aviso?.error) error.textContent = aviso.error;
+    // «Crear con Discord»: en lugar de la palabra de paso (solo si el servidor tiene Discord configurado)
+    if (conDiscord) cajaDiscord.querySelector('button').addEventListener('click', async () => {
+      if (!nombre.value.trim()) return fallo('Escribe el nombre de tu cuenta.');
+      if (pass.value.length < 6) return fallo('La contraseña debe tener al menos 6 caracteres.');
+      if (pass.value !== pass2.value) return fallo('Las dos contraseñas no coinciden.');
+      pantalla.classList.add('ocupada');
+      const m = await empezarDiscord('crear', { nombre: nombre.value, contrasena: pass.value });
+      if (m) { pantalla.classList.remove('ocupada'); fallo(m); }
+    });
     pantalla.querySelectorAll('[data-entrada-modo]').forEach(b => b.addEventListener('click', () => {
       modo = b.dataset.entradaModo; pintarModo(); nombre.focus();
     }));

@@ -25,11 +25,15 @@
 //   disciplina  si se indica, el módulo solo lo ve quien tiene esa disciplina
 //               ('alquimista', 'cocinero', 'hechicero', 'herrero'). Es la "ranura de oficio":
 //               cada jugador ve en ella el módulo de su disciplina (la asigna el DM).
+//               'desempleado' no ve ninguno (la ranura sale vacía) y 'pluriempleado'
+//               puede usarlos todos: elige cuál con los botones de oficio de la mesa.
 //   proximamente  { texto } para un módulo que aún no está hecho: su pestaña se crea sola
 //               con un cartel de "próximamente" (no hace falta sección en index.html)
 
 const lista = [];
 let disciplina = 'alquimista';
+let oficio = null;                 // el oficio que usa ahora un pluriempleado
+const CLAVE_OFICIO = 'taberna.oficioActivo';
 
 export function registrar(m) {
   if (lista.some(x => x.id === m.id)) throw new Error('Módulo repetido: ' + m.id);
@@ -40,7 +44,24 @@ export const porId = id => lista.find(m => m.id === id);
 // La disciplina de quien juega decide qué módulos de oficio ve
 export function setDisciplina(d) { disciplina = d || 'alquimista'; }
 export const disciplinaActual = () => disciplina;
-export const visible = m => !!m && (!m.disciplina || m.disciplina === disciplina);
+// Los módulos de oficio (los que tienen disciplina)
+export const oficios = () => lista.filter(m => m.disciplina);
+const esOficio = d => oficios().some(m => m.disciplina === d);
+// Qué oficio se ve en la ranura: el de su disciplina, el que ha elegido (pluriempleado) o ninguno (desempleado)
+export function oficioActivo() {
+  if (disciplina !== 'pluriempleado') return disciplina;
+  if (!esOficio(oficio)) {
+    try { oficio = localStorage.getItem(CLAVE_OFICIO); } catch (_) {}
+    if (!esOficio(oficio)) oficio = oficios()[0]?.disciplina || 'alquimista';
+  }
+  return oficio;
+}
+export function setOficio(d) {
+  if (!esOficio(d)) return;
+  oficio = d;
+  try { localStorage.setItem(CLAVE_OFICIO, d); } catch (_) {}
+}
+export const visible = m => !!m && (!m.disciplina || m.disciplina === oficioActivo());
 const visibles = () => lista.filter(visible);
 export const lugarDe = id => porId(id)?.lugar || 'panel';
 export function textoLugar(lugar) {
@@ -57,8 +78,20 @@ export function construirPestanas(nav) {
 
 // Tarjetas de la mesa
 export function construirTarjetas(mesa) {
-  const conTarjeta = visibles().filter(m => m.tarjeta).sort((a, b) => (a.tarjeta.orden ?? 99) - (b.tarjeta.orden ?? 99));
-  mesa.innerHTML = conTarjeta.map((m, i) => `
+  const conTarjeta = visibles().filter(m => m.tarjeta);
+  // Desempleado: la ranura de oficio (orden 1) sale vacía, sin pestaña detrás
+  if (disciplina === 'desempleado')
+    conTarjeta.push({ id: '', vacia: true, tarjeta: { orden: 1, clase: 'tarjeta-sin-oficio', icono: '🪑', titulo: 'Sin oficio',
+      texto: 'Ahora mismo no ejerces ningún oficio. Si quieres uno, pídeselo al DM.' } });
+  conTarjeta.sort((a, b) => (a.tarjeta.orden ?? 99) - (b.tarjeta.orden ?? 99));
+  mesa.innerHTML = conTarjeta.map((m, i) => m.vacia ? `
+    <div class="tarjeta ${esc(m.tarjeta.clase)}" style="--i:${i}" aria-disabled="true">
+      <span class="tarjeta-esquinas" aria-hidden="true"></span>
+      <span class="tarjeta-icono">${m.tarjeta.icono}</span>
+      <span class="tarjeta-titulo">${esc(m.tarjeta.titulo)}</span>
+      <span class="tarjeta-texto">${esc(m.tarjeta.texto)}</span>
+      <span class="tarjeta-resumen">Desempleado</span>
+    </div>` : `
     <button class="tarjeta ${esc(m.tarjeta.clase || '')}" data-action="switch-tab" data-id="${esc(m.id)}" style="--i:${i}">
       <span class="tarjeta-esquinas" aria-hidden="true"></span>
       <span class="tarjeta-icono">${m.tarjeta.icono || m.icono}</span>
@@ -66,6 +99,17 @@ export function construirTarjetas(mesa) {
       <span class="tarjeta-texto">${esc(m.tarjeta.texto || '')}</span>
       <span class="tarjeta-resumen" data-resumen="${esc(m.id)}"></span>
     </button>`).join('');
+}
+
+// Pluriempleado: botones para elegir qué oficio ocupa la ranura (la tarjeta y la pestaña)
+export function construirSelectorOficio(el) {
+  if (!el) return;
+  el.hidden = disciplina !== 'pluriempleado';
+  if (el.hidden) { el.innerHTML = ''; return; }
+  const activo = oficioActivo();
+  el.innerHTML = `<span class="mesa-oficios-txt">🧰 Pluriempleado · oficio de hoy:</span>` + oficios().map(m =>
+    `<button class="mesa-oficio ${m.disciplina === activo ? 'activo' : ''}" data-action="elegir-oficio" data-id="${esc(m.disciplina)}"
+      aria-pressed="${m.disciplina === activo}">${m.icono} ${esc(m.titulo)}${m.proximamente ? ' <small>(próximamente)</small>' : ''}</button>`).join('');
 }
 
 // Pestañas de los módulos que aún no existen: un cartel de "próximamente"

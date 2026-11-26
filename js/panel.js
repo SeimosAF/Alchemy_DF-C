@@ -14,12 +14,16 @@ let presencia = [];
 let cuentas = null;        // cuentas que el DM puede invitar (se piden al abrir la sala)
 let admin = null;          // { campanas, cuentas } para el superusuario
 let historial = null;      // { lista, puedeDeshacer, fin } historial de cambios de la campaña (DM y superusuario)
+let pendientes = [];       // cuentas nuevas de Discord que esperan aprobación (DM y superusuario)
+let nPendientes = 0;
 
 export const DISCIPLINAS = {
   alquimista: { icono: '⚗️', nombre: 'Alquimista' },
   cocinero:   { icono: '🍲', nombre: 'Cocinero' },
   hechicero:  { icono: '✨', nombre: 'Hechicero' },
   herrero:    { icono: '⚒️', nombre: 'Herrero' },
+  desempleado:   { icono: '🪑', nombre: 'Desempleado' },     // ningún oficio
+  pluriempleado: { icono: '🧰', nombre: 'Pluriempleado' },   // todos los oficios
 };
 export const nombreDisciplina = d => { const x = DISCIPLINAS[d] || DISCIPLINAS.alquimista; return `${x.icono} ${x.nombre}`; };
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -115,6 +119,14 @@ function haceTxt(s) {
   return `hace ${Math.round(s / 3600)} h`;
 }
 
+// El sondeo dice cuántas cuentas de Discord esperan aprobación: se avisa al DM si hay alguna nueva
+export function setPendientes(n) {
+  if (n > nPendientes) sync.aviso(`🎮 ${n === 1 ? 'Una cuenta nueva de Discord espera' : n + ' cuentas nuevas de Discord esperan'} tu aprobación en «Quién está en línea».`);
+  const cambia = n !== nPendientes;
+  nPendientes = n;
+  if (cambia && document.getElementById('tab-usuarios')?.classList.contains('active')) cargarGestion();
+}
+
 export function setPresencia(lista) {
   presencia = lista || [];
   pintarTarjetas();
@@ -196,6 +208,7 @@ export async function cargarGestion() {
   if (auth.esDM()) {
     const r = await sync.pedir('/api/cuentas').catch(() => null);
     cuentas = r?.j?.ok ? r.j.cuentas : cuentas;
+    pendientes = r?.j?.ok ? (r.j.pendientes || []) : pendientes;
   }
   if (auth.esAdmin()) {
     const r = await sync.pedir('/api/campanas').catch(() => null);
@@ -247,13 +260,27 @@ function renderGestion() {
     if (!auth.servidor || !auth.esDM() || !auth.mesa) el.innerHTML = '';
     else {
       const fuera = (cuentas || []).filter(c => !c.enMesa && !c.baneado);
-      el.innerHTML = `<div class="gestion-caja">
+      const fecha = f => { try { return new Date(f).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }); } catch (_) { return f || ''; } };
+      el.innerHTML = (pendientes.length ? `<div class="gestion-caja gestion-pendientes">
+        <h3>🎮 Cuentas de Discord esperando aprobación</h3>
+        <p class="muted">Se han creado la cuenta demostrando con Discord quién son (sin la palabra de paso). Si las apruebas, se sientan
+          en «${esc(auth.mesa.nombre)}» como jugadores alquimistas y ya pueden entrar con su nombre y contraseña.
+          Si no sabes quién es, recházala (se borra; no tenía nada guardado).</p>
+        ${pendientes.map(c => `<div class="usr-fila">
+          <span class="avatar avatar-grande">⏳</span>
+          <div class="usr-info"><div class="usr-nombre">${esc(c.nombre)}</div>
+            <div class="usr-estado">Discord: <b>@${esc(c.discord)}</b> · llegó el ${esc(fecha(c.creado))}</div></div>
+          <div class="usr-acciones">
+            <button class="btn btn-sm" data-usr="aprobar" data-clave="${esc(c.clave)}" data-nombre="${esc(c.nombre)}">✅ Aprobar y sentar en esta mesa</button>
+            <button class="btn btn-sm btn-danger" data-usr="rechazar" data-clave="${esc(c.clave)}" data-nombre="${esc(c.nombre)}">✖️ Rechazar</button>
+          </div></div>`).join('')}
+      </div>` : '') + `<div class="gestion-caja">
         <h3>📜 Invitar a «${esc(auth.mesa.nombre)}»</h3>
         <p class="muted">Cada campaña tiene su propio catálogo, inventarios, libros y niveles. Quien invites empieza aquí con el inventario vacío y como alquimista; cámbiale la disciplina en la lista de abajo.</p>
         ${fuera.length ? `<div class="dm-dar">
             <select id="mesaInvitar">${fuera.map(c => `<option value="${esc(c.clave)}">${esc(c.nombre)}</option>`).join('')}</select>
             <button class="btn btn-sm" data-usr="invitar">➕ Invitar a la mesa</button>
-          </div>` : '<p class="muted">Todas las cuentas ya están en esta mesa. Quien quiera unirse tiene que crearse una cuenta primero (con la palabra de paso de la mesa).</p>'}
+          </div>` : '<p class="muted">Todas las cuentas ya están en esta mesa. Quien quiera unirse tiene que crearse una cuenta primero (con la palabra de paso de la mesa, o con Discord y tu aprobación).</p>'}
         <h3>🔑 Contraseña de la mesa</h3>
         <p class="muted">${auth.mesa.conClave
           ? 'Esta mesa <b>tiene contraseña</b>: quien sepa su nombre y la contraseña puede unirse solo, sin invitación (entra como jugador alquimista).'
@@ -348,6 +375,16 @@ export function initUsuarios(verInventario, verPerfil = () => {}) {
       if (!confirm(`¿Sacar a ${b.dataset.nombre} de «${auth.mesa?.nombre}»? No se borra nada: si le vuelves a invitar, recupera su inventario, sus libros y su nivel.`)) return;
       const r = await auth.apiMesa('/api/mesa/miembro', { usuario: b.dataset.clave, accion: 'quitar' });
       if (!r.ok) alert(r.mensaje);
+      await cargarGestion(); await sync.refrescar({ presencia: true });
+      return;
+    }
+    if (accion === 'aprobar' || accion === 'rechazar') {
+      const si = accion === 'aprobar';
+      if (!confirm(si ? `¿Aprobar a ${b.dataset.nombre} y sentarle en «${auth.mesa?.nombre}» como jugador?`
+        : `¿Rechazar la cuenta de ${b.dataset.nombre}? Se borra; si se vuelve a crear con Discord, aparecerá otra vez aquí.`)) return;
+      const r = await auth.apiMesa('/api/usuarios/aprobar', { usuario: b.dataset.clave, aprobar: si });
+      if (!r.ok) alert(r.mensaje);
+      else sync.aviso(si ? `${b.dataset.nombre} ya está en la mesa: puede entrar con su nombre y contraseña.` : 'Cuenta rechazada.');
       await cargarGestion(); await sync.refrescar({ presencia: true });
       return;
     }

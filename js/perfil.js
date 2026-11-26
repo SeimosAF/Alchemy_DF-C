@@ -135,6 +135,7 @@ export function render() {
           ${puedeEditar(p) ? `<button class="btn" data-perfil="editar">✏️ ${yo ? 'Editar mi perfil' : 'Editar este perfil (como DM)'}</button>` : ''}
           ${yo && auth.servidor ? `<button class="btn" data-action="foto-perfil">📷 ${p.avatar ? 'Cambiar mi foto' : 'Poner una foto'}</button>` : ''}
         </div>
+        ${yo ? cajaDiscord() : ''}
       </div>`;
     return;
   }
@@ -159,6 +160,18 @@ export function render() {
     </div>`;
 }
 
+// Vincular la cuenta con Discord (solo la propia, y no el superusuario)
+function cajaDiscord() {
+  const u = auth.usuario;
+  if (!auth.servidor || !u || auth.esAdmin() || !u.discordActivo) return '';
+  const d = u.discord || {};
+  return d.vinculado
+    ? `<div class="perfil-discord">🎮 Discord vinculado${d.nombre ? ` como <b>@${esc(d.nombre)}</b>` : ''}.
+        <button class="btn btn-sm" data-perfil="discord-quitar">Desvincular</button></div>`
+    : `<div class="perfil-discord">🎮 Vincula tu cuenta con Discord para que el DM sepa quién eres.
+        <button class="btn-discord" data-perfil="discord-vincular">Vincular con Discord</button></div>`;
+}
+
 function leerForm(el) {
   const p = { ...VACIO };
   el.querySelectorAll('[data-pj]').forEach(i => {
@@ -180,6 +193,14 @@ export function init(onCambioPropio) {
     if (!b) return;
     const a = b.dataset.perfil;
     if (a === 'ver') { elegido = b.dataset.clave; editando = false; render(); return; }
+    if (a === 'discord-vincular') { const m = await auth.empezarDiscord('vincular'); if (m) alert(m); return; }
+    if (a === 'discord-quitar') {
+      if (!confirm('¿Desvincular Discord de tu cuenta?')) return;
+      const r = await auth.desvincularDiscord();
+      if (!r.ok) alert(r.mensaje); else sync.aviso('Discord desvinculado.');
+      render();
+      return;
+    }
     if (a === 'editar') { editando = true; document.activeElement?.blur(); render(); el.querySelector('[data-pj="nombre"]')?.focus(); return; }
     if (a === 'cancelar') { editando = false; document.activeElement?.blur(); render(); return; }
     if (a === 'guardar') {

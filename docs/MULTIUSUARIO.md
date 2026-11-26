@@ -33,6 +33,8 @@ Con servidor, lo primero que aparece es un pergamino para **Entrar** o **Crear c
 - **Perfil:** cada jugador tiene un personaje por campaña (pestaña 🧙 Perfil). El DM puede editar el de
   los demás, pero nadie puede cambiar el nombre de usuario de una cuenta.
 - **Disciplinas:** el DM asigna a cada jugador alquimista, cocinero, hechicero o herrero (en «En línea»).
+  También puede dejarlo **desempleado** (ningún oficio: la tarjeta del oficio sale vacía) o hacerlo
+  **pluriempleado** (todos los oficios: en la mesa elige con unos botones cuál usa; se recuerda en su navegador).
   Su tarjeta de oficio en la mesa cambia según la disciplina. De momento solo Alquimia está hecha;
   las demás salen como «Próximamente».
 - Las contraseñas se guardan cifradas (PBKDF2-SHA256 con sal): ni el servidor las conoce.
@@ -87,6 +89,23 @@ El superusuario no es un personaje: no aparece en «Inventarios de la mesa».
 y con Docker:
 
     docker compose exec app python servidor.py restablecer Moisés NuevaContraseña
+
+### Discord (V3.6)
+
+Se entra **siempre con nombre y contraseña**. Si el servidor tiene `DISCORD_CLIENT_ID` y
+`DISCORD_CLIENT_SECRET`, Discord sirve para dos cosas:
+
+- **Crear cuenta sin la palabra de paso.** En «Crear cuenta» se escriben nombre y contraseña (dos veces)
+  y, en lugar de la palabra de paso, se pulsa **Crear con Discord**. Cada cuenta de Discord solo puede
+  crear **una** cuenta (eso frena la creación masiva), y la cuenta queda **pendiente**: no puede entrar
+  hasta que un DM o el superusuario la apruebe en «En línea» (arriba sale «Cuentas de Discord esperando
+  aprobación»). Al aprobarla se sienta en la mesa del DM que aprueba, como jugador alquimista. Si se
+  rechaza, se borra. El DM recibe un aviso en cuanto llega una.
+- **Vincular Discord** a una cuenta que ya existe: desde el Perfil, «Vincular con Discord».
+
+La palabra de paso (`ALQUIMIA_CLAVE`) sigue igual: quien la tiene crea su cuenta al momento, sin Discord
+ni aprobación. El botón de Discord solo sale si hay palabra de paso. El superusuario «DM» no se vincula.
+CLI: `python servidor.py aprobar NOMBRE` aprueba una cuenta pendiente sin sentarla en ninguna mesa.
 
 ## Cómo se protegen los datos (como un banco)
 
@@ -153,6 +172,9 @@ app sin servidor, pulsa **Exportar**, arranca el servidor y pulsa **Importar**.
 | `DB_PATH` | `./datos/alquimia.db` | Archivo de la base de datos (en Docker: `/data/alquimia.db`) |
 | `ALQUIMIA_CLAVE` | vacía | Palabra de paso de la mesa para **crear cuentas**. **Ponla siempre si el servidor está en internet.** Vacía = cualquiera que llegue a la app puede crearse una cuenta |
 | `ALQUIMIA_ADMIN` | vacía | Contraseña fija del superusuario **DM** (mínimo 6 caracteres). Vacía = no hay superusuario |
+| `DISCORD_CLIENT_ID` | vacía | Aplicación de Discord para **Crear con Discord** y vincular (ver `docs/DISCORD.md`). Vacía = sin Discord |
+| `DISCORD_CLIENT_SECRET` | vacía | Secreto de esa aplicación. Nunca sale del servidor |
+| `ALQUIMIA_URL` | vacía | Dirección pública (p. ej. `https://TU-MAQUINA.TU-RED.ts.net`). Discord vuelve a `ALQUIMIA_URL/api/discord/vuelta`. Desde `localhost` se usa `http://localhost:8080` |
 
 `GET /health` responde `{"ok": true}` para comprobar que el servidor está vivo.
 

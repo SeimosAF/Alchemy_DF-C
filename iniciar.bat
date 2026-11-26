@@ -1,7 +1,9 @@
 @echo off
 cd /d "%~dp0"
-rem Contraseña fija del superusuario "DM": se lee del archivo .env (ALQUIMIA_ADMIN=...)
-if exist .env for /f "tokens=1,* delims==" %%a in ('findstr /b "ALQUIMIA_ADMIN=" .env') do set "ALQUIMIA_ADMIN=%%b"
+rem Ajustes del archivo .env: palabra de paso, contraseña fija del superusuario "DM" y Discord
+if exist .env for %%k in (ALQUIMIA_CLAVE ALQUIMIA_ADMIN DISCORD_CLIENT_ID DISCORD_CLIENT_SECRET ALQUIMIA_URL) do (
+  for /f "tokens=1,* delims==" %%a in ('findstr /b "%%k=" .env') do set "%%a=%%b"
+)
 echo Iniciando Alquimia en http://localhost:8080
 echo Los datos compartidos se guardan en la carpeta "datos" (copias diarias en datos\copias).
 echo Pulsa Ctrl+C para cerrar el servidor.

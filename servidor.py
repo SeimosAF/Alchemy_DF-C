@@ -9,7 +9,8 @@
 # pociones descubiertas, sus parámetros y, por cada jugador, su inventario, sus
 # libros y su nivel. Nada se mezcla entre campañas.
 # En cada campaña hay DM (Dungeon Master) y jugadores. El DM invita a jugadores,
-# les asigna disciplina (alquimista, cocinero, hechicero, herrero) y puede ver y
+# les asigna disciplina (alquimista, cocinero, hechicero, herrero, o bien
+# desempleado = ningún oficio, pluriempleado = todos) y puede ver y
 # cambiar el inventario de cualquier jugador DE SU CAMPAÑA.
 # La primera cuenta que se crea es la del DM de la primera campaña.
 #
@@ -26,6 +27,8 @@
 #                                 -> convierte una cuenta en DM de una campaña (por defecto, la primera)
 #   python servidor.py readmitir NOMBRE
 #                                 -> levanta el destierro (baneo) de una cuenta
+#   python servidor.py aprobar NOMBRE
+#                                 -> aprueba una cuenta de Discord pendiente
 #
 # Variables de entorno (opcionales; pensadas también para Docker):
 #   PORT            puerto (por defecto 8080; el argumento de la línea de órdenes manda)
@@ -36,12 +39,19 @@
 #                   (vale en casa; ponla siempre si el servidor está en internet).
 #                   Para entrar con una cuenta ya creada solo hace falta su contraseña.
 #   ALQUIMIA_ADMIN  contraseña fija del superusuario «DM». Vacía = no hay superusuario.
+#   DISCORD_CLIENT_ID, DISCORD_CLIENT_SECRET
+#                   aplicación de Discord (V3.6): crear cuenta sin la palabra de paso (queda pendiente
+#                   de que la apruebe un DM) y vincular Discord a una cuenta. Vacías = sin Discord.
+#                   Se entra siempre con nombre y contraseña. Ver docs/DISCORD.md.
+#   ALQUIMIA_URL    dirección pública de la app (p. ej. https://TU-MAQUINA.TU-RED.ts.net).
+#                   Discord vuelve ahí después de entrar. Desde localhost se usa http://localhost:PUERTO.
 #
 # Solo usa la biblioteca estándar de Python 3: no hace falta instalar nada.
 
 import base64, binascii, http.server, ipaddress, json, os, sqlite3, sys, threading, time, hmac, hashlib, secrets, re, unicodedata
+import urllib.request, urllib.error
 from datetime import datetime, timezone
-from urllib.parse import urlparse, parse_qs, unquote
+from urllib.parse import urlparse, parse_qs, unquote, urlencode, quote
 
 RAIZ = os.path.dirname(os.path.abspath(__file__))
 PUERTO = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else int(os.environ.get('PORT', '8080'))
@@ -53,6 +63,13 @@ ADMIN_NOMBRE = 'DM'               # el superusuario se llama así (su clave es '
 MAX_CUERPO = 5 * 1024 * 1024      # 5 MB por petición, de sobra para un import completo
 FALLOS_REGISTRO = 7               # fallos SEGUIDOS de la palabra de paso que bloquean crear cuentas
 HORAS_BLOQUEO = 24                # ...durante este tiempo (o hasta que el superusuario lo levante)
+
+# Discord (OAuth2) para crear cuenta sin palabra de paso y para vincular. Solo se pide «identify» (id y nombre).
+DISCORD_ID = os.environ.get('DISCORD_CLIENT_ID', '').strip()
+DISCORD_SECRETO = os.environ.get('DISCORD_CLIENT_SECRET', '').strip()
+DISCORD_ACTIVO = bool(DISCORD_ID and DISCORD_SECRETO)
+URL_PUBLICA = os.environ.get('ALQUIMIA_URL', '').strip().rstrip('/')
+MAX_PENDIENTES = 20               # cuentas de Discord esperando aprobación a la vez (frena el spam)
 
 # Tipo de cada colección. El servidor manda: el cliente no puede cambiarlo.
 #   num -> número entero que no puede bajar de 0 (stock de materiales)
@@ -78,7 +95,8 @@ COMUN = ''   # "dueño" de lo que es de toda la mesa
 PRIMERA = 'primera'               # id de la primera campaña (la de los datos de antes de las campañas)
 NOMBRE_PRIMERA = 'La primera campaña'
 # Disciplinas que el DM asigna a cada jugador. Por defecto, todos alquimistas.
-DISCIPLINAS = ('alquimista', 'cocinero', 'hechicero', 'herrero')
+# 'desempleado' no tiene ningún oficio; 'pluriempleado' los tiene todos (elige cuál usar en la mesa).
+DISCIPLINAS = ('alquimista', 'cocinero', 'hechicero', 'herrero', 'desempleado', 'pluriempleado')
 DISCIPLINA_DEFECTO = 'alquimista'
 
 ITERACIONES = 200_000             # PBKDF2-SHA256 para las contraseñas
@@ -179,6 +197,15 @@ def preparar_bd():
             con.execute('ALTER TABLE miembros ADD COLUMN personaje TEXT')
         if 'baneado' not in [f[1] for f in con.execute('PRAGMA table_info(usuarios)')]:
             con.execute('ALTER TABLE usuarios ADD COLUMN baneado INTEGER NOT NULL DEFAULT 0')
+        # V3.6: Discord. «pendiente» = cuenta creada con Discord que aún no ha aprobado un DM.
+        cols_u = [f[1] for f in con.execute('PRAGMA table_info(usuarios)')]
+        if 'discord_id' not in cols_u:
+            con.execute('ALTER TABLE usuarios ADD COLUMN discord_id TEXT')
+        if 'discord_nombre' not in cols_u:
+            con.execute('ALTER TABLE usuarios ADD COLUMN discord_nombre TEXT')
+        if 'pendiente' not in cols_u:
+            con.execute('ALTER TABLE usuarios ADD COLUMN pendiente INTEGER NOT NULL DEFAULT 0')
+        con.execute('CREATE UNIQUE INDEX IF NOT EXISTS usuarios_discord ON usuarios (discord_id) WHERE discord_id IS NOT NULL')
         if not nueva_bd and 'campana' not in [f[1] for f in con.execute('PRAGMA table_info(entradas)')]:
             con.close()
             con = None
@@ -359,7 +386,8 @@ def usuario_publico(fila):
 
 
 def buscar_usuario(con, clave):
-    return con.execute('SELECT clave, nombre, rol, hash, baneado FROM usuarios WHERE clave=?', (clave,)).fetchone()
+    return con.execute('SELECT clave, nombre, rol, hash, baneado, pendiente FROM usuarios WHERE clave=?', (clave,)).fetchone()
+
 
 
 def hash_token(token):
@@ -470,6 +498,8 @@ def entrar(cuerpo, ip):
         FALLOS.pop(ip, None)
         if fila[4]:
             raise Rechazo('baneado', 'Esta cuenta ha sido desterrada de la mesa. Habla con el DM.')
+        if fila[5]:
+            raise Rechazo('pendiente', 'Tu cuenta todavía espera a que el DM la apruebe. Avísale y vuelve a probar cuando lo haga.')
         if fila[2] == 'admin' and not ADMIN_CLAVE:
             raise Rechazo('credenciales', 'El superusuario «DM» está desactivado (falta ALQUIMIA_ADMIN en el archivo .env).')
         with CERROJO:
@@ -490,7 +520,7 @@ def usuario_de_token(token):
     con = conectar()
     try:
         fila = con.execute('SELECT s.usuario, s.vista, u.nombre, u.rol FROM sesiones s JOIN usuarios u ON u.clave=s.usuario '
-                           'WHERE s.token=? AND u.baneado=0', (th,)).fetchone()
+                           'WHERE s.token=? AND u.baneado=0 AND u.pendiente=0', (th,)).fetchone()
         if not fila or time.time() - fila[1] > DIAS_SESION * 86400:
             return None
         if time.time() - fila[1] > 3600:   # apunta el uso como mucho una vez por hora
@@ -865,6 +895,8 @@ def miembro(actor, cuerpo):
         if accion == 'invitar':
             if fila[4]:
                 raise Rechazo('baneado', f'«{fila[1]}» está desterrado: no se le puede invitar.')
+            if fila[5]:
+                raise Rechazo('pendiente', f'«{fila[1]}» todavía está pendiente de aprobación: apruébala arriba.')
             if es_miembro(con, camp, objetivo):
                 raise Rechazo('existe', f'«{fila[1]}» ya está en esta campaña.')
             con.execute('INSERT INTO miembros (campana, usuario, rol, disciplina, unido) VALUES (?,?,?,?,?)',
@@ -913,7 +945,7 @@ def lista_cuentas(con, u, camp=None):
     """Cuentas para invitar (DM) o administrar (superusuario). Un DM no ve a los desterrados."""
     cuentas = []
     for clave, nombre, rol, baneado in con.execute(
-            "SELECT clave, nombre, rol, baneado FROM usuarios WHERE rol!='admin' ORDER BY nombre COLLATE NOCASE"):
+            "SELECT clave, nombre, rol, baneado FROM usuarios WHERE rol!='admin' AND pendiente=0 ORDER BY nombre COLLATE NOCASE"):
         if baneado and not es_admin(u):
             continue
         c = {'clave': clave, 'nombre': nombre, 'baneado': bool(baneado)}
@@ -925,6 +957,37 @@ def lista_cuentas(con, u, camp=None):
                 'ORDER BY c.creada', (clave,))]
         cuentas.append(c)
     return cuentas
+
+
+def lista_pendientes(con):
+    """Cuentas nuevas de Discord que esperan a que un DM (o el superusuario) las apruebe."""
+    return [{'clave': c, 'nombre': n, 'discord': d or '', 'creado': cr} for c, n, d, cr in con.execute(
+        'SELECT clave, nombre, discord_nombre, creado FROM usuarios WHERE pendiente=1 AND baneado=0 ORDER BY creado')]
+
+
+def aprobar_cuenta(actor, cuerpo):
+    """Un DM (o el superusuario) aprueba una cuenta creada con Discord y la sienta en su mesa como
+    jugador alquimista, o la rechaza (se borra: aún no tiene nada guardado)."""
+    if not es_dm(actor):
+        raise Rechazo('permiso', 'Solo un DM o el superusuario pueden aprobar cuentas nuevas.')
+    camp, objetivo, aprobar = actor['campana'], clave_de(cuerpo.get('usuario')), bool(cuerpo.get('aprobar'))
+
+    def hacer(con):
+        fila = buscar_usuario(con, objetivo)
+        if not fila or not fila[5]:
+            raise Rechazo('invalida', 'Esa cuenta ya no está pendiente (quizá otro DM se ha adelantado).')
+        if aprobar:
+            con.execute('UPDATE usuarios SET pendiente=0 WHERE clave=?', (objetivo,))
+            con.execute('INSERT OR IGNORE INTO miembros (campana, usuario, rol, disciplina, unido) VALUES (?,?,?,?,?)',
+                        (camp, objetivo, 'jugador', DISCIPLINA_DEFECTO, ahora()))
+            apuntar(con, camp, actor, 'miembros', f'aprobó la cuenta de {fila[1]} (creada con Discord) y la sentó en la mesa', None, [fila[1]])
+        else:
+            con.execute('DELETE FROM sesiones WHERE usuario=?', (objetivo,))
+            con.execute('DELETE FROM avatares WHERE usuario=?', (objetivo,))
+            con.execute('DELETE FROM usuarios WHERE clave=? AND pendiente=1', (objetivo,))
+        subir_rev(con, camp)
+        return {'ok': True}
+    return con_escritura(hacer)
 
 
 def bloqueos_registro(con):
@@ -1417,6 +1480,171 @@ def cambiar_contrasena(actor, cuerpo):
         con.close()
 
 
+# ------------------------------------------------------------ Discord
+# Discord NO sirve para entrar: se entra siempre con nombre y contraseña. Sirve para dos cosas (V3.6):
+#  - CREAR una cuenta sin la palabra de paso de la mesa: la persona escribe nombre y contraseña y
+#    demuestra con Discord quién es. Cada cuenta de Discord solo puede crear UNA cuenta (eso frena la
+#    creación masiva) y la cuenta queda PENDIENTE hasta que un DM o el superusuario la apruebe en «En línea».
+#  - VINCULAR Discord a una cuenta que ya existe (desde el Perfil).
+# Flujo OAuth2 «authorization code»:
+#  1. POST /api/discord/empezar (modo «crear» con nombre y contraseña, o «vincular» con sesión).
+#     El servidor apunta un «state» de un solo uso (10 min), lo ata a este navegador con una cookie
+#     y devuelve la dirección de Discord. La contraseña solo se guarda ya cifrada, y en memoria.
+#  2. Discord pregunta a la persona y vuelve a GET /api/discord/vuelta?code=...&state=...
+#  3. El servidor canjea el code (con el secreto, que nunca sale del servidor), lee el id de Discord
+#     y crea la cuenta pendiente o la vincula. Vuelve a la app con #discord=pendiente|vinculado|error.
+DISCORD_AUTORIZAR = 'https://discord.com/oauth2/authorize'
+DISCORD_TOKEN = 'https://discord.com/api/v10/oauth2/token'
+DISCORD_YO = 'https://discord.com/api/v10/users/@me'
+COOKIE_DISCORD = 'alq_discord'
+ESTADOS_DISCORD = {}   # state -> {'modo', 'usuario', 'nombre', 'hash', 'nonce', 'origen', 't'}
+ORIGEN_LOCAL = re.compile(r'^http://(localhost|127\.0\.0\.1|\[::1\])(:\d{1,5})?$')
+
+
+def limpiar_discord():
+    t = time.time()
+    for k in [k for k, v in ESTADOS_DISCORD.items() if t - v['t'] > 600]:
+        ESTADOS_DISCORD.pop(k, None)
+
+
+def origen_para_discord(pedido):
+    """A qué dirección vuelve Discord: la del propio navegador si es localhost; si no, ALQUIMIA_URL.
+    Tiene que estar apuntada tal cual en «Redirects» del portal de Discord (ver docs/DISCORD.md)."""
+    pedido = str(pedido or '').rstrip('/')
+    if ORIGEN_LOCAL.match(pedido):
+        return pedido
+    if URL_PUBLICA:
+        return URL_PUBLICA
+    if re.match(r'^https?://[A-Za-z0-9.\-]+(:\d{1,5})?$', pedido):
+        return pedido   # sin ALQUIMIA_URL: la que use el navegador (también tiene que estar en el portal)
+    raise Rechazo('invalida', 'No se sabe a qué dirección debe volver Discord. Pon ALQUIMIA_URL en el archivo .env.')
+
+
+def discord_empezar(u, cuerpo):
+    if not DISCORD_ACTIVO:
+        raise Rechazo('invalida', 'Discord no está configurado en este servidor (faltan DISCORD_CLIENT_ID y DISCORD_CLIENT_SECRET).')
+    modo = cuerpo.get('modo')
+    nombre = hash_ = None
+    if modo == 'crear':
+        nombre = re.sub(r'\s+', ' ', unicodedata.normalize('NFC', str(cuerpo.get('nombre') or '')).strip())
+        if not NOMBRE_OK.match(nombre):
+            raise Rechazo('invalida', 'El nombre debe tener de 2 a 24 letras o números (también valen espacios, guiones y puntos).')
+        validar_contrasena(cuerpo.get('contrasena'))
+        con = conectar()
+        try:
+            if buscar_usuario(con, clave_de(nombre)):
+                raise Rechazo('existe', f'Ya existe una cuenta llamada «{nombre}». Elige otro nombre o entra con ella.')
+            if not con.execute("SELECT 1 FROM usuarios WHERE rol!='admin' LIMIT 1").fetchone():
+                raise Rechazo('invalida', 'La primera cuenta (la del DM) se crea con la palabra de paso, no con Discord.')
+        finally:
+            con.close()
+        hash_ = hash_contrasena(cuerpo.get('contrasena'))
+    elif modo == 'vincular':
+        if not u:
+            raise Rechazo('sesion', 'Tienes que entrar con tu cuenta para vincular Discord.')
+        if es_admin(u):
+            raise Rechazo('permiso', 'El superusuario «DM» no se vincula a Discord.')
+    else:
+        raise Rechazo('invalida', 'Modo desconocido.')
+    origen = origen_para_discord(cuerpo.get('origen'))
+    limpiar_discord()
+    if len(ESTADOS_DISCORD) > 500:
+        raise Rechazo('espera', 'Demasiadas peticiones a Discord a medias. Espera unos minutos.')
+    state, nonce = secrets.token_urlsafe(24), secrets.token_urlsafe(24)
+    ESTADOS_DISCORD[state] = {'modo': modo, 'usuario': u['clave'] if u and modo == 'vincular' else None,
+                              'nombre': nombre, 'hash': hash_, 'nonce': nonce, 'origen': origen, 't': time.time()}
+    url = DISCORD_AUTORIZAR + '?' + urlencode({
+        'response_type': 'code', 'client_id': DISCORD_ID, 'scope': 'identify', 'state': state,
+        'redirect_uri': origen + '/api/discord/vuelta'})
+    return {'ok': True, 'url': url}, nonce, origen.startswith('https://')
+
+
+def discord_pedir(url, datos=None, token=None):
+    cab = {'User-Agent': 'LaTabernaDeJhon (https://github.com/SeimosAF/Alchemy_DF-C, 3.6)', 'Accept': 'application/json'}
+    if datos is not None:
+        cab['Content-Type'] = 'application/x-www-form-urlencoded'
+    if token:
+        cab['Authorization'] = 'Bearer ' + token
+    req = urllib.request.Request(url, data=urlencode(datos).encode() if datos is not None else None, headers=cab)
+    try:
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return json.loads(r.read().decode('utf-8'))
+    except urllib.error.HTTPError as e:
+        try:
+            detalle = e.read().decode('utf-8', 'replace')[:300]
+        except Exception:
+            detalle = ''
+        print(f'Discord respondió {e.code} en {url}: {detalle}', file=sys.stderr)
+        if e.code in (400, 401):
+            raise Rechazo('discord', 'Discord no aceptó la petición. Revisa DISCORD_CLIENT_SECRET y que la dirección de vuelta '
+                          'esté apuntada en el portal de Discord (docs/DISCORD.md).')
+        raise Rechazo('discord', f'Discord respondió con un error ({e.code}). Vuelve a probar en un rato.')
+    except (urllib.error.URLError, TimeoutError, OSError, ValueError) as e:
+        print('No se pudo hablar con Discord:', e, file=sys.stderr)
+        raise Rechazo('discord', 'No se pudo hablar con Discord. ¿Tiene internet el servidor?')
+
+
+def discord_vuelta(q, cookie_nonce):
+    """Devuelve (origen, fragmento) para volver a la app: #discord=pendiente | vinculado | error."""
+    limpiar_discord()
+    st = ESTADOS_DISCORD.pop(q.get('state', [''])[0], None)
+    if not st:
+        return URL_PUBLICA or '', 'discord=error&m=' + quote('La petición a Discord caducó o no es válida. Vuelve a probar.')
+    origen = st['origen']
+    if not cookie_nonce or not hmac.compare_digest(cookie_nonce, st['nonce']):
+        return origen, 'discord=error&m=' + quote('Empieza y termina con Discord en el mismo navegador.')
+    if q.get('error'):
+        return origen, 'discord=error&m=' + quote('Has cancelado en Discord. No se ha cambiado nada.')
+    try:
+        tok = discord_pedir(DISCORD_TOKEN, {
+            'grant_type': 'authorization_code', 'code': q.get('code', [''])[0],
+            'redirect_uri': origen + '/api/discord/vuelta',
+            'client_id': DISCORD_ID, 'client_secret': DISCORD_SECRETO})
+        perfil = discord_pedir(DISCORD_YO, token=tok.get('access_token'))
+        did = str(perfil.get('id') or '')
+        if not did.isdigit():
+            raise Rechazo('discord', 'Discord no ha dicho quién eres.')
+        alias = str(perfil.get('username') or '')[:40]
+
+        def hacer(con):
+            otra = con.execute('SELECT clave, nombre FROM usuarios WHERE discord_id=?', (did,)).fetchone()
+            if st['modo'] == 'vincular':
+                if otra and otra[0] != st['usuario']:
+                    raise Rechazo('existe', f'Esa cuenta de Discord ya está vinculada a «{otra[1]}».')
+                con.execute('UPDATE usuarios SET discord_id=?, discord_nombre=? WHERE clave=?', (did, alias, st['usuario']))
+                return 'discord=vinculado'
+            # crear: una sola cuenta por cada cuenta de Discord
+            if otra:
+                raise Rechazo('existe', f'Con esa cuenta de Discord ya se creó la cuenta «{otra[1]}». Entra con su nombre y contraseña.')
+            if buscar_usuario(con, clave_de(st['nombre'])):
+                raise Rechazo('existe', f'Alguien acaba de crear una cuenta llamada «{st["nombre"]}». Elige otro nombre.')
+            if con.execute('SELECT COUNT(*) FROM usuarios WHERE pendiente=1').fetchone()[0] >= MAX_PENDIENTES:
+                raise Rechazo('espera', 'Hay demasiadas cuentas esperando aprobación. Avisa al DM.')
+            con.execute('INSERT INTO usuarios (clave, nombre, hash, rol, creado, baneado, discord_id, discord_nombre, pendiente) '
+                        "VALUES (?,?,?,'jugador',?,0,?,?,1)", (clave_de(st['nombre']), st['nombre'], st['hash'], ahora(), did, alias))
+            subir_rev(con)   # los DM ven al momento que hay alguien esperando
+            print(f'Cuenta nueva creada con Discord, pendiente de aprobación: {st["nombre"]} (@{alias}).')
+            return 'discord=pendiente&n=' + quote(st['nombre'])
+        return origen, con_escritura(hacer)
+    except Rechazo as r:
+        return origen, 'discord=error&m=' + quote(r.mensaje) + ('&modo=' + st['modo'])
+
+
+def discord_desvincular(u):
+    def hacer(con):
+        fila = buscar_usuario(con, u['clave'])
+        if not fila:
+            raise Rechazo('invalida', 'Esa cuenta no existe.')
+        con.execute('UPDATE usuarios SET discord_id=NULL, discord_nombre=NULL WHERE clave=?', (u['clave'],))
+        return {'ok': True}
+    return con_escritura(hacer)
+
+
+def datos_discord(con, clave):
+    fila = con.execute('SELECT discord_id, discord_nombre FROM usuarios WHERE clave=?', (clave,)).fetchone()
+    return {'vinculado': bool(fila and fila[0]), 'nombre': (fila[1] if fila else '') or ''}
+
+
 # ----------------------------------------------------------------------- HTTP
 PROHIBIDO = ('/datos', '/.git', '/.env', '/servidor.py', '/Dockerfile', '/docker-compose')
 
@@ -1497,7 +1725,22 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     hay = bool(con.execute('SELECT 1 FROM usuarios LIMIT 1').fetchone())
                 finally:
                     con.close()
-                return self.json(200, {'ok': True, 'cuentas': True, 'hayUsuarios': hay, 'pideClave': bool(CLAVE)})
+                return self.json(200, {'ok': True, 'cuentas': True, 'hayUsuarios': hay, 'pideClave': bool(CLAVE),
+                                       'discord': DISCORD_ACTIVO})
+            if ruta == '/api/discord/vuelta':   # Discord devuelve aquí al navegador (sin sesión todavía)
+                cookie = ''
+                for trozo in (self.headers.get('Cookie') or '').split(';'):
+                    k, _, v = trozo.strip().partition('=')
+                    if k == COOKIE_DISCORD:
+                        cookie = v
+                origen, frag = discord_vuelta(parse_qs(url.query), cookie)
+                self.send_response(303)
+                self.send_header('Location', (origen or '') + '/#' + frag)
+                self.send_header('Set-Cookie', f'{COOKIE_DISCORD}=; Path=/api/discord; Max-Age=0; HttpOnly; SameSite=Lax')
+                self.send_header('Referrer-Policy', 'no-referrer')
+                self.send_header('Content-Length', '0')
+                self.end_headers()
+                return
             u = self.actor()
             if not u:
                 return self.sin_sesion()
@@ -1506,7 +1749,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
             try:
                 # --- sin campaña: quién soy y en qué campañas juego
                 if ruta == '/api/yo':
-                    u = {**u, 'avatar': versiones_avatar(con).get(u['clave'], 0)}
+                    u = {**u, 'avatar': versiones_avatar(con).get(u['clave'], 0), 'discord': datos_discord(con, u['clave']),
+                         'discordActivo': DISCORD_ACTIVO}
                     return self.json(200, {'ok': True, 'usuario': u, 'campanas': campanas_de(con, u),
                                            'puedeCrear': puede_crear_campanas(con, u)})
                 if ruta.startswith('/api/avatar/'):
@@ -1543,6 +1787,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     except ValueError:
                         desde = -1
                     base = {'ok': True, 'rev': rev, 'usuario': actor, 'presencia': lista_presencia(con, camp)}
+                    if es_dm(actor):   # cuentas de Discord esperando aprobación (aviso en «En línea»)
+                        base['pendientes'] = con.execute('SELECT COUNT(*) FROM usuarios WHERE pendiente=1 AND baneado=0').fetchone()[0]
                     if desde == rev:
                         return self.json(200, {**base, 'igual': True})
                     otros = []
@@ -1569,7 +1815,7 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     # Para invitar a la campaña: el DM ve las cuentas (sin los desterrados)
                     if not es_dm(actor):
                         return self.json(403, {'ok': False, 'motivo': 'permiso', 'mensaje': 'Solo para el DM.'})
-                    return self.json(200, {'ok': True, 'cuentas': lista_cuentas(con, actor, camp)})
+                    return self.json(200, {'ok': True, 'cuentas': lista_cuentas(con, actor, camp), 'pendientes': lista_pendientes(con)})
                 if ruta == '/api/jugadores':
                     if not es_dm(actor):
                         return self.json(403, {'ok': False, 'motivo': 'permiso', 'mensaje': 'Solo para el DM.'})
@@ -1608,7 +1854,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
         acciones = ('/api/transaccion', '/api/registro', '/api/entrar', '/api/salir',
                     '/api/usuarios/rol', '/api/usuarios/contrasena', '/api/usuarios/destierro',
                     '/api/campanas/crear', '/api/registro/desbloquear', '/api/campanas/renombrar', '/api/campanas/unirse',
-                    '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave', '/api/historial/deshacer', '/api/yo/avatar')
+                    '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave', '/api/historial/deshacer', '/api/yo/avatar',
+                    '/api/discord/empezar', '/api/discord/desvincular', '/api/usuarios/aprobar')
         if ruta not in acciones:
             return self.json(404, {'ok': False, 'mensaje': 'No existe.'})
         largo = int(self.headers.get('Content-Length') or 0)
@@ -1632,10 +1879,23 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     if u:
                         PRESENCIA.pop(u['clave'], None)
                 return self.json(200, {'ok': True})
+            if ruta == '/api/discord/empezar':   # crear cuenta (sin sesión) o vincular (con sesión)
+                datos, nonce, segura = discord_empezar(self.actor(), cuerpo)
+                cuerpo_r = json.dumps(datos, ensure_ascii=False).encode('utf-8')
+                self.send_response(200)
+                self.send_header('Content-Type', 'application/json; charset=utf-8')
+                self.send_header('Content-Length', str(len(cuerpo_r)))
+                self.send_header('Set-Cookie', f'{COOKIE_DISCORD}={nonce}; Path=/api/discord; Max-Age=600; HttpOnly; SameSite=Lax'
+                                 + ('; Secure' if segura else ''))
+                self.end_headers()
+                self.wfile.write(cuerpo_r)
+                return
             u = self.actor()
             if not u:
                 return self.sin_sesion()
             # --- sin campaña
+            if ruta == '/api/discord/desvincular':
+                return self.json(200, discord_desvincular(u))
             if ruta == '/api/usuarios/destierro':
                 return self.json(200, desterrar(u, cuerpo))
             if ruta == '/api/campanas/crear':
@@ -1666,6 +1926,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, cambiar_rol(actor, cuerpo))
             if ruta == '/api/mesa/miembro':
                 return self.json(200, miembro(actor, cuerpo))
+            if ruta == '/api/usuarios/aprobar':
+                return self.json(200, aprobar_cuenta(actor, cuerpo))
             if ruta == '/api/mesa/disciplina':
                 return self.json(200, cambiar_disciplina(actor, cuerpo))
             if ruta == '/api/mesa/personaje':
@@ -1676,7 +1938,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, deshacer(actor, cuerpo))
         except Rechazo as r:
             codigo = {'stock': 409, 'conflicto': 409, 'existe': 409, 'permiso': 403,
-                      'credenciales': 401, 'clave': 401, 'espera': 429, 'baneado': 403, 'bloqueado': 429}.get(r.motivo, 400)
+                      'credenciales': 401, 'clave': 401, 'espera': 429, 'baneado': 403, 'bloqueado': 429,
+                      'pendiente': 403, 'sesion': 401, 'discord': 502}.get(r.motivo, 400)
             return self.json(codigo, {'ok': False, 'motivo': r.motivo, 'mensaje': r.mensaje, 'detalle': r.detalle})
         except sqlite3.Error as e:
             print('Error de base de datos:', e, file=sys.stderr)
@@ -1718,7 +1981,7 @@ def copias_periodicas():
 
 
 def orden_consola(args):
-    """python servidor.py restablecer NOMBRE CONTRASEÑA  |  hacer-dm NOMBRE  |  readmitir NOMBRE  |  desbloquear"""
+    """python servidor.py restablecer NOMBRE CONTRASEÑA  |  hacer-dm NOMBRE  |  readmitir NOMBRE  |  aprobar NOMBRE  |  desbloquear"""
     preparar_bd()
     con = conectar()
     try:
@@ -1736,6 +1999,10 @@ def orden_consola(args):
             con.execute('UPDATE usuarios SET hash=? WHERE clave=?', (hash_contrasena(args[2]), fila[0]))
             con.execute('DELETE FROM sesiones WHERE usuario=?', (fila[0],))
             print(f'Contraseña de «{fila[1]}» cambiada.')
+            return 0
+        if orden == 'aprobar':   # aprueba una cuenta de Discord pendiente (sin sentarla en ninguna mesa)
+            con.execute('UPDATE usuarios SET pendiente=0 WHERE clave=?', (fila[0],))
+            print(f'Cuenta «{fila[1]}» aprobada. Invítala a una mesa desde «En línea».')
             return 0
         if orden == 'readmitir':
             con.execute('UPDATE usuarios SET baneado=0 WHERE clave=?', (fila[0],))
@@ -1776,6 +2043,8 @@ def main():
               else 'libre (pon ALQUIMIA_CLAVE si lo abres a internet)'))
         print('Superusuario «DM»: ' + ('activo (contraseña de ALQUIMIA_ADMIN)' if len(ADMIN_CLAVE) >= 6
               else 'desactivado (pon ALQUIMIA_ADMIN en el archivo .env)'))
+        print('Discord: ' + (f'activo (vuelve a {URL_PUBLICA or "la dirección del navegador"}/api/discord/vuelta)'
+              if DISCORD_ACTIVO else 'desactivado (pon DISCORD_CLIENT_ID y DISCORD_CLIENT_SECRET en el archivo .env)'))
         try:
             srv.serve_forever()
         except KeyboardInterrupt:

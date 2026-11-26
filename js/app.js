@@ -79,6 +79,7 @@ modulos.registrar({ id: 'inventario', icono: '🎒', titulo: 'Inventario', lugar
     if (document.getElementById('invSub-dm')?.style.display !== 'none') { dm.render(); dm.recargar(); }
   } });
 // Ranura de oficio (orden 1): cada jugador ve la de su disciplina, que le asigna el DM.
+// Desempleado: ninguna. Pluriempleado: la que elija en la mesa (modulos.setOficio).
 modulos.registrar({ id: 'crafteo', icono: '⚗️', titulo: 'Alquimia', lugar: 'alquimia', lugarTxt: 'junto al caldero',
   disciplina: 'alquimista',
   tarjeta: { orden: 1, clase: 'tarjeta-alquimia', texto: 'Enciende el caldero y elabora' },
@@ -152,9 +153,19 @@ function construirModulos() {
   modulos.setDisciplina(auth.usuario?.disciplina);
   modulos.construirPestanas(document.getElementById('barraModulos'));
   modulos.construirTarjetas(document.getElementById('mesaTarjetas'));
+  modulos.construirSelectorOficio(document.getElementById('mesaOficios'));
   document.querySelectorAll('nav.tab-bar [data-action="switch-tab"]').forEach(b =>
     b.classList.toggle('active', b.getAttribute('data-id') === vistaActual()));
   panel.pintarTarjetas();
+}
+
+// Pluriempleado: cambia el oficio de la ranura (si estaba en el antiguo, pasa al nuevo)
+function elegirOficio(d) {
+  const enOficio = !!modulos.porId(vistaActual())?.disciplina;
+  modulos.setOficio(d);
+  construirModulos();
+  if (enOficio) switchTab(modulos.oficios().find(m => m.disciplina === d)?.id || 'panel');
+  else panel.animarEntrada();
 }
 
 // Cosas que solo ve el DM (o que cambian si el DM da o quita poderes)
@@ -249,6 +260,7 @@ function rerenderAfterServer() {
 }
 sync.setHooks({
   presencia(lista) { panel.setPresencia(lista); },
+  pendientes(n) { panel.setPendientes(n); },   // cuentas de Discord esperando aprobación (solo DM)
   usuario(u, antes) {
     aplicarRol();
     if (antes && antes.rol !== u.rol) sync.aviso(auth.esDM() ? '👑 Ahora eres DM de la mesa.' : 'Ya no eres DM de la mesa.');
@@ -323,6 +335,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   construirModulos();
   diario.pintarBarra();
   switchTab('panel');            // las tarjetas aparecen una a una
+  if (auth.mensajeDiscord) sync.aviso(auth.mensajeDiscord.texto, auth.mensajeDiscord.tipo);   // vuelta de Discord
 
   // Form triggers
   ['matCampo','matPolaridad','matUnknown','matType','matModKind'].forEach(id =>
@@ -391,6 +404,7 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     switch (action) {
       case 'switch-tab':    switchTab(id); break;
+      case 'elegir-oficio': elegirOficio(id); break;
       case 'salir':         if (confirm('¿Cerrar sesión en este navegador?')) auth.salir(); break;
       case 'cambiar-mesa':  auth.cambiarMesa(); break;
       case 'foto-perfil':   cuenta.dialogoFoto(alCambiarFoto); break;
