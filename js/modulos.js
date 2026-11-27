@@ -25,7 +25,7 @@
 //   disciplina  si se indica, el módulo solo lo ve quien tiene esa disciplina
 //               ('alquimista', 'cocinero', 'hechicero', 'herrero'). Es la "ranura de oficio":
 //               cada jugador ve en ella el módulo de su disciplina (la asigna el DM).
-//               Desde V3.9 el DM marca a qué oficios tiene acceso cada jugador: uno, varios
+//               Desde V3.8 el DM marca a qué oficios tiene acceso cada jugador: uno, varios
 //               (texto con comas: 'alquimista,herrero'), todos ('pluriempleado') o ninguno
 //               ('desempleado', la ranura sale vacía). Con más de uno elige cuál usar con los
 //               botones de oficio de la mesa. El DM y el superusuario los tienen todos.
@@ -77,7 +77,7 @@ export function setOficio(d) {
 // El DM (o el superusuario) ve siempre los oficios que ya existen: lleva el catálogo de la mesa
 let dmVeOficios = false;
 export function setDM(v) { dmVeOficios = !!v; }
-// V3.9: cada disciplina a la que tiene acceso es su propio módulo (bola en la mesa y pestaña),
+// V3.8: cada disciplina a la que tiene acceso es su propio módulo (bola en la mesa y pestaña),
 // aunque aún esté «próximamente». El DM y el superusuario las tienen todas.
 export const visible = m => !!m && (!m.disciplina || accesos.includes(m.disciplina) || (dmVeOficios && !m.proximamente));
 const visibles = () => lista.filter(visible);
@@ -94,7 +94,7 @@ export function construirPestanas(nav) {
     `<button data-action="switch-tab" data-id="${esc(m.id)}">${m.icono} ${esc(m.nav || m.titulo)}${m.contador ? ` <span class="nav-contador" id="${esc(m.contador)}"></span>` : ''}</button>`).join('');
 }
 
-// La mesa (V3.9): tu foto es un planeta en el centro y los módulos giran en su órbita (3D).
+// La mesa (V3.8): tu foto es un planeta en el centro y los módulos giran en su órbita (3D).
 // Se ven todas, pero solo se eligen las tres de delante (la del centro y sus vecinas); las flechas, el teclado o
 // deslizar el dedo hacen girar la órbita con una animación continua. Al pulsar la de delante
 // se entra; al pulsar una de los lados, gira hasta ella.
@@ -370,7 +370,7 @@ export function refrescarInfoMesa() {
   info.querySelector('.orbita-info-resumen').innerHTML = it?.querySelector('.orbita3d-resumen')?.innerHTML || '';
 }
 
-// V3.9: ya no hay «oficio de hoy»: cada disciplina tiene su bola en la mesa y su pestaña
+// V3.8: ya no hay «oficio de hoy»: cada disciplina tiene su bola en la mesa y su pestaña
 export function construirSelectorOficio(el) {
   if (el) { el.hidden = true; el.innerHTML = ''; }
 }

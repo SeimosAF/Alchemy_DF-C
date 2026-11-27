@@ -280,7 +280,8 @@ function rerenderAfterServer() {
 }
 sync.setHooks({
   presencia(lista) { panel.setPresencia(lista); },
-  pendientes(n) { panel.setPendientes(n); },   // cuentas de Discord esperando aprobación (solo DM)
+  pendientes(n) { panel.setPendientes(n); },
+  solicitudes(n) { panel.setSolicitudes(n); },   // solicitudes de campaña (solo superusuario)   // cuentas de Discord esperando aprobación (solo DM)
   usuario(u, antes) {
     aplicarRol();
     if (antes && antes.rol !== u.rol) sync.aviso(auth.esDM() ? '👑 Ahora eres DM de la mesa.' : 'Ya no eres DM de la mesa.');
@@ -462,7 +463,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         editMat(id);
         showAlqSubtab('alta');
         break;
-      case 'mat-renovar': {   // V3.9: el material vuelve a ser nuevo (nadie lo conoce: sale del catálogo de los jugadores)
+      case 'mat-renovar': {   // V3.8: el material vuelve a ser nuevo (nadie lo conoce: sale del catálogo de los jugadores)
         if (soloDM('volver a poner materiales como nuevos')) break;
         const m = state.catalog[id];
         if (!m || !state.descubrimientos?.[id]) break;

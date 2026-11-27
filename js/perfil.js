@@ -135,6 +135,7 @@ export function render() {
           ${puedeEditar(p) ? `<button class="btn" data-perfil="editar">✏️ ${yo ? 'Editar mi perfil' : 'Editar este perfil (como DM)'}</button>` : ''}
           ${yo && auth.servidor ? `<button class="btn" data-action="foto-perfil">📷 ${p.avatar ? 'Cambiar mi foto' : 'Poner una foto'}</button>` : ''}
         </div>
+        ${yo ? cajaCorreo() : ''}
         ${yo ? cajaDiscord() : ''}
       </div>`;
     return;
@@ -172,6 +173,21 @@ function cajaDiscord() {
         <button class="btn-discord" data-perfil="discord-vincular">Vincular con Discord</button></div>`;
 }
 
+// Correo para recuperar la contraseña (solo lo ve su dueño; el superusuario no usa correo)
+function cajaCorreo() {
+  const u = auth.usuario;
+  if (!auth.servidor || !u || auth.esAdmin() || !u.correoActivo) return '';
+  const c = u.correo || {};
+  const pendiente = c.pendiente ? `<div class="muted">⏳ Falta confirmar <b>${esc(c.pendiente)}</b>: abre el enlace que te hemos mandado.
+      <button class="btn btn-sm" data-perfil="correo-poner" data-correo="${esc(c.pendiente)}">Reenviar</button></div>` : '';
+  return c.correo
+    ? `<div class="perfil-discord perfil-correo">📧 Correo: <b>${esc(c.correo)}</b> <span class="muted">(solo lo ves tú; sirve para cambiar la contraseña si la olvidas)</span>
+        <button class="btn btn-sm" data-perfil="correo-poner">Cambiar</button>
+        <button class="btn btn-sm btn-danger" data-perfil="correo-quitar">Quitar</button>${pendiente}</div>`
+    : `<div class="perfil-discord perfil-correo">📧 Pon tu correo para poder cambiar la contraseña si la olvidas. Solo lo verás tú.
+        <button class="btn btn-sm" data-perfil="correo-poner">Poner correo</button>${pendiente}</div>`;
+}
+
 function leerForm(el) {
   const p = { ...VACIO };
   el.querySelectorAll('[data-pj]').forEach(i => {
@@ -198,6 +214,19 @@ export function init(onCambioPropio) {
       if (!confirm('¿Desvincular Discord de tu cuenta?')) return;
       const r = await auth.desvincularDiscord();
       if (!r.ok) alert(r.mensaje); else sync.aviso('Discord desvinculado.');
+      render();
+      return;
+    }
+    if (a === 'correo-poner' || a === 'correo-quitar') {
+      const quitar = a === 'correo-quitar';
+      if (quitar && !confirm('¿Quitar el correo? Si olvidas la contraseña, tendrá que ponerte una el DM.')) return;
+      const correo = quitar ? '' : (b.dataset.correo || prompt('Tu correo:', auth.usuario.correo?.correo || ''));
+      if (!quitar && !correo?.trim()) return;
+      const contrasena = prompt('Para comprobar que eres tú, escribe tu contraseña actual:');
+      if (!contrasena) return;
+      const r = await auth.ponerCorreo(correo.trim(), contrasena);
+      if (!r.ok) { alert(r.mensaje); return; }
+      sync.aviso(quitar ? 'Correo quitado.' : `Te hemos mandado un enlace a ${r.pendiente}. Ábrelo para confirmar el correo.`);
       render();
       return;
     }

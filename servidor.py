@@ -50,6 +50,9 @@
 
 import base64, binascii, http.server, ipaddress, json, os, sqlite3, sys, threading, time, hmac, hashlib, secrets, re, unicodedata
 import urllib.request, urllib.error
+import smtplib, ssl
+from email.message import EmailMessage
+from email.utils import formatdate, make_msgid
 from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs, unquote, urlencode, quote
 
@@ -69,6 +72,14 @@ DISCORD_ID = os.environ.get('DISCORD_CLIENT_ID', '').strip()
 DISCORD_SECRETO = os.environ.get('DISCORD_CLIENT_SECRET', '').strip()
 DISCORD_ACTIVO = bool(DISCORD_ID and DISCORD_SECRETO)
 URL_PUBLICA = os.environ.get('ALQUIMIA_URL', '').strip().rstrip('/')
+# Correo (V3.8): para recuperar la contraseña olvidada. Sin CORREO_USUARIO y CORREO_CLAVE no hay correo.
+# Con Gmail: CORREO_USUARIO = la dirección de Gmail y CORREO_CLAVE = una «contraseña de aplicación» (ver docs/CORREO.md).
+CORREO_SERVIDOR = os.environ.get('CORREO_SERVIDOR', '').strip() or 'smtp.gmail.com'
+CORREO_PUERTO = int(os.environ.get('CORREO_PUERTO', '').strip() or '587')
+CORREO_USUARIO = os.environ.get('CORREO_USUARIO', '').strip()
+CORREO_CLAVE = os.environ.get('CORREO_CLAVE', '').replace(' ', '').strip()   # Google la enseña en grupos de 4
+CORREO_REMITENTE = os.environ.get('CORREO_REMITENTE', '').strip() or CORREO_USUARIO
+CORREO_ACTIVO = bool(CORREO_USUARIO and CORREO_CLAVE)
 MAX_PENDIENTES = 20               # cuentas de Discord esperando aprobación a la vez (frena el spam)
 
 # Tipo de cada colección. El servidor manda: el cliente no puede cambiarlo.
@@ -109,7 +120,7 @@ NOMBRE_PRIMERA = 'La primera campaña'
 # 'desempleado' no tiene ningún oficio; 'pluriempleado' los tiene todos (elige cuál usar en la mesa).
 DISCIPLINAS = ('alquimista', 'cocinero', 'hechicero', 'herrero', 'desempleado', 'pluriempleado')
 DISCIPLINA_DEFECTO = 'alquimista'
-# V3.9: el DM marca a qué oficios tiene acceso cada jugador (uno, varios, todos o ninguno).
+# V3.8: el DM marca a qué oficios tiene acceso cada jugador (uno, varios, todos o ninguno).
 # Se guarda en miembros.disciplina: 'desempleado' (ninguno), un oficio, o varios separados por comas.
 OFICIOS = ('alquimista', 'cocinero', 'hechicero', 'herrero')
 
@@ -126,7 +137,8 @@ def normalizar_disciplina(x):
     elegidos = [o for o in OFICIOS if o in x]
     return ','.join(elegidos) if elegidos else 'desempleado'
 
-ITERACIONES = 200_000             # PBKDF2-SHA256 para las contraseñas
+ITERACIONES = 600_000             # PBKDF2-SHA256 para las contraseñas (lo que recomienda OWASP). Las huellas
+                                  # antiguas (200.000) se rehacen solas la próxima vez que esa persona entra.
 DIAS_SESION = 30                  # una sesión sin usar caduca a los 30 días
 EN_LINEA_S = 12                   # visto hace menos de esto y con la pestaña delante = en línea
 AUSENTE_S = 75                    # visto hace menos de esto = ausente (pestaña en segundo plano)
@@ -232,6 +244,24 @@ def preparar_bd():
             con.execute('ALTER TABLE usuarios ADD COLUMN discord_nombre TEXT')
         if 'pendiente' not in cols_u:
             con.execute('ALTER TABLE usuarios ADD COLUMN pendiente INTEGER NOT NULL DEFAULT 0')
+        # V3.8: correo para recuperar la contraseña. «correo» = ya confirmado (el único que se usa);
+        # «correo_pendiente» = escrito pero aún sin confirmar con el enlace que se le manda.
+        if 'correo' not in cols_u:
+            con.execute('ALTER TABLE usuarios ADD COLUMN correo TEXT')
+        if 'correo_pendiente' not in cols_u:
+            con.execute('ALTER TABLE usuarios ADD COLUMN correo_pendiente TEXT')
+        con.execute('CREATE UNIQUE INDEX IF NOT EXISTS usuarios_correo ON usuarios (correo) WHERE correo IS NOT NULL')
+        # Enlaces que se mandan por correo: solo se guarda la HUELLA del token (como con las sesiones).
+        # tipo 'recuperar' (cambiar la contraseña) o 'verificar' (confirmar el correo). Un solo uso.
+        con.execute('''CREATE TABLE IF NOT EXISTS enlaces_correo (
+            token TEXT PRIMARY KEY, usuario TEXT NOT NULL, tipo TEXT NOT NULL, correo TEXT, creado REAL, caduca REAL NOT NULL)''')
+        con.execute('DELETE FROM enlaces_correo WHERE caduca < ?', (time.time(),))
+        # V3.8: solicitudes de campaña. Un jugador pide una campaña; el superusuario la aprueba o la rechaza.
+        # estado: pendiente | aprobada | rechazada | cancelada. Cada cuenta solo puede tener UNA pendiente.
+        con.execute('''CREATE TABLE IF NOT EXISTS solicitudes_campana (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT NOT NULL, nombre TEXT NOT NULL, motivo TEXT,
+            creada TEXT, estado TEXT NOT NULL DEFAULT 'pendiente', resuelta TEXT, nota TEXT, campana TEXT)''')
+        con.execute("CREATE UNIQUE INDEX IF NOT EXISTS solicitud_unica ON solicitudes_campana (usuario) WHERE estado='pendiente'")
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS usuarios_discord ON usuarios (discord_id) WHERE discord_id IS NOT NULL')
         if not nueva_bd and 'campana' not in [f[1] for f in con.execute('PRAGMA table_info(entradas)')]:
             con.close()
@@ -411,6 +441,13 @@ def comprobar_contrasena(contrasena, guardado):
         return False
 
 
+def huella_antigua(guardado):
+    try:
+        return int(guardado.split('$')[1]) < ITERACIONES
+    except (ValueError, IndexError, AttributeError):
+        return False
+
+
 # Para que comprobar una cuenta inexistente tarde lo mismo que una real
 HASH_FALSO = hash_contrasena('no-existe')
 
@@ -481,6 +518,8 @@ def registrar(cuerpo, origen='-'):
     if not NOMBRE_OK.match(nombre):
         raise Rechazo('invalida', 'El nombre debe tener de 2 a 24 letras o números (también valen espacios, guiones y puntos).')
     validar_contrasena(contrasena)
+    if CORREO_ACTIVO and cuerpo.get('correo'):
+        limpiar_correo(cuerpo.get('correo'))   # mejor avisar antes de crear nada
     comprobar_palabra_de_paso(cuerpo, origen)
     with CERROJO:
         con = conectar()
@@ -504,14 +543,17 @@ def registrar(cuerpo, origen='-'):
             token = abrir_sesion(con, clave)
             con.execute('COMMIT')
             usuario = {'clave': clave, 'nombre': nombre, 'rol': 'jugador'}
-            return {'ok': True, 'token': token, 'usuario': usuario, 'primera': primera,
-                    'campanas': campanas_de(con, usuario)}
+            resultado = {'ok': True, 'token': token, 'usuario': usuario, 'primera': primera,
+                         'campanas': campanas_de(con, usuario)}
         except BaseException:
             if con.in_transaction:
                 con.execute('ROLLBACK')
             raise
         finally:
             con.close()
+    if CORREO_ACTIVO and cuerpo.get('correo'):   # fuera del cerrojo (pedir_verificacion lo coge)
+        pedir_verificacion(clave_de(nombre), nombre, limpiar_correo(cuerpo.get('correo')))
+    return resultado
 
 
 FALLOS = {}   # ip -> (fallos, desde): frena a quien prueba contraseñas a lo loco
@@ -537,7 +579,11 @@ def entrar(cuerpo, ip):
             raise Rechazo('pendiente', 'Tu cuenta todavía espera a que el DM la apruebe. Avísale y vuelve a probar cuando lo haga.')
         if fila[2] == 'admin' and not ADMIN_CLAVE:
             raise Rechazo('credenciales', 'El superusuario «DM» está desactivado (falta ALQUIMIA_ADMIN en el archivo .env).')
+        # Huella hecha con menos vueltas: se rehace ahora que se tiene la contraseña a mano (fuera del cerrojo: tarda)
+        rehecha = hash_contrasena(contrasena) if fila[2] != 'admin' and huella_antigua(fila[3]) else None
         with CERROJO:
+            if rehecha:
+                con.execute('UPDATE usuarios SET hash=? WHERE clave=?', (rehecha, clave))
             token = abrir_sesion(con, clave)
         usuario = usuario_publico(fila)
         return {'ok': True, 'token': token, 'usuario': usuario, 'campanas': campanas_de(con, usuario)}
@@ -585,7 +631,7 @@ def campanas_de(con, u):
 
 
 def otras_campanas(con, u):
-    """V3.9: las campañas en las que NO juega, para el selector (con candado si tienen contraseña).
+    """V3.8: las campañas en las que NO juega, para el selector (con candado si tienen contraseña).
     Las que no tienen contraseña solo se ven: se entra por invitación del DM."""
     if es_admin(u):
         return []
@@ -826,7 +872,7 @@ def unirse(u, cuerpo, ip):
         raise Rechazo('espera', 'Demasiados intentos fallidos. Espera un minuto y vuelve a probar.')
     nombre = re.sub(r'\s+', ' ', unicodedata.normalize('NFC', str(cuerpo.get('nombre') or '')).strip())
     clave = str(cuerpo.get('clave') or '')
-    camp_id = cuerpo.get('id')   # V3.9: desde el selector de campañas se une por su id
+    camp_id = cuerpo.get('id')   # V3.8: desde el selector de campañas se une por su id
 
     def hacer(con):
         if isinstance(camp_id, str) and camp_id:
@@ -892,6 +938,8 @@ def crear_campana(u, cuerpo):
             raise Rechazo('permiso', 'Solo el superusuario «DM» puede crear campañas.')
         if con.execute('SELECT 1 FROM campanas WHERE nombre=? COLLATE NOCASE', (nombre,)).fetchone():
             raise Rechazo('existe', f'Ya hay una campaña llamada «{nombre}».')
+        if con.execute("SELECT 1 FROM solicitudes_campana WHERE nombre=? COLLATE NOCASE AND estado='pendiente'", (nombre,)).fetchone():
+            raise Rechazo('existe', f'Alguien ha pedido ya una campaña llamada «{nombre}»: mírala en «Solicitudes de campaña».')
         camp = 'c-' + secrets.token_hex(4)
         con.execute('INSERT INTO campanas (id, nombre, creada, rev) VALUES (?,?,?,1)', (camp, nombre, ahora()))
         quien_dm = dm or ('' if es_admin(u) else u['clave'])   # sin superusuario, quien la crea es su DM
@@ -913,6 +961,103 @@ def crear_campana(u, cuerpo):
                         (camp, copiar, COMUN))
         return {'ok': True, 'campana': {'id': camp, 'nombre': nombre}}
     return con_escritura(hacer)
+
+
+# ------------------------------------------------------------ solicitudes de campaña (V3.8)
+def solicitud_de(con, clave):
+    """La solicitud que enseña el selector: la pendiente, o la última resuelta hace menos de 7 días."""
+    f = con.execute("SELECT id, nombre, motivo, creada, estado, resuelta, nota FROM solicitudes_campana "
+                    "WHERE usuario=? AND estado!='cancelada' ORDER BY id DESC LIMIT 1", (clave,)).fetchone()
+    if not f:
+        return None
+    if f[4] != 'pendiente':
+        try:
+            if (datetime.now(timezone.utc) - datetime.fromisoformat(f[5])).days >= 7:
+                return None
+        except (TypeError, ValueError):
+            return None
+    return {'id': f[0], 'nombre': f[1], 'motivo': f[2] or '', 'creada': f[3], 'estado': f[4], 'resuelta': f[5], 'nota': f[6] or ''}
+
+
+def puede_solicitar(con, u):
+    # Solo tiene sentido si hay superusuario que apruebe y la cuenta no puede crear campañas por sí misma
+    return bool(ADMIN_CLAVE) and not es_admin(u)
+
+
+def solicitar_campana(u, cuerpo):
+    nombre = nombre_de_campana(cuerpo)
+    motivo = re.sub(r'\s+', ' ', str(cuerpo.get('motivo') or '')).strip()[:300]
+
+    def hacer(con):
+        if not puede_solicitar(con, u):
+            raise Rechazo('permiso', 'Aquí no hace falta pedir permiso: puedes crear la campaña directamente.' if es_admin(u)
+                          else 'Este servidor no tiene superusuario que apruebe campañas.')
+        if con.execute("SELECT 1 FROM solicitudes_campana WHERE usuario=? AND estado='pendiente'", (u['clave'],)).fetchone():
+            raise Rechazo('existe', 'Ya tienes una solicitud esperando al superusuario. Cancélala si quieres pedir otra.')
+        if con.execute('SELECT 1 FROM campanas WHERE nombre=? COLLATE NOCASE', (nombre,)).fetchone():
+            raise Rechazo('existe', f'Ya hay una campaña llamada «{nombre}». Elige otro nombre.')
+        if con.execute("SELECT 1 FROM solicitudes_campana WHERE nombre=? COLLATE NOCASE AND estado='pendiente'", (nombre,)).fetchone():
+            raise Rechazo('existe', f'Alguien ha pedido ya una campaña llamada «{nombre}». Elige otro nombre.')
+        con.execute("INSERT INTO solicitudes_campana (usuario, nombre, motivo, creada, estado) VALUES (?,?,?,?,'pendiente')",
+                    (u['clave'], nombre, motivo, ahora()))
+        return {'ok': True, 'solicitud': solicitud_de(con, u['clave'])}
+    return con_escritura(hacer)
+
+
+def cancelar_solicitud(u):
+    def hacer(con):
+        n = con.execute("UPDATE solicitudes_campana SET estado='cancelada', resuelta=? WHERE usuario=? AND estado='pendiente'",
+                        (ahora(), u['clave'])).rowcount
+        if not n:
+            raise Rechazo('invalida', 'No tienes ninguna solicitud pendiente.')
+        return {'ok': True}
+    return con_escritura(hacer)
+
+
+def lista_solicitudes(con):
+    return [{'id': i, 'usuario': us, 'nombreUsuario': nu, 'nombre': n, 'motivo': m or '', 'creada': c}
+            for i, us, nu, n, m, c in con.execute(
+                "SELECT s.id, s.usuario, u.nombre, s.nombre, s.motivo, s.creada FROM solicitudes_campana s "
+                "JOIN usuarios u ON u.clave=s.usuario WHERE s.estado='pendiente' AND u.baneado=0 ORDER BY s.id").fetchall()]
+
+
+def resolver_solicitud(u, cuerpo):
+    """El superusuario aprueba (se crea la campaña con quien la pidió como DM) o rechaza (con un motivo opcional)."""
+    if not es_admin(u):
+        raise Rechazo('permiso', 'Solo el superusuario aprueba o rechaza solicitudes de campaña.')
+    aprobar = bool(cuerpo.get('aprobar'))
+    nota = re.sub(r'\s+', ' ', str(cuerpo.get('nota') or '')).strip()[:300]
+    try:
+        sid = int(cuerpo.get('id'))
+    except (TypeError, ValueError):
+        raise Rechazo('invalida', 'Solicitud desconocida.')
+
+    def hacer(con):
+        f = con.execute("SELECT s.usuario, s.nombre, u.baneado FROM solicitudes_campana s JOIN usuarios u ON u.clave=s.usuario "
+                        "WHERE s.id=? AND s.estado='pendiente'", (sid,)).fetchone()
+        if not f:
+            raise Rechazo('conflicto', 'Esa solicitud ya no está pendiente (la han cancelado o ya se resolvió).')
+        camp = None
+        if aprobar:
+            if f[2]:
+                raise Rechazo('baneado', 'Esa cuenta está desterrada: no puede ser DM de una campaña.')
+            if con.execute('SELECT 1 FROM campanas WHERE nombre=? COLLATE NOCASE', (f[1],)).fetchone():
+                raise Rechazo('existe', f'Ya hay una campaña llamada «{f[1]}». Recházala explicando que cambie el nombre.')
+            camp = 'c-' + secrets.token_hex(4)
+            con.execute('INSERT INTO campanas (id, nombre, creada, rev) VALUES (?,?,?,1)', (camp, f[1], ahora()))
+            con.execute('INSERT INTO miembros (campana, usuario, rol, disciplina, unido) VALUES (?,?,?,?,?)',
+                        (camp, f[0], 'dm', DISCIPLINA_DEFECTO, ahora()))
+        con.execute('UPDATE solicitudes_campana SET estado=?, resuelta=?, nota=?, campana=? WHERE id=?',
+                    ('aprobada' if aprobar else 'rechazada', ahora(), nota, camp, sid))
+        return f[0], f[1], camp
+    usuario, nombre, camp = con_escritura(hacer)
+    if aprobar:
+        avisar_por_correo(usuario, f'tu campaña «{nombre}» está aprobada', f'''El superusuario ha aprobado tu campaña «{nombre}». Ya está creada y tú eres su DM.
+Entra en La taberna de Jhon y elígela en el selector de campañas para invitar a tus jugadores.''' + (f'\n\nNota del superusuario: {nota}' if nota else ''))
+    else:
+        avisar_por_correo(usuario, f'tu solicitud de campaña «{nombre}» no se ha aprobado', f'''El superusuario no ha aprobado tu solicitud de la campaña «{nombre}».''' + (f'\n\nMotivo: {nota}' if nota else '')
+                          + '\n\nPuedes hacer otra solicitud desde el selector de campañas.')
+    return {'ok': True, 'campana': {'id': camp, 'nombre': nombre} if camp else None}
 
 
 def renombrar_campana(u, cuerpo):
@@ -966,13 +1111,26 @@ def miembro(actor, cuerpo):
                 raise Rechazo('permiso', 'Solo el superusuario puede sacar a un DM de la campaña.')
             con.execute('DELETE FROM miembros WHERE campana=? AND usuario=?', (camp, objetivo))
             apuntar(con, camp, actor, 'miembros', f'sacó a {fila[1]} de la mesa', None, [fila[1]])
+            nombre_mesa = (con.execute('SELECT nombre FROM campanas WHERE id=?', (camp,)).fetchone() or [camp])[0]
+            sacado.append(nombre_mesa)
             if (PRESENCIA.get(objetivo) or {}).get('campana') == camp:
                 PRESENCIA.pop(objetivo, None)
         else:
             raise Rechazo('invalida', 'Acción desconocida.')
         subir_rev(con, camp)
         return {'ok': True}
-    return con_escritura(hacer)
+    sacado = []
+    r = con_escritura(hacer)
+    if sacado:
+        avisar_por_correo(objetivo, f'te han sacado de la mesa «{sacado[0]}»', f'''{quien_lo_hizo(actor)} te ha sacado de la mesa «{sacado[0]}».
+
+No se ha borrado nada: si vuelven a invitarte, recuperarás tu inventario, tus libros y tu nivel.
+Tu cuenta sigue activa y puedes seguir jugando en tus otras mesas.''')
+    return r
+
+
+def quien_lo_hizo(actor):
+    return 'El superusuario' if actor.get('rol') == 'admin' else f'El DM ({actor.get("nombre", "")})'
 
 
 def cambiar_disciplina(actor, cuerpo):
@@ -1700,13 +1858,22 @@ def desterrar(actor, cuerpo):
             con.execute('COMMIT')
             if ban:
                 PRESENCIA.pop(objetivo, None)
-            return {'ok': True}
         except BaseException:
             if con.in_transaction:
                 con.execute('ROLLBACK')
             raise
         finally:
             con.close()
+    # Ya está guardado (si algo falla antes, salta la excepción y no se avisa)
+    if ban:
+        avisar_por_correo(objetivo, 'tu cuenta ha sido suspendida', '''El superusuario ha suspendido (desterrado) tu cuenta de La taberna de Jhon.
+Mientras siga así no podrás entrar, y se han cerrado tus sesiones abiertas.
+
+No se ha borrado nada. Si crees que es un error, habla con el DM o con el superusuario.''')
+    else:
+        avisar_por_correo(objetivo, 'tu cuenta vuelve a estar activa', '''El superusuario ha levantado la suspensión de tu cuenta de La taberna de Jhon.
+Ya puedes volver a entrar con tu nombre y tu contraseña.''')
+    return {'ok': True}
 
 
 def cambiar_contrasena(actor, cuerpo):
@@ -1723,19 +1890,272 @@ def cambiar_contrasena(actor, cuerpo):
         if objetivo == actor['clave']:
             if not comprobar_contrasena(str(cuerpo.get('actual') or ''), fila[3]):
                 raise Rechazo('credenciales', 'La contraseña actual no es correcta.')
-        elif not es_dm(actor):
-            raise Rechazo('permiso', 'Solo el DM puede cambiar la contraseña de otra persona.')
-        elif actor['rol'] != 'admin' and not es_miembro(con, actor['campana'], objetivo):
-            raise Rechazo('permiso', 'Solo puedes cambiar la contraseña de quien juega en tu campaña.')
+        elif actor['rol'] != 'admin':   # pedido por Moisés (2026-11-27): ni siquiera el DM
+            raise Rechazo('permiso', 'Solo el superusuario puede poner una contraseña nueva a otra persona.')
         with CERROJO:
             con.execute('BEGIN IMMEDIATE')
             con.execute('UPDATE usuarios SET hash=? WHERE clave=?', (hash_contrasena(nueva), objetivo))
+            con.execute("DELETE FROM enlaces_correo WHERE usuario=? AND tipo='recuperar'", (objetivo,))
             if objetivo != actor['clave']:   # se cierran sus sesiones abiertas
                 con.execute('DELETE FROM sesiones WHERE usuario=?', (objetivo,))
             con.execute('COMMIT')
+        if objetivo != actor['clave']:
+            avisar_por_correo(objetivo, 'el superusuario te ha puesto una contraseña nueva', '''El superusuario ha puesto una contraseña nueva a tu cuenta de La taberna de Jhon y se han cerrado tus
+sesiones abiertas. Te la tiene que decir él; por seguridad, este correo no la incluye.
+
+Cuando entres, cámbiala por una tuya desde el menú de la cuenta (🔑 Cambiar contraseña).
+Si no sabías nada de esto, habla con el superusuario.''')
         return {'ok': True}
     finally:
         con.close()
+
+
+# ------------------------------------------------------------ correo (V3.8)
+# Recuperar la contraseña olvidada con un enlace por correo. Medidas de seguridad:
+#  - El enlace lleva un token aleatorio de 256 bits. En la base solo se guarda su HUELLA (SHA-256):
+#    quien copie la base no puede usar los enlaces pendientes.
+#  - Sirve UNA vez y caduca a los 30 minutos. Pedir otro anula el anterior.
+#  - Al cambiar la contraseña se cierran TODAS las sesiones de esa cuenta y se anulan sus enlaces.
+#  - «Te hemos mandado un enlace» se contesta siempre igual, exista la cuenta o no, y el correo se
+#    manda en segundo plano: así nadie puede averiguar qué nombres o correos tienen cuenta.
+#  - Límite de peticiones por conexión y por cuenta (nadie puede llenarle el buzón a otro).
+#  - Solo se usa un correo CONFIRMADO: al ponerlo se manda un enlace para comprobar que es suyo.
+#    Si no, alguien podría poner el correo de otra persona... o un correo suyo en la cuenta de otro.
+#  - El enlace lleva el token detrás de «#», que el navegador no manda al servidor ni a otras webs.
+#  - La dirección del enlace sale de ALQUIMIA_URL (o localhost), nunca de cabeceras que pueda
+#    inventarse quien hace la petición.
+#  - El correo solo lo ve su dueño (no sale en las listas de la mesa).
+#  - La conexión con el servidor de correo va cifrada (STARTTLS o SSL) y con el certificado comprobado.
+MIN_ENLACE = 30                    # minutos que dura el enlace para cambiar la contraseña
+HORAS_VERIFICAR = 24               # horas que dura el enlace para confirmar el correo
+CORREO_OK = re.compile(r'^[^@\s<>"\'(),;:\\\[\]]{1,64}@[A-Za-z0-9](?:[A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(?:\.[A-Za-z0-9](?:[A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)+$')
+PETICIONES_CORREO = {}             # 'ip:...' / 'u:...' -> [tiempos]; en memoria (basta para frenar abusos)
+CERROJO_PETICIONES = threading.Lock()
+
+
+def limpiar_correo(c):
+    c = unicodedata.normalize('NFC', str(c or '')).strip()
+    if len(c) > 254 or not CORREO_OK.match(c):
+        raise Rechazo('invalida', 'Ese correo no parece válido. Escríbelo entero, por ejemplo nombre@gmail.com.')
+    usuario, _, dominio = c.rpartition('@')
+    return usuario + '@' + dominio.lower()
+
+
+def clave_correo(c):
+    return str(c or '').strip().casefold()
+
+
+def ocultar_correo(c):
+    """mo*****@gmail.com: para decir a dónde se ha mandado algo sin enseñar la dirección entera."""
+    u, _, d = str(c or '').partition('@')
+    return (u[:2] + '•' * max(1, len(u) - 2)) + '@' + d if d else ''
+
+
+def demasiadas(clave, maximo, segundos):
+    """True si «clave» ya ha pedido «maximo» veces en los últimos «segundos». Si no, apunta esta vez."""
+    t = time.time()
+    with CERROJO_PETICIONES:
+        lista = [x for x in PETICIONES_CORREO.get(clave, []) if t - x < segundos]
+        if len(lista) >= maximo:
+            PETICIONES_CORREO[clave] = lista
+            return True
+        lista.append(t)
+        PETICIONES_CORREO[clave] = lista
+        if len(PETICIONES_CORREO) > 5000:   # que no crezca sin fin
+            for k in [k for k, v in PETICIONES_CORREO.items() if not v or t - v[-1] > 86400]:
+                PETICIONES_CORREO.pop(k, None)
+        return False
+
+
+def url_enlaces():
+    """A qué dirección apuntan los enlaces de los correos. Sale SOLO de la configuración."""
+    return URL_PUBLICA or f'http://localhost:{PUERTO}'
+
+
+def enviar_correo(para, asunto, texto):
+    """Manda un correo de texto. Lanza excepción si falla (quien llama decide qué hacer)."""
+    m = EmailMessage()
+    m['From'] = f'La taberna de Jhon <{CORREO_REMITENTE}>'
+    m['To'] = para
+    m['Subject'] = asunto
+    m['Date'] = formatdate(localtime=False)
+    m['Message-ID'] = make_msgid(domain=CORREO_REMITENTE.partition('@')[2] or None)
+    m.set_content(texto)
+    ctx = ssl.create_default_context()   # comprueba el certificado del servidor de correo
+    if CORREO_PUERTO == 465:
+        with smtplib.SMTP_SSL(CORREO_SERVIDOR, CORREO_PUERTO, context=ctx, timeout=20) as s:
+            s.login(CORREO_USUARIO, CORREO_CLAVE)
+            s.send_message(m)
+    else:
+        with smtplib.SMTP(CORREO_SERVIDOR, CORREO_PUERTO, timeout=20) as s:
+            s.starttls(context=ctx)      # si el servidor no admite cifrado, falla: nunca se manda en claro
+            s.login(CORREO_USUARIO, CORREO_CLAVE)
+            s.send_message(m)
+
+
+def enviar_en_segundo_plano(para, asunto, texto):
+    def tarea():
+        try:
+            enviar_correo(para, asunto, texto)
+        except Exception as e:   # no se dice nada a quien lo pidió (sabría que la cuenta existe)
+            print(f'No se pudo mandar el correo a {ocultar_correo(para)}: {type(e).__name__}: {e}', file=sys.stderr)
+    threading.Thread(target=tarea, daemon=True).start()
+
+
+def nuevo_enlace(con, clave, tipo, correo, minutos):
+    """Crea un enlace de un solo uso (anula los anteriores del mismo tipo) y devuelve el token en claro."""
+    token = secrets.token_urlsafe(32)
+    con.execute('DELETE FROM enlaces_correo WHERE usuario=? AND tipo=?', (clave, tipo))
+    con.execute('INSERT INTO enlaces_correo (token, usuario, tipo, correo, creado, caduca) VALUES (?,?,?,?,?,?)',
+                (hash_token(token), clave, tipo, correo, time.time(), time.time() + minutos * 60))
+    return token
+
+
+def pedir_verificacion(clave, nombre, correo):
+    """Apunta el correo como pendiente y manda el enlace para confirmarlo."""
+    def hacer(con):
+        con.execute('UPDATE usuarios SET correo_pendiente=? WHERE clave=?', (correo, clave))
+        return nuevo_enlace(con, clave, 'verificar', correo, HORAS_VERIFICAR * 60)
+    token = con_escritura(hacer)
+    enviar_en_segundo_plano(correo, 'La taberna de Jhon: confirma tu correo', f'''Hola, {nombre}:
+
+Has puesto este correo en tu cuenta de La taberna de Jhon. Para confirmar que es tuyo, abre este enlace:
+
+{url_enlaces()}/#verificar={token}
+
+El enlace sirve una sola vez y caduca en {HORAS_VERIFICAR} horas. Cuando lo confirmes, podrás usar este
+correo para cambiar tu contraseña si alguna vez la olvidas.
+
+Si no has sido tú, no hagas nada: este correo no quedará unido a ninguna cuenta.
+''')
+
+
+def poner_correo(u, cuerpo):
+    """El dueño pone, cambia o quita su correo. Pide su contraseña actual (por si dejó la sesión abierta)."""
+    if not CORREO_ACTIVO:
+        raise Rechazo('invalida', 'El servidor no tiene el correo configurado (CORREO_USUARIO y CORREO_CLAVE en el archivo .env).')
+    if u['rol'] == 'admin':
+        raise Rechazo('permiso', 'El superusuario «DM» no usa correo: su contraseña es la de ALQUIMIA_ADMIN.')
+    con = conectar()
+    try:
+        fila = buscar_usuario(con, u['clave'])
+    finally:
+        con.close()
+    if not fila or not comprobar_contrasena(str(cuerpo.get('contrasena') or ''), fila[3]):
+        raise Rechazo('credenciales', 'La contraseña no es correcta. No se ha cambiado nada.')
+    if not cuerpo.get('correo'):   # quitarlo
+        def hacer(con):
+            con.execute('UPDATE usuarios SET correo=NULL, correo_pendiente=NULL WHERE clave=?', (u['clave'],))
+            con.execute('DELETE FROM enlaces_correo WHERE usuario=?', (u['clave'],))
+        con_escritura(hacer)
+        return {'ok': True, 'quitado': True}
+    correo = limpiar_correo(cuerpo.get('correo'))
+    if demasiadas('u:' + u['clave'], 5, 3600):
+        raise Rechazo('espera', 'Has pedido demasiados correos seguidos. Espera una hora y vuelve a probar.')
+    pedir_verificacion(u['clave'], u['nombre'], correo)
+    return {'ok': True, 'pendiente': correo}
+
+
+def verificar_correo(cuerpo):
+    token = str(cuerpo.get('token') or '')
+
+    def hacer(con):
+        f = con.execute("SELECT usuario, correo, caduca FROM enlaces_correo WHERE token=? AND tipo='verificar'",
+                        (hash_token(token),)).fetchone()
+        if not f or f[2] < time.time():
+            raise Rechazo('enlace', 'Ese enlace ya se ha usado o ha caducado. Vuelve a poner tu correo en el Perfil.')
+        otro = con.execute('SELECT clave FROM usuarios WHERE correo=? COLLATE NOCASE AND clave!=?', (f[1], f[0])).fetchone()
+        con.execute("DELETE FROM enlaces_correo WHERE usuario=? AND tipo='verificar'", (f[0],))
+        if otro:
+            raise Rechazo('existe', 'Ese correo ya está en otra cuenta. Cada correo solo puede estar en una.')
+        con.execute('UPDATE usuarios SET correo=?, correo_pendiente=NULL WHERE clave=?', (f[1], f[0]))
+        return f[1]
+    correo = con_escritura(hacer)
+    return {'ok': True, 'correo': correo}
+
+
+def pedir_recuperacion(cuerpo, ip):
+    """Manda el enlace para cambiar la contraseña. La respuesta es SIEMPRE la misma."""
+    respuesta = {'ok': True, 'mensaje': 'Si ese nombre o correo es de una cuenta con correo confirmado, te acabamos '
+                 f'de mandar un enlace. Mira tu bandeja de entrada (y la de spam). Caduca en {MIN_ENLACE} minutos.'}
+    if not CORREO_ACTIVO:
+        raise Rechazo('invalida', 'Este servidor no tiene el correo configurado. Pide al DM que te ponga una contraseña nueva.')
+    quien = str(cuerpo.get('quien') or '').strip()
+    if not quien or len(quien) > 254:
+        raise Rechazo('invalida', 'Escribe tu nombre de usuario o tu correo.')
+    if demasiadas('ip:' + ip, 5, 900):
+        raise Rechazo('espera', 'Demasiadas peticiones seguidas. Espera un cuarto de hora y vuelve a probar.')
+    con = conectar()
+    try:
+        fila = con.execute('SELECT clave, nombre, rol, correo, baneado, pendiente FROM usuarios WHERE '
+                           + ('correo=? COLLATE NOCASE' if '@' in quien else 'clave=?'),
+                           (quien if '@' in quien else clave_de(quien),)).fetchone()
+    finally:
+        con.close()
+    if not fila or not fila[3] or fila[2] == 'admin' or fila[4] or fila[5]:
+        return respuesta
+    if demasiadas('u:' + fila[0], 3, 3600):   # como mucho 3 enlaces por hora para la misma cuenta
+        return respuesta
+    token = con_escritura(lambda con: nuevo_enlace(con, fila[0], 'recuperar', fila[3], MIN_ENLACE))
+    enviar_en_segundo_plano(fila[3], 'La taberna de Jhon: cambiar tu contraseña', f'''Hola, {fila[1]}:
+
+Alguien (seguramente tú) ha pedido cambiar la contraseña de tu cuenta de La taberna de Jhon.
+Para elegir una nueva, abre este enlace:
+
+{url_enlaces()}/#recuperar={token}
+
+El enlace sirve una sola vez y caduca en {MIN_ENLACE} minutos.
+
+Si no lo has pedido tú, no hagas nada: tu contraseña sigue siendo la misma.
+''')
+    return respuesta
+
+
+def recuperar_contrasena(cuerpo):
+    token = str(cuerpo.get('token') or '')
+    nueva = cuerpo.get('nueva')
+    validar_contrasena(nueva)
+    huella = hash_contrasena(nueva)   # fuera del cerrojo: tarda un poco
+
+    def hacer(con):
+        f = con.execute("SELECT e.usuario, e.caduca, u.nombre, u.correo, u.rol, u.baneado FROM enlaces_correo e "
+                        "JOIN usuarios u ON u.clave=e.usuario WHERE e.token=? AND e.tipo='recuperar'",
+                        (hash_token(token),)).fetchone()
+        if not f or f[1] < time.time() or f[4] == 'admin' or f[5]:
+            raise Rechazo('enlace', 'Ese enlace ya se ha usado o ha caducado. Pide otro desde «¿Olvidaste la contraseña?».')
+        con.execute('UPDATE usuarios SET hash=? WHERE clave=?', (huella, f[0]))
+        con.execute("DELETE FROM enlaces_correo WHERE usuario=? AND tipo='recuperar'", (f[0],))
+        con.execute('DELETE FROM sesiones WHERE usuario=?', (f[0],))   # fuera quien estuviera dentro
+        return f
+    f = con_escritura(hacer)
+    if f[3]:
+        enviar_en_segundo_plano(f[3], 'La taberna de Jhon: tu contraseña ha cambiado', f'''Hola, {f[2]}:
+
+La contraseña de tu cuenta de La taberna de Jhon se acaba de cambiar con el enlace del correo, y se han
+cerrado todas las sesiones abiertas.
+
+Si has sido tú, no tienes que hacer nada. Si no, avisa al DM cuanto antes.
+''')
+    return {'ok': True, 'nombre': f[2]}
+
+
+def avisar_por_correo(clave, asunto, texto):
+    """Avisa a una cuenta por correo (solo si tiene correo confirmado y el servidor tiene correo).
+    Se llama DESPUÉS de guardar el cambio y fuera del cerrojo; el envío va en segundo plano."""
+    if not CORREO_ACTIVO:
+        return
+    con = conectar()
+    try:
+        f = con.execute('SELECT nombre, correo FROM usuarios WHERE clave=?', (clave,)).fetchone()
+    finally:
+        con.close()
+    if f and f[1]:
+        enviar_en_segundo_plano(f[1], 'La taberna de Jhon: ' + asunto, f'Hola, {f[0]}:\n\n{texto}\n')
+
+
+def datos_correo(con, clave):
+    f = con.execute('SELECT correo, correo_pendiente FROM usuarios WHERE clave=?', (clave,)).fetchone()
+    return {'correo': f[0] if f else None, 'pendiente': f[1] if f else None}
 
 
 # ------------------------------------------------------------ Discord
@@ -1984,7 +2404,7 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 finally:
                     con.close()
                 return self.json(200, {'ok': True, 'cuentas': True, 'hayUsuarios': hay, 'pideClave': bool(CLAVE),
-                                       'discord': DISCORD_ACTIVO})
+                                       'discord': DISCORD_ACTIVO, 'correo': CORREO_ACTIVO})
             if ruta == '/api/discord/vuelta':   # Discord devuelve aquí al navegador (sin sesión todavía)
                 cookie = ''
                 for trozo in (self.headers.get('Cookie') or '').split(';'):
@@ -2008,9 +2428,10 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 # --- sin campaña: quién soy y en qué campañas juego
                 if ruta == '/api/yo':
                     u = {**u, 'avatar': versiones_avatar(con).get(u['clave'], 0), 'discord': datos_discord(con, u['clave']),
-                         'discordActivo': DISCORD_ACTIVO}
+                         'discordActivo': DISCORD_ACTIVO, 'correo': datos_correo(con, u['clave']), 'correoActivo': CORREO_ACTIVO}
                     return self.json(200, {'ok': True, 'usuario': u, 'campanas': campanas_de(con, u),
-                                           'otras': otras_campanas(con, u), 'puedeCrear': puede_crear_campanas(con, u)})
+                                           'otras': otras_campanas(con, u), 'puedeCrear': puede_crear_campanas(con, u),
+                                           'puedeSolicitar': puede_solicitar(con, u), 'solicitud': solicitud_de(con, u['clave'])})
                 if ruta.startswith('/api/avatar/'):
                     # La foto de una cuenta (solo para quien ha entrado). Va con su tipo exacto y sin
                     # posibilidad de que el navegador la interprete como página o script.
@@ -2032,7 +2453,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                         return self.json(200, {'ok': True, 'campanas': campanas_de(con, u)})
                     return self.json(200, {'ok': True, 'campanas': resumen_campanas(con) if es_admin(u) else campanas_de(con, u),
                                            'cuentas': lista_cuentas(con, u) if es_admin(u) else [],
-                                           'bloqueos': bloqueos_registro(con) if es_admin(u) else []})
+                                           'bloqueos': bloqueos_registro(con) if es_admin(u) else [],
+                                           'solicitudes': lista_solicitudes(con) if es_admin(u) else []})
                 # --- dentro de una campaña
                 actor = self.actor_mesa(con, u)
                 if not actor:
@@ -2049,6 +2471,9 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     base = {'ok': True, 'rev': rev, 'usuario': actor, 'presencia': lista_presencia(con, camp)}
                     if es_dm(actor):   # cuentas de Discord esperando aprobación (aviso en «En línea»)
                         base['pendientes'] = con.execute('SELECT COUNT(*) FROM usuarios WHERE pendiente=1 AND baneado=0').fetchone()[0]
+                    if actor['rol'] == 'admin':   # solicitudes de campaña esperando (aviso al superusuario)
+                        base['solicitudes'] = con.execute("SELECT COUNT(*) FROM solicitudes_campana s JOIN usuarios u ON u.clave=s.usuario "
+                                                          "WHERE s.estado='pendiente' AND u.baneado=0").fetchone()[0]
                     if desde == rev:
                         return self.json(200, {**base, 'igual': True})
                     otros = []
@@ -2115,7 +2540,9 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     '/api/usuarios/rol', '/api/usuarios/contrasena', '/api/usuarios/destierro',
                     '/api/campanas/crear', '/api/registro/desbloquear', '/api/campanas/renombrar', '/api/campanas/unirse',
                     '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave', '/api/historial/deshacer', '/api/yo/avatar',
-                    '/api/discord/empezar', '/api/discord/desvincular', '/api/usuarios/aprobar')
+                    '/api/discord/empezar', '/api/discord/desvincular', '/api/usuarios/aprobar',
+                    '/api/recuperar', '/api/recuperar/nueva', '/api/correo/verificar', '/api/yo/correo',
+                    '/api/campanas/solicitar', '/api/campanas/solicitud/cancelar', '/api/campanas/solicitud/resolver')
         if ruta not in acciones:
             return self.json(404, {'ok': False, 'mensaje': 'No existe.'})
         largo = int(self.headers.get('Content-Length') or 0)
@@ -2132,6 +2559,13 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, registrar(cuerpo, self.origen()))
             if ruta == '/api/entrar':
                 return self.json(200, entrar(cuerpo, self.origen()))
+            # --- recuperar la contraseña y confirmar el correo: sin sesión (se llega desde el enlace del correo)
+            if ruta == '/api/recuperar':
+                return self.json(200, pedir_recuperacion(cuerpo, self.origen()))
+            if ruta == '/api/recuperar/nueva':
+                return self.json(200, recuperar_contrasena(cuerpo))
+            if ruta == '/api/correo/verificar':
+                return self.json(200, verificar_correo(cuerpo))
             if ruta == '/api/salir':
                 if self.token():
                     u = usuario_de_token(self.token())
@@ -2164,10 +2598,18 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, desbloquear_registro(u, cuerpo))
             if ruta == '/api/campanas/renombrar':
                 return self.json(200, renombrar_campana(u, cuerpo))
+            if ruta == '/api/campanas/solicitar':
+                return self.json(200, solicitar_campana(u, cuerpo))
+            if ruta == '/api/campanas/solicitud/cancelar':
+                return self.json(200, cancelar_solicitud(u))
+            if ruta == '/api/campanas/solicitud/resolver':
+                return self.json(200, resolver_solicitud(u, cuerpo))
             if ruta == '/api/campanas/unirse':
                 return self.json(200, unirse(u, cuerpo, self.origen()))
             if ruta == '/api/yo/avatar':   # la foto es de la cuenta, no de una campaña
                 return self.json(200, guardar_avatar(u, cuerpo))
+            if ruta == '/api/yo/correo':
+                return self.json(200, poner_correo(u, cuerpo))
             con = conectar()
             try:
                 actor = self.actor_mesa(con, u)
@@ -2199,7 +2641,7 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
         except Rechazo as r:
             codigo = {'stock': 409, 'conflicto': 409, 'existe': 409, 'permiso': 403,
                       'credenciales': 401, 'clave': 401, 'espera': 429, 'baneado': 403, 'bloqueado': 429,
-                      'pendiente': 403, 'sesion': 401, 'discord': 502}.get(r.motivo, 400)
+                      'pendiente': 403, 'sesion': 401, 'discord': 502, 'enlace': 410}.get(r.motivo, 400)
             return self.json(codigo, {'ok': False, 'motivo': r.motivo, 'mensaje': r.mensaje, 'detalle': r.detalle})
         except sqlite3.Error as e:
             print('Error de base de datos:', e, file=sys.stderr)
@@ -2241,7 +2683,26 @@ def copias_periodicas():
 
 
 def orden_consola(args):
-    """python servidor.py restablecer NOMBRE CONTRASEÑA  |  hacer-dm NOMBRE  |  readmitir NOMBRE  |  aprobar NOMBRE  |  desbloquear"""
+    """python servidor.py restablecer NOMBRE CONTRASEÑA  |  hacer-dm NOMBRE  |  readmitir NOMBRE  |  aprobar NOMBRE  |  desbloquear
+                      |  probar-correo DIRECCIÓN  (manda un correo de prueba con la configuración del .env)"""
+    if args[0] == 'probar-correo':
+        if not CORREO_ACTIVO:
+            print('Falta CORREO_USUARIO o CORREO_CLAVE en el archivo .env.')
+            return 1
+        try:
+            para = limpiar_correo(args[1] if len(args) > 1 else CORREO_USUARIO)
+            enviar_correo(para, 'La taberna de Jhon: correo de prueba',
+                          'Si lees esto, el servidor ya puede mandar los enlaces para cambiar la contraseña.\n')
+        except Rechazo as r:
+            print(r.mensaje)
+            return 1
+        except Exception as e:
+            print(f'No se pudo mandar: {type(e).__name__}: {e}')
+            if isinstance(e, smtplib.SMTPAuthenticationError):
+                print('Gmail no acepta la clave. Tiene que ser una «contraseña de aplicación» (16 letras), no tu contraseña normal.')
+            return 1
+        print(f'Correo de prueba mandado a {para} desde {CORREO_REMITENTE} ({CORREO_SERVIDOR}:{CORREO_PUERTO}).')
+        return 0
     preparar_bd()
     con = conectar()
     try:
@@ -2258,7 +2719,17 @@ def orden_consola(args):
             validar_contrasena(args[2])
             con.execute('UPDATE usuarios SET hash=? WHERE clave=?', (hash_contrasena(args[2]), fila[0]))
             con.execute('DELETE FROM sesiones WHERE usuario=?', (fila[0],))
+            con.execute('DELETE FROM enlaces_correo WHERE usuario=?', (fila[0],))
             print(f'Contraseña de «{fila[1]}» cambiada.')
+            correo = con.execute('SELECT correo FROM usuarios WHERE clave=?', (fila[0],)).fetchone()[0]
+            if CORREO_ACTIVO and correo:
+                try:
+                    enviar_correo(correo, 'La taberna de Jhon: el superusuario te ha puesto una contraseña nueva',
+                                  f'Hola, {fila[1]}:\n\nEl superusuario ha puesto una contraseña nueva a tu cuenta y se han cerrado '
+                                  'tus sesiones abiertas. Te la tiene que decir él; por seguridad, este correo no la incluye.\n')
+                    print(f'Avisado por correo ({ocultar_correo(correo)}).')
+                except Exception as e:
+                    print(f'No se pudo avisar por correo: {e}')
             return 0
         if orden == 'aprobar':   # aprueba una cuenta de Discord pendiente (sin sentarla en ninguna mesa)
             con.execute('UPDATE usuarios SET pendiente=0 WHERE clave=?', (fila[0],))
@@ -2305,6 +2776,10 @@ def main():
               else 'desactivado (pon ALQUIMIA_ADMIN en el archivo .env)'))
         print('Discord: ' + (f'activo (vuelve a {URL_PUBLICA or "la dirección del navegador"}/api/discord/vuelta)'
               if DISCORD_ACTIVO else 'desactivado (pon DISCORD_CLIENT_ID y DISCORD_CLIENT_SECRET en el archivo .env)'))
+        print('Correo para recuperar contraseñas: ' + (f'activo (desde {CORREO_REMITENTE}; enlaces a {url_enlaces()})'
+              if CORREO_ACTIVO else 'desactivado (pon CORREO_USUARIO y CORREO_CLAVE en el archivo .env)'))
+        if CORREO_ACTIVO and not URL_PUBLICA:
+            print('  Ojo: sin ALQUIMIA_URL los enlaces de los correos apuntan a localhost y solo funcionan en este PC.')
         try:
             srv.serve_forever()
         except KeyboardInterrupt:

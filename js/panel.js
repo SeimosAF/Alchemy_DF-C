@@ -136,6 +136,15 @@ export function setPendientes(n) {
   if (cambia && document.getElementById('tab-usuarios')?.classList.contains('active')) cargarGestion();
 }
 
+// V3.8: solicitudes de campaña esperando al superusuario
+let nSolicitudes = 0;
+export function setSolicitudes(n) {
+  if (n > nSolicitudes) sync.aviso(`📨 ${n === 1 ? 'Hay una solicitud de campaña' : 'Hay ' + n + ' solicitudes de campaña'} esperando en «Quién está en línea».`);
+  const cambia = n !== nSolicitudes;
+  nSolicitudes = n;
+  if (cambia && document.getElementById('tab-usuarios')?.classList.contains('active')) cargarGestion();
+}
+
 export function setPresencia(lista) {
   presencia = lista || [];
   pintarTarjetas();
@@ -174,8 +183,9 @@ export function renderUsuarios() {
         ? `<button class="btn btn-sm" data-usr="readmitir" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}">🕊️ Readmitir</button>`
         : `<button class="btn btn-sm btn-danger" data-usr="desterrar" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}">🚫 Desterrar</button>`);
     }
-    if (auth.esDM() && !yo && !admin && !p.baneado) {
+    if (auth.esAdmin() && !yo && !admin && !p.baneado)   // solo el superusuario (no el DM) pone contraseñas
       acciones.push(`<button class="btn btn-sm btn-info" data-usr="pass" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}">🔑 Nueva contraseña</button>`);
+    if (auth.esDM() && !yo && !admin && !p.baneado) {
       acciones.push(`<button class="btn btn-sm" data-usr="ver-inv" data-clave="${esc(p.clave)}">🎒 Inventario, libros y nivel</button>`);
     }
     if (auth.esDM() && !yo && !admin && (p.rol !== 'dm' || auth.esAdmin()))
@@ -325,10 +335,22 @@ function renderGestion() {
         ${auth.mesa?.id === c.id ? '' : `<button class="btn btn-sm" data-usr="ir-mesa" data-id="${esc(c.id)}">🚪 Entrar</button>`}
         <button class="btn btn-sm btn-edit" data-usr="renombrar" data-id="${esc(c.id)}" data-nombre="${esc(c.nombre)}">✏️ Renombrar</button>
       </div></div>`).join('');
+  const fechaS = f => { try { return new Date(f).toLocaleString('es-ES', { dateStyle: 'short', timeStyle: 'short' }); } catch (_) { return f || ''; } };
+  const solicitudes = (admin.solicitudes || []).map(s => `<div class="usr-fila">
+      <span class="avatar avatar-grande">📨</span>
+      <div class="usr-info"><div class="usr-nombre">${esc(s.nombre)}</div>
+        <div class="usr-estado">La pide <b>${esc(s.nombreUsuario)}</b> (sería su DM) · ${esc(fechaS(s.creada))}${s.motivo ? ` · «${esc(s.motivo)}»` : ''}</div></div>
+      <div class="usr-acciones">
+        <button class="btn btn-sm" data-usr="solicitud-aprobar" data-id="${s.id}" data-nombre="${esc(s.nombre)}" data-quien="${esc(s.nombreUsuario)}">✅ Aprobar</button>
+        <button class="btn btn-sm btn-danger" data-usr="solicitud-rechazar" data-id="${s.id}" data-nombre="${esc(s.nombre)}" data-quien="${esc(s.nombreUsuario)}">✖️ Rechazar</button>
+      </div></div>`).join('');
   const desterrados = admin.cuentas.filter(c => c.baneado);
   const bloqueos = admin.bloqueos || [];
   const tiempo = s => s >= 3600 ? `${Math.round(s / 3600)} h` : `${Math.max(1, Math.round(s / 60))} min`;
   ad.innerHTML = `<div class="gestion-caja gestion-admin">
+      ${solicitudes ? `<h3>📨 Solicitudes de campaña</h3>
+        <p class="muted">Si apruebas, se crea la campaña (con el catálogo vacío) y quien la pidió es su DM. Se le avisa por correo si lo tiene confirmado.</p>
+        ${solicitudes}` : ''}
       <h3>🛡️ Campañas</h3>
       <p class="muted">Para nombrar DM o invitar gente a una campaña, entra en ella y usa la lista de abajo. Como superusuario entras en todas con poderes de DM.</p>
       ${filas}
@@ -407,6 +429,20 @@ export function initUsuarios(verInventario, verPerfil = () => {}) {
       await cargarGestion(); await sync.refrescar({ presencia: true });
       return;
     }
+    if (accion === 'solicitud-aprobar' || accion === 'solicitud-rechazar') {
+      const si = accion === 'solicitud-aprobar';
+      let nota = '';
+      if (si) { if (!confirm(`¿Crear la campaña «${b.dataset.nombre}» con ${b.dataset.quien} como DM?`)) return; }
+      else {
+        nota = prompt(`¿Por qué rechazas «${b.dataset.nombre}» de ${b.dataset.quien}? (opcional; se lo dirá la app y el correo)`, '');
+        if (nota === null) return;
+      }
+      const r = await auth.apiMesa('/api/campanas/solicitud/resolver', { id: parseInt(b.dataset.id), aprobar: si, nota });
+      if (!r.ok) alert(r.mensaje);
+      else sync.aviso(si ? `Campaña «${b.dataset.nombre}» creada: ${b.dataset.quien} es su DM.` : 'Solicitud rechazada.');
+      await cargarGestion();
+      return;
+    }
     if (accion === 'ir-mesa') { auth.cambiarMesa(b.dataset.id); return; }
     if (accion === 'hist-recargar') { await cargarHistorial(); return; }
     if (accion === 'hist-mas') { await cargarHistorial(true); return; }
@@ -461,7 +497,7 @@ export function initUsuarios(verInventario, verPerfil = () => {}) {
       return;
     }
     if (accion === 'pass') {
-      const n = prompt(`Nueva contraseña para ${b.dataset.nombre} (mínimo 6 caracteres).\nSe le cerrará la sesión y tendrá que entrar con esta.`);
+      const n = prompt(`Nueva contraseña para ${b.dataset.nombre} (mínimo 6 caracteres).\nSe le cerrará la sesión y tendrá que entrar con esta. Si tiene correo confirmado, se le avisará (sin la contraseña).`);
       if (n == null) return;
       const r = await auth.cambiarContrasena({ usuario: b.dataset.clave, nueva: n });
       alert(r.ok ? `Hecho. Dile a ${b.dataset.nombre} su nueva contraseña.` : r.mensaje);

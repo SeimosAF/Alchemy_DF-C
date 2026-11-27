@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
-rem Ajustes del archivo .env: palabra de paso, contraseña fija del superusuario "DM" y Discord
-if exist .env for %%k in (ALQUIMIA_CLAVE ALQUIMIA_ADMIN DISCORD_CLIENT_ID DISCORD_CLIENT_SECRET ALQUIMIA_URL) do (
+rem Ajustes del archivo .env: palabra de paso, contraseña fija del superusuario "DM", Discord y correo
+if exist .env for %%k in (ALQUIMIA_CLAVE ALQUIMIA_ADMIN DISCORD_CLIENT_ID DISCORD_CLIENT_SECRET ALQUIMIA_URL CORREO_USUARIO CORREO_CLAVE CORREO_SERVIDOR CORREO_PUERTO CORREO_REMITENTE) do (
   for /f "tokens=1,* delims==" %%a in ('findstr /b "%%k=" .env') do set "%%a=%%b"
 )
 echo Iniciando Alquimia en http://localhost:8080

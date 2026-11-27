@@ -1625,7 +1625,7 @@ body:not(.es-dm) #tab-inventario .inv-barra .subtab-bar { display:none; }
 }
 .mat-card-stepper { margin-right:6px; }
 
-/* ===================== V3.9: oficios por jugador (el DM marca a cuáles tiene acceso) ===================== */
+/* ===================== V3.8: oficios por jugador (el DM marca a cuáles tiene acceso) ===================== */
 .usr-disciplinas { display:inline-block; margin-left:6px; font-size:.78em; font-family:var(--f-rotulo); vertical-align:middle; position:relative; }
 .usr-disciplinas > summary { list-style:none; cursor:pointer; padding:2px 8px; border-radius:10px; background:#efe4cc; color:#5e4a34; border:1px solid #b9a27c; }
 .usr-disciplinas > summary::-webkit-details-marker { display:none; }
@@ -1635,7 +1635,7 @@ body:not(.es-dm) #tab-inventario .inv-barra .subtab-bar { display:none; }
 .btn-renovar { font-size:.75em; padding:2px 8px; margin-left:4px; background:#6d8a5a; }
 
 
-/* ===================== V3.9: la mesa en 3D (tu foto es un planeta y los módulos giran en su órbita) ===================== */
+/* ===================== V3.8: la mesa en 3D (tu foto es un planeta y los módulos giran en su órbita) ===================== */
 .mesa-tarjetas { display:block; max-width:none; }
 .orbita3d { position:relative; max-width:720px; margin:0 auto; user-select:none; touch-action:pan-y; }
 .orbita3d-escena { position:relative; height:470px; }
@@ -1711,7 +1711,7 @@ body:not(.es-dm) #tab-inventario .inv-barra .subtab-bar { display:none; }
 .orbita3d-item.bloqueada { cursor:default; }
 .orbita3d-item.bloqueada .orbita3d-luna { box-shadow:0 0 0 3px var(--acento), 0 0 0 5px #c9ad78, inset -10px -14px 22px rgba(80,45,10,.45), 0 10px 18px rgba(0,0,0,.45); }
 
-/* V3.9: el planeta es un portal a las campañas */
+/* V3.8: el planeta es un portal a las campañas */
 .orbita3d-remolino { position:absolute; inset:-20px; border-radius:50%; pointer-events:none; z-index:-1;
   background:conic-gradient(from 0deg, rgba(120,170,255,0), rgba(120,170,255,.85), rgba(200,140,255,.3), rgba(242,213,138,.8), rgba(120,170,255,0));
   filter:blur(3px); animation:remolino 6s linear infinite; }
@@ -1735,3 +1735,21 @@ body:not(.es-dm) #tab-inventario .inv-barra .subtab-bar { display:none; }
 .orbita3d-escena { cursor:grab; touch-action:pan-y; }
 .orbita3d.arrastrando .orbita3d-escena, .orbita3d.arrastrando .orbita3d-item { cursor:grabbing; }
 .orbita3d.arrastrando .orbita3d-item { pointer-events:none !important; }
+
+/* Lo de atrás se oscurece con una capa (más barato que los filtros: el giro va más fluido) */
+.orbita3d-luna::after { content:''; position:absolute; inset:0; border-radius:50%; background:#1a0e05; opacity:var(--sombra, 0); pointer-events:none; }
+.orbita3d-item { backface-visibility:hidden; }
+
+/* V3.8: recuperar la contraseña por correo */
+.entrada-olvido { display:block; margin:10px auto 0; background:none; border:0; padding:4px 6px; color:#7a4a1c;
+  font:inherit; font-size:.9em; text-decoration:underline; text-underline-offset:3px; cursor:pointer; }
+.entrada-olvido:hover, .entrada-olvido:focus-visible { color:#4a2a0c; }
+.entrada-campo small { font-weight:normal; opacity:.75; }
+.perfil-correo .muted { flex-basis:100%; }
+.entrada-olvido[hidden] { display:none; }
+
+/* V3.8: solicitudes de campaña en el selector */
+.mesa-solicitud { margin:10px 0; padding:8px 10px; border-radius:8px; background:rgba(122,74,28,.08); border:1px solid rgba(122,74,28,.25); font-size:.92em; line-height:1.4; }
+.mesa-solicitud .mesa-enlace { display:block; margin-top:6px; }
+.mesa-solicitud-rechazada { background:rgba(150,30,20,.07); border-color:rgba(150,30,20,.3); }
+.mesa-pedir .muted { font-size:.85em; margin:6px 0 0; }

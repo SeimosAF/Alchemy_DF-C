@@ -187,3 +187,20 @@ inventarios de la mesa, «🆕 nuevo para …» en los materiales que ese jugado
 
 **Quien no es alquimista** (ni pluriempleado ni DM) ve los materiales alquímicos de su inventario como
 «Material alquímico», sin nombre ni efectos; puede tirarlos o dárselos a otro.
+
+## V3.8: recuperar la contraseña por correo
+
+Todo está en `servidor.py`, bloque «correo»: columnas `usuarios.correo` (confirmado) y
+`usuarios.correo_pendiente`, tabla `enlaces_correo` (huella del token, tipo `recuperar` o `verificar`,
+caducidad). Rutas sin sesión: `POST /api/recuperar`, `/api/recuperar/nueva`, `/api/correo/verificar`;
+con sesión: `POST /api/yo/correo`. En el navegador, `js/auth.js` (modos `olvido` y `nueva` del pergamino,
+enlaces `#recuperar=` y `#verificar=`) y `js/perfil.js` (caja del correo). Configuración y medidas de
+seguridad en `docs/CORREO.md`.
+
+## V3.8: solicitudes de campaña
+
+Un jugador pide una campaña desde el selector de campañas (`js/auth.js`, «📜 Pedir una campaña nueva»); solo puede
+tener una pendiente a la vez (índice único en `solicitudes_campana`). El superusuario la ve en «Quién está en línea»
+(`js/panel.js`, «📨 Solicitudes de campaña») y la aprueba (se crea con el catálogo vacío y quien la pidió es su DM)
+o la rechaza con un motivo. Se avisa por correo si la cuenta lo tiene confirmado. Rutas: `POST /api/campanas/solicitar`,
+`/api/campanas/solicitud/cancelar` y `/api/campanas/solicitud/resolver` (solo superusuario).

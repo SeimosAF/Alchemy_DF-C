@@ -42,6 +42,10 @@
           <span>Repite la contraseña</span>
           <input type="password" id="entradaPass2" autocomplete="new-password" maxlength="200">
         </label>
+        <label class="entrada-campo" id="filaCorreo" hidden>
+          <span>Correo <small>(opcional, por si olvidas la contraseña)</small></span>
+          <input type="email" id="entradaCorreo" autocomplete="email" maxlength="254" spellcheck="false">
+        </label>
         <label class="entrada-campo" id="filaClave" hidden>
           <span>Palabra de paso de la mesa</span>
           <input type="password" id="entradaClave" autocomplete="off" maxlength="200">
@@ -49,6 +53,7 @@
         <p class="entrada-nota" id="entradaNota"></p>
         <p class="entrada-error" id="entradaError" role="alert"></p>
         <button type="submit" class="sello" id="entradaBoton"><span>Cruzar el umbral</span></button>
+        <button type="button" class="entrada-olvido" id="entradaOlvido" hidden>¿Olvidaste la contraseña?</button>
       </form>
       <div class="entrada-discord" id="entradaDiscord" hidden>
         <span class="entrada-o">¿Sin palabra de paso?</span>

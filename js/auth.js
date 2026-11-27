@@ -18,6 +18,11 @@
 //   pendiente&n=NOMBRE  -> cuenta creada: espera a que un DM la apruebe en «En línea»
 //   vinculado           -> la cuenta que ya tenía sesión ha quedado vinculada
 //   error&m=...&modo=   -> se enseña el mensaje
+//
+// V3.8: CORREO (si el servidor tiene CORREO_USUARIO y CORREO_CLAVE). Quien olvida la contraseña pide
+// un enlace con «¿Olvidaste la contraseña?» y le llega a su correo confirmado. Los enlaces vuelven a la
+// app con #recuperar=TOKEN (elegir contraseña nueva) o #verificar=TOKEN (confirmar el correo). El token
+// va detrás de «#» para que no salga del navegador, y se borra de la dirección nada más leerlo.
 
 const K_SESION = 'alquimiaSesion';
 const K_ELEGIR = 'alquimiaElegirMesa';            // sessionStorage: "enséñame el pergamino de mesas"
@@ -28,8 +33,10 @@ export let usuario = null;
 export let servidor = false;    // ¿hay servidor con cuentas?
 export let mesa = null;         // { id, nombre, rol, disciplina } la campaña en la que se está jugando
 export let campanas = [];       // las campañas de esta cuenta
-let otras = [];                 // V3.9: campañas en las que no juega (para el selector)
+let otras = [];                 // V3.8: campañas en las que no juega (para el selector)
 export let puedeCrear = false;  // ¿puede crear campañas? (el superusuario)
+let puedeSolicitar = false;     // V3.8: ¿puede pedir una campaña al superusuario?
+let solicitud = null;           // su solicitud de campaña: pendiente, o la última resuelta (7 días)
 let info = {};
 export let mensajeDiscord = null;   // { texto, tipo } para enseñar al arrancar la app (vinculado, error...)
 
@@ -71,6 +78,13 @@ async function pedirInfo() {
 }
 
 // Lo que trae la dirección al volver de Discord (y se borra de la barra de direcciones)
+function leerVueltaCorreo() {
+  const m = /^#(recuperar|verificar)=([A-Za-z0-9_\-]{20,100})$/.exec(location.hash);
+  if (!m) return null;
+  try { history.replaceState(null, '', location.pathname + location.search); } catch (_) { location.hash = ''; }
+  return { tipo: m[1], token: m[2] };
+}
+
 function leerVueltaDiscord() {
   if (!location.hash.startsWith('#discord=')) return null;
   const p = new URLSearchParams(location.hash.slice(1));
@@ -87,6 +101,16 @@ export async function empezarDiscord(modo, datos = {}) {
   return null;
 }
 
+// Poner, cambiar o quitar el correo de la cuenta (pide la contraseña actual)
+export async function ponerCorreo(correo, contrasena) {
+  const r = await api('/api/yo/correo', { correo, contrasena }, true).catch(() => ({ j: null }));
+  if (r.j?.ok && usuario) {   // solo se refresca el correo (el papel en la mesa no se toca)
+    const y = await api('/api/yo', undefined, true).catch(() => null);
+    if (y?.j?.usuario) usuario.correo = y.j.usuario.correo;
+  }
+  return r.j || { ok: false, mensaje: 'No se puede hablar con el servidor.' };
+}
+
 export async function desvincularDiscord() {
   const r = await api('/api/discord/desvincular', {}, true).catch(() => null);
   if (r?.j?.ok && usuario) usuario.discord = { vinculado: false, nombre: '' };
@@ -97,6 +121,7 @@ export async function desvincularDiscord() {
 export async function iniciar() {
   const pantalla = document.getElementById('pantallaEntrada');
   const vuelta = leerVueltaDiscord();
+  const enlace = leerVueltaCorreo();
   info = await pedirInfo();
   if (info?.antiguo) {
     document.body.classList.remove('sin-sesion');
@@ -126,6 +151,18 @@ export async function iniciar() {
   } else if (vuelta?.estado === 'error') {
     if (vuelta.modo === 'vincular') mensajeDiscord = { texto: vuelta.mensaje || 'No se pudo vincular Discord.', tipo: 'error' };
     else avisoEntrada = { modo: 'crear', error: vuelta.mensaje || 'No se pudo crear la cuenta con Discord.' };
+  }
+  if (enlace?.tipo === 'recuperar') {
+    // Elegir contraseña nueva. Al cambiarla se cierran todas las sesiones de la cuenta, también esta.
+    await mostrarPantalla(pantalla, false, { modo: 'nueva', token: enlace.token });
+    return { modo: 'servidor', recienEntrado: true };
+  }
+  if (enlace?.tipo === 'verificar') {
+    const r = await api('/api/correo/verificar', { token: enlace.token }).catch(() => ({ j: null }));
+    const texto = r.j?.ok ? `📧 Correo ${r.j.correo} confirmado. Si olvidas la contraseña, podrás cambiarla con él.`
+      : (r.j?.mensaje || 'No se pudo confirmar el correo.');
+    if (token()) mensajeDiscord = { texto, tipo: r.j?.ok ? 'info' : 'error' };
+    else avisoEntrada = { modo: 'entrar', nota: escH(texto) };
   }
   if (token()) {
     try {
@@ -157,6 +194,8 @@ async function cargarYo() {
   campanas = r.j.campanas || [];
   otras = r.j.otras || [];
   puedeCrear = !!r.j.puedeCrear;
+  puedeSolicitar = !!r.j.puedeSolicitar && !puedeCrear;
+  solicitud = r.j.solicitud || null;
   return true;
 }
 
@@ -247,7 +286,7 @@ function elegirMesa(pantalla) {
         <p class="entrada-nota">${campanas.length
           ? `Bienvenido, <strong>${esc(usuario.nombre)}</strong>. ¿A qué mesa te sientas hoy?`
           : `<strong>${esc(usuario.nombre)}</strong>, todavía no te has sentado en ninguna mesa.<br>
-             ${puedeCrear ? 'Crea la primera campaña aquí abajo.' : `Pide al DM de tu campaña que te invite (dile tu nombre, <strong>${esc(usuario.nombre)}</strong>) o únete con la contraseña de la mesa.`}`}</p>
+             ${puedeCrear ? 'Crea la primera campaña aquí abajo.' : `Pide al DM de tu campaña que te invite (dile tu nombre, <strong>${esc(usuario.nombre)}</strong>) o únete con la contraseña de la mesa.${puedeSolicitar ? ' También puedes pedir una campaña propia.' : ''}`}`}</p>
         ${total ? `<input type="search" class="mesa-buscar" placeholder="🔍 Buscar campaña" value="${esc(busca)}" aria-label="Buscar campaña">` : ''}
         <div class="mesa-opciones">${lista || (busca ? '<p class="muted">Ninguna campaña se llama así.</p>' : '')}</div>
         ${!puedeCrear && !otras.length ? `<details class="mesa-unirse" ${campanas.length ? '' : 'open'}>
@@ -258,6 +297,7 @@ function elegirMesa(pantalla) {
               <button type="submit" class="btn btn-sm">Unirme</button>
             </form>
           </details>` : ''}
+        ${puedeSolicitar ? cajaSolicitud() : ''}
         ${puedeCrear ? `<form class="mesa-crear" id="mesaCrearForm">
             <label class="entrada-campo"><span>Nueva campaña</span>
               <input type="text" id="mesaCrearNombre" maxlength="40" placeholder="Nombre de la campaña"></label>
@@ -268,6 +308,27 @@ function elegirMesa(pantalla) {
           ${!campanas.length && !puedeCrear ? '<button type="button" class="mesa-enlace" data-mesa-accion="mirar">🔄 Volver a mirar</button>' : ''}
           <button type="button" class="mesa-enlace" data-mesa-accion="salir">🚪 Cerrar sesión</button>
         </div>`;
+    }
+    // V3.8: pedir una campaña propia al superusuario (solo una solicitud a la vez)
+    function cajaSolicitud() {
+      const s = solicitud;
+      const fecha = f => { try { return new Date(f).toLocaleDateString('es-ES', { day: 'numeric', month: 'long' }); } catch (_) { return ''; } };
+      if (s?.estado === 'pendiente') return `<div class="mesa-solicitud mesa-solicitud-pendiente">
+          ⏳ Has pedido la campaña <strong>${esc(s.nombre)}</strong> (${esc(fecha(s.creada))}). Espera a que el superusuario la apruebe:
+          cuando lo haga aparecerá en esta lista y tú serás su DM.
+          <button type="button" class="mesa-enlace" data-mesa-accion="cancelar-solicitud">✖️ Cancelar la solicitud</button></div>`;
+      const aviso = s?.estado === 'rechazada'
+        ? `<div class="mesa-solicitud mesa-solicitud-rechazada">❌ El superusuario no aprobó <strong>${esc(s.nombre)}</strong>.${s.nota ? ` Motivo: ${esc(s.nota)}` : ''}</div>`
+        : s?.estado === 'aprobada' ? `<div class="mesa-solicitud">✅ Tu campaña <strong>${esc(s.nombre)}</strong> está aprobada: eres su DM.</div>` : '';
+      return aviso + `<details class="mesa-unirse mesa-pedir">
+          <summary>📜 Pedir una campaña nueva</summary>
+          <form class="mesa-crear" id="mesaPedirForm">
+            <label class="entrada-campo"><span>Nombre de la campaña</span><input type="text" id="mesaPedirNombre" maxlength="40"></label>
+            <label class="entrada-campo"><span>Para qué es <small>(opcional)</small></span><input type="text" id="mesaPedirMotivo" maxlength="300" placeholder="Ej.: campaña de los jueves con mis amigos"></label>
+            <button type="submit" class="btn btn-sm">📨 Mandar la solicitud</button>
+            <p class="muted">La aprueba el superusuario. Serás el DM. Solo puedes tener una solicitud a la vez.</p>
+          </form>
+        </details>`;
     }
     pintar();
     caja.oninput = e => {
@@ -293,7 +354,13 @@ function elegirMesa(pantalla) {
         return;
       }
       if (b.dataset.mesaAccion === 'salir') return salir();
-      if (b.dataset.mesaAccion === 'mirar') {
+      if (b.dataset.mesaAccion === 'cancelar-solicitud') {
+        if (!confirm(`¿Cancelar la solicitud de «${solicitud?.nombre}»?`)) return;
+        const r = await api('/api/campanas/solicitud/cancelar', {}, true).catch(() => ({ j: null }));
+        try { await cargarYo(); } catch (_) {}
+        return pintar(r.j?.ok ? '' : (r.j?.mensaje || 'No se pudo cancelar.'));
+      }
+      if (b.dataset.mesaAccion === 'mirar') {   // también trae la campaña si el superusuario ya la aprobó
         try { await cargarYo(); } catch (_) {}
         pintar(campanas.length ? '' : 'Todavía nadie te ha invitado.');
       }
@@ -315,6 +382,14 @@ function elegirMesa(pantalla) {
         try { await cargarYo(); } catch (_) {}
         caja.onclick = null;
         return resolve(campanas.find(c => c.id === r.j.campana.id) || r.j.campana);
+      }
+      if (e.target.id === 'mesaPedirForm') {   // pedir una campaña al superusuario
+        const nombre = caja.querySelector('#mesaPedirNombre').value.trim();
+        if (!nombre) return pintar('Ponle un nombre a la campaña.');
+        const r = await api('/api/campanas/solicitar', { nombre, motivo: caja.querySelector('#mesaPedirMotivo').value }, true).catch(() => ({ j: null }));
+        if (!r.j?.ok) return pintar(r.j?.mensaje || 'No se pudo mandar la solicitud.');
+        solicitud = r.j.solicitud;
+        return pintar();
       }
       const nombre = caja.querySelector('#mesaCrearNombre')?.value.trim();
       if (!nombre) return pintar('Ponle un nombre a la campaña.');
@@ -347,6 +422,10 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
     const pass = pantalla.querySelector('#entradaPass');
     const pass2 = pantalla.querySelector('#entradaPass2');
     const claveMesa = pantalla.querySelector('#entradaClave');
+    const correo = pantalla.querySelector('#entradaCorreo');
+    const olvido = pantalla.querySelector('#entradaOlvido');
+    const filaNombre = nombre.closest('label'), filaPass = pass.closest('label');
+    const tokenNueva = aviso?.token || '';
     const boton = pantalla.querySelector('#entradaBoton');
     const nota = pantalla.querySelector('#entradaNota');
     let modo = aviso?.modo || (info.hayUsuarios ? 'entrar' : 'crear');
@@ -357,19 +436,41 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
       pantalla.dataset.modo = modo;
       pantalla.querySelectorAll('[data-entrada-modo]').forEach(b =>
         b.classList.toggle('activo', b.dataset.entradaModo === modo));
-      pantalla.querySelector('#filaPass2').hidden = modo !== 'crear';
+      const nuevaPass = modo === 'crear' || modo === 'nueva';
+      filaNombre.hidden = modo === 'nueva';
+      filaNombre.querySelector('span').textContent = modo === 'olvido' ? 'Nombre o correo' : 'Nombre';
+      nombre.maxLength = modo === 'olvido' ? 254 : 24;
+      nombre.autocomplete = modo === 'olvido' ? 'email' : 'username';
+      filaPass.hidden = modo === 'olvido';
+      filaPass.querySelector('span').textContent = modo === 'nueva' ? 'Contraseña nueva' : 'Contraseña';
+      pantalla.querySelector('#filaPass2').hidden = !nuevaPass;
       pantalla.querySelector('#filaClave').hidden = !(modo === 'crear' && info.pideClave);
+      pantalla.querySelector('#filaCorreo').hidden = !(modo === 'crear' && info.correo);
+      olvido.hidden = !(modo === 'entrar' && info.correo);
       if (cajaDiscord) cajaDiscord.hidden = !(conDiscord && modo === 'crear');
-      pass.autocomplete = modo === 'crear' ? 'new-password' : 'current-password';
-      boton.querySelector('span').textContent = modo === 'crear' ? 'Inscribir mi nombre' : 'Cruzar el umbral';
+      pass.autocomplete = nuevaPass ? 'new-password' : 'current-password';
+      boton.querySelector('span').textContent = { crear: 'Inscribir mi nombre', olvido: 'Mandarme el enlace',
+        nueva: 'Guardar la contraseña' }[modo] || 'Cruzar el umbral';
+      error.textContent = '';
+      if (modo === 'olvido' || modo === 'nueva') {
+        nota.innerHTML = modo === 'olvido'
+          ? 'Escribe tu nombre de usuario o tu correo y te mandaremos un enlace para elegir una contraseña nueva. '
+            + 'Solo llega si tu cuenta tiene el correo confirmado; si no, pide al DM que te ponga una.'
+            + '<br><button type="button" class="entrada-olvido" data-volver-entrar>← Volver a entrar</button>'
+          : 'Elige tu contraseña nueva (mínimo 6 caracteres). Al guardarla se cerrarán todas las sesiones abiertas de tu cuenta.';
+        return;
+      }
       nota.innerHTML = modo === 'crear'
         ? (info.hayUsuarios
             ? 'Tu nombre quedará escrito en el libro de la mesa.' + (info.pideClave ? ' La <strong>palabra de paso</strong> te la da el DM.' : '')
             : '👑 Eres el primero en llegar: <strong>tu cuenta será la del DM</strong>, el señor de la mesa.')
           + (conDiscord ? '<br>¿No tienes la palabra de paso? Rellena nombre y contraseña y usa <strong>Crear con Discord</strong>: el DM tendrá que aprobar tu cuenta.' : '')
         : 'Escribe el nombre y la contraseña de tu cuenta.';
-      error.textContent = '';
     }
+    olvido.addEventListener('click', () => { modo = 'olvido'; pintarModo(); nombre.focus(); });
+    nota.addEventListener('click', e => {
+      if (e.target.closest('[data-volver-entrar]')) { modo = 'entrar'; pintarModo(); nombre.focus(); }
+    });
     pintarModo();
     if (aviso?.nombre) nombre.value = aviso.nombre;
     if (aviso?.nota) nota.innerHTML = aviso.nota;
@@ -386,7 +487,7 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
     pantalla.querySelectorAll('[data-entrada-modo]').forEach(b => b.addEventListener('click', () => {
       modo = b.dataset.entradaModo; pintarModo(); nombre.focus();
     }));
-    setTimeout(() => nombre.focus(), 600);
+    setTimeout(() => (modo === 'nueva' ? pass : nombre).focus(), 600);
 
     function fallo(msg) {
       error.textContent = msg;
@@ -395,8 +496,45 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
       form.classList.add('temblor');
     }
 
+    // Pedir el enlace (la respuesta es siempre la misma, exista la cuenta o no)
+    async function pedirEnlace() {
+      if (!nombre.value.trim()) return fallo('Escribe tu nombre de usuario o tu correo.');
+      boton.disabled = true;
+      pantalla.classList.add('ocupada');
+      const r = await api('/api/recuperar', { quien: nombre.value }).catch(() => ({ j: { mensaje: 'No se puede hablar con el servidor. ¿Está encendido?' } }));
+      boton.disabled = false;
+      pantalla.classList.remove('ocupada');
+      if (!r.j?.ok) return fallo(r.j?.mensaje || 'Algo ha fallado. Vuelve a probar.');
+      modo = 'entrar'; pintarModo();
+      nombre.value = '';
+      nota.innerHTML = '📜 ' + escH(r.j.mensaje);
+    }
+    // Guardar la contraseña nueva con el enlace del correo
+    async function guardarNueva() {
+      if (pass.value.length < 6) return fallo('La contraseña debe tener al menos 6 caracteres.');
+      if (pass.value !== pass2.value) return fallo('Las dos contraseñas no coinciden.');
+      boton.disabled = true;
+      pantalla.classList.add('ocupada');
+      const r = await api('/api/recuperar/nueva', { token: tokenNueva, nueva: pass.value }).catch(() => ({ j: { mensaje: 'No se puede hablar con el servidor. ¿Está encendido?' } }));
+      boton.disabled = false;
+      pantalla.classList.remove('ocupada');
+      if (!r.j?.ok) {
+        if (r.j?.motivo !== 'enlace') return fallo(r.j?.mensaje || 'Algo ha fallado. Vuelve a probar.');
+        modo = 'entrar'; pintarModo(); pass.value = pass2.value = '';
+        return fallo(r.j.mensaje);
+      }
+      lsSet(K_SESION, null);
+      modo = 'entrar'; pintarModo();
+      pass.value = pass2.value = '';
+      nombre.value = r.j.nombre || '';
+      nota.innerHTML = '🔑 Contraseña cambiada. Ya puedes entrar con ella.';
+      pass.focus();
+    }
+
     form.addEventListener('submit', async e => {
       e.preventDefault();
+      if (modo === 'olvido') return pedirEnlace();
+      if (modo === 'nueva') return guardarNueva();
       if (!nombre.value.trim()) return fallo('Escribe tu nombre.');
       if (!pass.value) return fallo('Escribe tu contraseña.');
       if (modo === 'crear' && pass.value.length < 6) return fallo('La contraseña debe tener al menos 6 caracteres.');
@@ -407,6 +545,7 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
       try {
         r = await api(modo === 'crear' ? '/api/registro' : '/api/entrar', {
           nombre: nombre.value, contrasena: pass.value, clave: claveMesa.value,
+          ...(modo === 'crear' && correo.value.trim() ? { correo: correo.value.trim() } : {}),
         });
       } catch (_) {
         r = { status: 0, j: { mensaje: 'No se puede hablar con el servidor. ¿Está encendido?' } };
@@ -417,7 +556,9 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
       lsSet(K_SESION, r.j.token);
       usuario = r.j.usuario;
       campanas = r.j.campanas || [];
-      pass.value = pass2.value = claveMesa.value = '';
+      if (modo === 'crear' && correo.value.trim())
+        mensajeDiscord = { texto: `📧 Te hemos mandado un enlace a ${correo.value.trim()} para confirmar el correo.`, tipo: 'info' };
+      pass.value = pass2.value = claveMesa.value = correo.value = '';
       try { await cargarYo(); } catch (_) {}
       const c = mesaSinPreguntar() || await elegirMesa(pantalla);
       sellar(pantalla, c, resolve);
