@@ -48,7 +48,7 @@
 #
 # Solo usa la biblioteca estándar de Python 3: no hace falta instalar nada.
 
-import base64, binascii, http.server, ipaddress, json, os, sqlite3, sys, threading, time, hmac, hashlib, secrets, re, unicodedata
+import base64, binascii, http.server, ipaddress, json, os, signal, sqlite3, sys, threading, time, hmac, hashlib, secrets, re, unicodedata
 import urllib.request, urllib.error
 import smtplib, ssl
 from email.message import EmailMessage
@@ -57,6 +57,12 @@ from datetime import datetime, timezone
 from urllib.parse import urlparse, parse_qs, unquote, urlencode, quote
 
 RAIZ = os.path.dirname(os.path.abspath(__file__))
+
+# Versión de la app y lo que trae de nuevo, en una línea. Al arrancar con una versión distinta de la
+# última anunciada, el bot de cada mesa lo cuenta en el chat. Al publicar una versión nueva, cambia las dos.
+VERSION = '3.9'
+NOVEDADES = ('chat de la mesa con Dobby (avisa de quién llega, de apagones y de versiones nuevas; el DM modera), '
+             'crear cuenta con correo o Discord y el giro de la mesa arreglado en el móvil.')
 PUERTO = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else int(os.environ.get('PORT', '8080'))
 HOST = os.environ.get('HOST', '0.0.0.0')
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(RAIZ, 'datos', 'alquimia.db')
@@ -120,7 +126,7 @@ NOMBRE_PRIMERA = 'La primera campaña'
 # 'desempleado' no tiene ningún oficio; 'pluriempleado' los tiene todos (elige cuál usar en la mesa).
 DISCIPLINAS = ('alquimista', 'cocinero', 'hechicero', 'herrero', 'desempleado', 'pluriempleado')
 DISCIPLINA_DEFECTO = 'alquimista'
-# V3.8: el DM marca a qué oficios tiene acceso cada jugador (uno, varios, todos o ninguno).
+# V3.7: el DM marca a qué oficios tiene acceso cada jugador (uno, varios, todos o ninguno).
 # Se guarda en miembros.disciplina: 'desempleado' (ninguno), un oficio, o varios separados por comas.
 OFICIOS = ('alquimista', 'cocinero', 'hechicero', 'herrero')
 
@@ -256,6 +262,10 @@ def preparar_bd():
         con.execute('''CREATE TABLE IF NOT EXISTS enlaces_correo (
             token TEXT PRIMARY KEY, usuario TEXT NOT NULL, tipo TEXT NOT NULL, correo TEXT, creado REAL, caduca REAL NOT NULL)''')
         con.execute('DELETE FROM enlaces_correo WHERE caduca < ?', (time.time(),))
+        # V3.9: cuentas a medio crear con correo (no existen hasta que se abre el enlace)
+        con.execute('''CREATE TABLE IF NOT EXISTS altas_pendientes (
+            token TEXT PRIMARY KEY, clave TEXT NOT NULL, nombre TEXT NOT NULL, hash TEXT NOT NULL, correo TEXT NOT NULL,
+            creado REAL, caduca REAL NOT NULL)''')
         # V3.8: solicitudes de campaña. Un jugador pide una campaña; el superusuario la aprueba o la rechaza.
         # estado: pendiente | aprobada | rechazada | cancelada. Cada cuenta solo puede tener UNA pendiente.
         con.execute('''CREATE TABLE IF NOT EXISTS solicitudes_campana (
@@ -263,6 +273,26 @@ def preparar_bd():
             creada TEXT, estado TEXT NOT NULL DEFAULT 'pendiente', resuelta TEXT, nota TEXT, campana TEXT)''')
         con.execute("CREATE UNIQUE INDEX IF NOT EXISTS solicitud_unica ON solicitudes_campana (usuario) WHERE estado='pendiente'")
         con.execute('CREATE UNIQUE INDEX IF NOT EXISTS usuarios_discord ON usuarios (discord_id) WHERE discord_id IS NOT NULL')
+        # V3.9: chat de la mesa. autor '' = el bot de la mesa (Dobby). Solo se añaden mensajes.
+        con.execute('''CREATE TABLE IF NOT EXISTS chat (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, campana TEXT NOT NULL, autor TEXT NOT NULL, nombre TEXT NOT NULL,
+            texto TEXT NOT NULL, fecha TEXT)''')
+        con.execute('CREATE INDEX IF NOT EXISTS chat_campana ON chat (campana, id)')
+        if 'borrado' not in [f[1] for f in con.execute('PRAGMA table_info(chat)')]:
+            # Moderación: el DM o el superusuario retiran un mensaje (no se borra de la base: queda quién y cuándo)
+            con.execute('ALTER TABLE chat ADD COLUMN borrado INTEGER NOT NULL DEFAULT 0')
+            con.execute('ALTER TABLE chat ADD COLUMN borrado_por TEXT')
+            con.execute('ALTER TABLE chat ADD COLUMN borrado_fecha TEXT')
+        # Quién ha entrado ya alguna vez en cada mesa (para que el bot dé la bienvenida solo la primera vez).
+        # Al crear la tabla, todos los que ya estaban en una mesa cuentan como llegados: no hay bienvenidas en masa.
+        if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chat_llegadas'").fetchone():
+            con.execute('CREATE TABLE chat_llegadas (campana TEXT NOT NULL, usuario TEXT NOT NULL, fecha TEXT, PRIMARY KEY (campana, usuario))')
+            con.execute('INSERT OR IGNORE INTO chat_llegadas SELECT campana, usuario, ? FROM miembros', (ahora(),))
+        cols_c = [f[1] for f in con.execute('PRAGMA table_info(campanas)')]
+        if 'bot_nombre' not in cols_c:
+            con.execute('ALTER TABLE campanas ADD COLUMN bot_nombre TEXT')
+        if 'bot_bienvenida' not in cols_c:
+            con.execute('ALTER TABLE campanas ADD COLUMN bot_bienvenida TEXT')
         if not nueva_bd and 'campana' not in [f[1] for f in con.execute('PRAGMA table_info(entradas)')]:
             con.close()
             con = None
@@ -512,48 +542,50 @@ def comprobar_palabra_de_paso(cuerpo, origen):
                   + (f' Te queda{"n" if r > 1 else ""} {r} intento{"s" if r > 1 else ""}.' if r <= 3 else ''))
 
 
+def alta_en_bd(con, nombre, huella, correo=None):
+    """Crea la cuenta dentro de una transacción abierta. La primera cuenta es el DM de la primera campaña."""
+    primera = not con.execute("SELECT 1 FROM usuarios WHERE rol!='admin' LIMIT 1").fetchone()
+    clave = clave_de(nombre)
+    if buscar_usuario(con, clave):
+        raise Rechazo('existe', f'Ya existe una cuenta llamada «{nombre}». Elige otro nombre o entra con ella.')
+    con.execute('INSERT INTO usuarios (clave, nombre, hash, rol, creado, baneado, correo) VALUES (?,?,?,?,?,0,?)',
+                (clave, nombre, huella, 'dm' if primera else 'jugador', ahora(), correo))
+    if primera:
+        # La primera cuenta es el DM de la primera campaña (se crea si aún no existe).
+        con.execute('INSERT OR IGNORE INTO campanas (id, nombre, creada, rev) VALUES (?,?,?,0)',
+                    (PRIMERA, NOMBRE_PRIMERA, ahora()))
+        con.execute('INSERT OR REPLACE INTO miembros (campana, usuario, rol, disciplina, unido) VALUES (?,?,?,?,?)',
+                    (PRIMERA, clave, 'dm', DISCIPLINA_DEFECTO, ahora()))
+        adoptar_huerfanos(con, PRIMERA, clave)
+    # Las demás cuentas no están en ninguna campaña hasta que un DM las invite (o pidan una campaña).
+    token = abrir_sesion(con, clave)
+    usuario = {'clave': clave, 'nombre': nombre, 'rol': 'jugador'}
+    return {'ok': True, 'token': token, 'usuario': usuario, 'primera': primera, 'campanas': campanas_de(con, usuario)}
+
+
 def registrar(cuerpo, origen='-'):
+    """Crear cuenta (V3.9). Con correo o Discord configurados, la cuenta se crea de una de estas formas:
+     - con CORREO: se manda un enlace y la cuenta no existe hasta que se abre (ver confirmar_alta);
+     - con DISCORD: por /api/discord/empezar (modo «crear»), no por aquí;
+     - con la PALABRA DE PASO de la mesa (opción oculta, por si acaso): se crea al momento.
+    Sin correo ni Discord en el servidor, como siempre: palabra de paso (si la hay) y al momento."""
     nombre = re.sub(r'\s+', ' ', unicodedata.normalize('NFC', str(cuerpo.get('nombre') or '')).strip())
     contrasena = cuerpo.get('contrasena')
     if not NOMBRE_OK.match(nombre):
         raise Rechazo('invalida', 'El nombre debe tener de 2 a 24 letras o números (también valen espacios, guiones y puntos).')
     validar_contrasena(contrasena)
-    if CORREO_ACTIVO and cuerpo.get('correo'):
-        limpiar_correo(cuerpo.get('correo'))   # mejor avisar antes de crear nada
+    con_verificacion = CORREO_ACTIVO or DISCORD_ACTIVO
+    if con_verificacion and not cuerpo.get('clave'):
+        if not CORREO_ACTIVO:
+            raise Rechazo('invalida', 'Crea la cuenta con Discord.')
+        if not cuerpo.get('correo'):
+            raise Rechazo('invalida', 'Escribe tu correo' + (' o crea la cuenta con Discord.' if DISCORD_ACTIVO else '.'))
+        return pedir_alta(nombre, contrasena, limpiar_correo(cuerpo.get('correo')), origen)
+    if con_verificacion and not CLAVE:
+        raise Rechazo('clave', 'Este servidor no tiene palabra de paso: crea la cuenta con tu correo' + (' o con Discord.' if DISCORD_ACTIVO else '.'))
     comprobar_palabra_de_paso(cuerpo, origen)
-    with CERROJO:
-        con = conectar()
-        try:
-            con.execute('BEGIN IMMEDIATE')
-            primera = not con.execute("SELECT 1 FROM usuarios WHERE rol!='admin' LIMIT 1").fetchone()
-            clave = clave_de(nombre)
-            if buscar_usuario(con, clave):
-                raise Rechazo('existe', f'Ya existe una cuenta llamada «{nombre}». Elige otro nombre o entra con ella.')
-            rol = 'dm' if primera else 'jugador'
-            con.execute('INSERT INTO usuarios (clave, nombre, hash, rol, creado, baneado) VALUES (?,?,?,?,?,0)',
-                        (clave, nombre, hash_contrasena(contrasena), rol, ahora()))
-            if primera:
-                # La primera cuenta es el DM de la primera campaña (se crea si aún no existe).
-                con.execute('INSERT OR IGNORE INTO campanas (id, nombre, creada, rev) VALUES (?,?,?,0)',
-                            (PRIMERA, NOMBRE_PRIMERA, ahora()))
-                con.execute('INSERT OR REPLACE INTO miembros (campana, usuario, rol, disciplina, unido) VALUES (?,?,?,?,?)',
-                            (PRIMERA, clave, 'dm', DISCIPLINA_DEFECTO, ahora()))
-                adoptar_huerfanos(con, PRIMERA, clave)
-            # Las demás cuentas no están en ninguna campaña hasta que un DM las invite.
-            token = abrir_sesion(con, clave)
-            con.execute('COMMIT')
-            usuario = {'clave': clave, 'nombre': nombre, 'rol': 'jugador'}
-            resultado = {'ok': True, 'token': token, 'usuario': usuario, 'primera': primera,
-                         'campanas': campanas_de(con, usuario)}
-        except BaseException:
-            if con.in_transaction:
-                con.execute('ROLLBACK')
-            raise
-        finally:
-            con.close()
-    if CORREO_ACTIVO and cuerpo.get('correo'):   # fuera del cerrojo (pedir_verificacion lo coge)
-        pedir_verificacion(clave_de(nombre), nombre, limpiar_correo(cuerpo.get('correo')))
-    return resultado
+    huella = hash_contrasena(contrasena)
+    return con_escritura(lambda con: alta_en_bd(con, nombre, huella))
 
 
 FALLOS = {}   # ip -> (fallos, desde): frena a quien prueba contraseñas a lo loco
@@ -631,7 +663,7 @@ def campanas_de(con, u):
 
 
 def otras_campanas(con, u):
-    """V3.8: las campañas en las que NO juega, para el selector (con candado si tienen contraseña).
+    """V3.7: las campañas en las que NO juega, para el selector (con candado si tienen contraseña).
     Las que no tienen contraseña solo se ven: se entra por invitación del DM."""
     if es_admin(u):
         return []
@@ -872,7 +904,7 @@ def unirse(u, cuerpo, ip):
         raise Rechazo('espera', 'Demasiados intentos fallidos. Espera un minuto y vuelve a probar.')
     nombre = re.sub(r'\s+', ' ', unicodedata.normalize('NFC', str(cuerpo.get('nombre') or '')).strip())
     clave = str(cuerpo.get('clave') or '')
-    camp_id = cuerpo.get('id')   # V3.8: desde el selector de campañas se une por su id
+    camp_id = cuerpo.get('id')   # V3.7: desde el selector de campañas se une por su id
 
     def hacer(con):
         if isinstance(camp_id, str) and camp_id:
@@ -2153,6 +2185,74 @@ def avisar_por_correo(clave, asunto, texto):
         enviar_en_segundo_plano(f[1], 'La taberna de Jhon: ' + asunto, f'Hola, {f[0]}:\n\n{texto}\n')
 
 
+HORAS_ALTA = 24   # horas que dura el enlace para terminar de crear la cuenta
+
+
+def pedir_alta(nombre, contrasena, correo, ip):
+    """Crear cuenta con correo: la cuenta NO existe hasta que se abre el enlace. Se guarda la huella de la
+    contraseña (nunca la contraseña) y la huella del token. La respuesta es la misma pase lo que pase
+    con el correo: si ya está en otra cuenta, se avisa a ese correo en vez de decirlo aquí."""
+    respuesta = {'ok': True, 'alta': True, 'mensaje': f'Te hemos mandado un correo a {correo}. Abre el enlace para terminar de '
+                 f'crear la cuenta (caduca en {HORAS_ALTA} horas). Mira también en spam.'}
+    if demasiadas('alta-ip:' + ip, 5, 3600) or demasiadas('alta-c:' + clave_correo(correo), 3, 3600):
+        raise Rechazo('espera', 'Demasiadas cuentas pedidas seguidas. Espera una hora y vuelve a probar.')
+    clave = clave_de(nombre)
+    huella = hash_contrasena(contrasena)   # fuera del cerrojo: tarda
+
+    def hacer(con):
+        con.execute('DELETE FROM altas_pendientes WHERE caduca < ?', (time.time(),))
+        if buscar_usuario(con, clave):
+            raise Rechazo('existe', f'Ya existe una cuenta llamada «{nombre}». Elige otro nombre o entra con ella.')
+        otro = con.execute('SELECT correo FROM altas_pendientes WHERE clave=?', (clave,)).fetchone()
+        if otro and clave_correo(otro[0]) != clave_correo(correo):
+            raise Rechazo('existe', f'Alguien está creando ahora una cuenta llamada «{nombre}». Elige otro nombre.')
+        ya = con.execute('SELECT nombre FROM usuarios WHERE correo=? COLLATE NOCASE', (correo,)).fetchone()
+        if ya:
+            return ('ya', ya[0])
+        con.execute('DELETE FROM altas_pendientes WHERE clave=?', (clave,))
+        token = secrets.token_urlsafe(32)
+        con.execute('INSERT INTO altas_pendientes (token, clave, nombre, hash, correo, creado, caduca) VALUES (?,?,?,?,?,?,?)',
+                    (hash_token(token), clave, nombre, huella, correo, time.time(), time.time() + HORAS_ALTA * 3600))
+        return ('ok', token)
+    r, dato = con_escritura(hacer)
+    if r == 'ya':
+        enviar_en_segundo_plano(correo, 'La taberna de Jhon: ya tienes una cuenta', f'''Hola:
+
+Alguien (seguramente tú) ha intentado crear una cuenta nueva en La taberna de Jhon con este correo, pero
+este correo ya es de la cuenta «{dato}». Entra con ese nombre; si no recuerdas la contraseña, pulsa
+«¿Olvidaste la contraseña?» en la pantalla de entrada.
+
+Si no has sido tú, no hagas nada.
+''')
+    else:
+        enviar_en_segundo_plano(correo, 'La taberna de Jhon: termina de crear tu cuenta', f'''Hola, {nombre}:
+
+Para terminar de crear tu cuenta en La taberna de Jhon, abre este enlace:
+
+{url_enlaces()}/#alta={dato}
+
+El enlace sirve una sola vez y caduca en {HORAS_ALTA} horas. Después entrarás con tu nombre y tu contraseña.
+
+Si no has sido tú, no hagas nada: no se creará ninguna cuenta.
+''')
+    return respuesta
+
+
+def confirmar_alta(cuerpo):
+    token = str(cuerpo.get('token') or '')
+
+    def hacer(con):
+        f = con.execute('SELECT nombre, hash, correo, caduca FROM altas_pendientes WHERE token=?', (hash_token(token),)).fetchone()
+        if not f or f[3] < time.time():
+            raise Rechazo('enlace', 'Ese enlace ya se ha usado o ha caducado. Vuelve a crear la cuenta.')
+        con.execute('DELETE FROM altas_pendientes WHERE token=?', (hash_token(token),))
+        if con.execute('SELECT 1 FROM usuarios WHERE correo=? COLLATE NOCASE', (f[2],)).fetchone():
+            raise Rechazo('existe', 'Ese correo ya es de otra cuenta. Entra con ella.')
+        return alta_en_bd(con, f[0], f[1], f[2])
+    # Si algo falla, se deshace todo (también el borrado del enlace)
+    return con_escritura(hacer)
+
+
 def datos_correo(con, clave):
     f = con.execute('SELECT correo, correo_pendiente FROM usuarios WHERE clave=?', (clave,)).fetchone()
     return {'correo': f[0] if f else None, 'pendiente': f[1] if f else None}
@@ -2213,7 +2313,7 @@ def discord_empezar(u, cuerpo):
             if buscar_usuario(con, clave_de(nombre)):
                 raise Rechazo('existe', f'Ya existe una cuenta llamada «{nombre}». Elige otro nombre o entra con ella.')
             if not con.execute("SELECT 1 FROM usuarios WHERE rol!='admin' LIMIT 1").fetchone():
-                raise Rechazo('invalida', 'La primera cuenta (la del DM) se crea con la palabra de paso, no con Discord.')
+                raise Rechazo('invalida', 'La primera cuenta (la del DM) se crea con el correo o con la palabra de paso, no con Discord.')
         finally:
             con.close()
         hash_ = hash_contrasena(cuerpo.get('contrasena'))
@@ -2296,13 +2396,11 @@ def discord_vuelta(q, cookie_nonce):
                 raise Rechazo('existe', f'Con esa cuenta de Discord ya se creó la cuenta «{otra[1]}». Entra con su nombre y contraseña.')
             if buscar_usuario(con, clave_de(st['nombre'])):
                 raise Rechazo('existe', f'Alguien acaba de crear una cuenta llamada «{st["nombre"]}». Elige otro nombre.')
-            if con.execute('SELECT COUNT(*) FROM usuarios WHERE pendiente=1').fetchone()[0] >= MAX_PENDIENTES:
-                raise Rechazo('espera', 'Hay demasiadas cuentas esperando aprobación. Avisa al DM.')
+            # V3.9 (pedido por Moisés): con Discord la cuenta queda creada al momento, sin esperar al DM
             con.execute('INSERT INTO usuarios (clave, nombre, hash, rol, creado, baneado, discord_id, discord_nombre, pendiente) '
-                        "VALUES (?,?,?,'jugador',?,0,?,?,1)", (clave_de(st['nombre']), st['nombre'], st['hash'], ahora(), did, alias))
-            subir_rev(con)   # los DM ven al momento que hay alguien esperando
-            print(f'Cuenta nueva creada con Discord, pendiente de aprobación: {st["nombre"]} (@{alias}).')
-            return 'discord=pendiente&n=' + quote(st['nombre'])
+                        "VALUES (?,?,?,'jugador',?,0,?,?,0)", (clave_de(st['nombre']), st['nombre'], st['hash'], ahora(), did, alias))
+            print(f'Cuenta nueva creada con Discord: {st["nombre"]} (@{alias}).')
+            return 'discord=creada&n=' + quote(st['nombre'])
         return origen, con_escritura(hacer)
     except Rechazo as r:
         return origen, 'discord=error&m=' + quote(r.mensaje) + ('&modo=' + st['modo'])
@@ -2321,6 +2419,214 @@ def discord_desvincular(u):
 def datos_discord(con, clave):
     fila = con.execute('SELECT discord_id, discord_nombre FROM usuarios WHERE clave=?', (clave,)).fetchone()
     return {'vinculado': bool(fila and fila[0]), 'nombre': (fila[1] if fila else '') or ''}
+
+
+# ------------------------------------------------------- chat de la mesa (V3.9)
+# Cada campaña tiene su chat. Lo leen y escriben los de la mesa (y el superusuario). El bot de la mesa
+# (por defecto «Dobby») avisa cuando alguien entra por PRIMERA vez; su nombre y su mensaje de
+# bienvenida los cambia el DM de la mesa (o el superusuario). En la bienvenida, {nombre} = quien llega
+# y {mesa} = el nombre de la mesa.
+BOT_NOMBRE = 'Dobby'
+BOT_BIENVENIDA = '¡Dobby anuncia que {nombre} ha llegado a «{mesa}» por primera vez! Dobby os desea buena partida.'
+MAX_MENSAJE = 1000
+MAX_BOT_NOMBRE = 30
+MAX_BIENVENIDA = 300
+LLEGADOS = set()   # (campana, usuario) ya comprobados desde que arrancó el servidor
+
+
+def texto_limpio(t, maximo, lineas=True):
+    """Texto normalizado, sin caracteres de control (salvo saltos de línea si «lineas») y recortado."""
+    t = unicodedata.normalize('NFC', str(t or '')).replace('\r\n', '\n').replace('\r', '\n')
+    t = ''.join(c for c in t if (c == '\n' and lineas) or unicodedata.category(c)[0] != 'C' or c == '\u200d')
+    t = re.sub(r'\n{3,}', '\n\n', t).strip()
+    return t[:maximo]
+
+
+def bot_de(con, camp):
+    f = con.execute('SELECT bot_nombre, bot_bienvenida FROM campanas WHERE id=?', (camp,)).fetchone() or (None, None)
+    return {'nombre': f[0] or BOT_NOMBRE, 'bienvenida': f[1] or BOT_BIENVENIDA}
+
+
+def ultimo_chat(con, camp):
+    return con.execute('SELECT COALESCE(MAX(id), 0) FROM chat WHERE campana=?', (camp,)).fetchone()[0]
+
+
+def borrados_chat(con, camp):
+    return con.execute('SELECT COUNT(*) FROM chat WHERE campana=? AND borrado=1', (camp,)).fetchone()[0]
+
+
+def mensajes_chat(con, camp, desde=None, antes=None, n=60):
+    if desde is not None:
+        filas = con.execute('SELECT id, autor, nombre, texto, fecha FROM chat WHERE campana=? AND id>? AND borrado=0 ORDER BY id LIMIT 200',
+                            (camp, desde)).fetchall()
+    else:
+        filas = con.execute('SELECT id, autor, nombre, texto, fecha FROM chat WHERE campana=? AND id<? AND borrado=0 ORDER BY id DESC LIMIT ?',
+                            (camp, antes or 2 ** 62, n)).fetchall()[::-1]
+    fotos = versiones_avatar(con)
+    return [{'id': i, 'autor': a, 'nombre': nm, 'texto': t, 'fecha': f, 'bot': a == '', 'avatar': fotos.get(a, 0) if a else 0}
+            for i, a, nm, t, f in filas]
+
+
+def bienvenida_si_es_nuevo(camp, actor):
+    """La primera vez que alguien entra en una mesa, el bot lo anuncia en el chat (una sola vez, nunca más)."""
+    if actor.get('rol') == 'admin' or (camp, actor['clave']) in LLEGADOS:
+        return
+
+    def hacer(con):
+        cur = con.execute('INSERT OR IGNORE INTO chat_llegadas VALUES (?,?,?)', (camp, actor['clave'], ahora()))
+        if cur.rowcount != 1:
+            return
+        bot = bot_de(con, camp)
+        texto = bot['bienvenida'].replace('{nombre}', actor['nombre']).replace('{mesa}', actor.get('mesa') or '')
+        con.execute('INSERT INTO chat (campana, autor, nombre, texto, fecha) VALUES (?,?,?,?,?)',
+                    (camp, '', bot['nombre'], texto_limpio(texto, MAX_BIENVENIDA + 200), ahora()))
+    con_escritura(hacer)
+    LLEGADOS.add((camp, actor['clave']))
+
+
+def enviar_chat(actor, cuerpo):
+    texto = texto_limpio(cuerpo.get('texto'), MAX_MENSAJE + 1)
+    if not texto:
+        raise Rechazo('invalida', 'El mensaje está vacío.')
+    if len(texto) > MAX_MENSAJE:
+        raise Rechazo('invalida', f'El mensaje es demasiado largo (máximo {MAX_MENSAJE} caracteres).')
+    if demasiadas('chat:' + actor['clave'], 8, 10):
+        raise Rechazo('espera', 'Vas muy deprisa: espera unos segundos antes de mandar otro mensaje.')
+    camp = actor['campana']
+
+    def hacer(con):
+        cur = con.execute('INSERT INTO chat (campana, autor, nombre, texto, fecha) VALUES (?,?,?,?,?)',
+                          (camp, actor['clave'], actor['nombre'], texto, ahora()))
+        return {'ok': True, 'id': cur.lastrowid}
+    return con_escritura(hacer)
+
+
+def borrar_mensaje(actor, cuerpo):
+    """Moderación: el DM de la mesa o el superusuario retiran un mensaje del chat (de quien sea, también del bot).
+    Desaparece para todos; en la base queda marcado con quién lo retiró, y en el historial de la mesa."""
+    if not es_dm(actor):
+        raise Rechazo('permiso', 'Solo el DM de la mesa o el superusuario pueden borrar mensajes.')
+    try:
+        mid = int(cuerpo.get('id'))
+    except (TypeError, ValueError):
+        raise Rechazo('invalida', 'Mensaje no válido.')
+    camp = actor['campana']
+
+    def hacer(con):
+        f = con.execute('SELECT nombre, texto, borrado FROM chat WHERE id=? AND campana=?', (mid, camp)).fetchone()
+        if not f:
+            raise Rechazo('invalida', 'Ese mensaje no existe.')
+        if f[2]:
+            return {'ok': True}
+        con.execute('UPDATE chat SET borrado=1, borrado_por=?, borrado_fecha=? WHERE id=?', (actor['clave'], ahora(), mid))
+        corto = f[1] if len(f[1]) <= 80 else f[1][:80] + '…'
+        apuntar(con, camp, actor, 'chat', f'borró un mensaje de {f[0]} en el chat: «{corto}»')
+        return {'ok': True}
+    return con_escritura(hacer)
+
+
+# ---- El bot avisa en todas las mesas: servidor apagado / encendido y versión nueva (V3.9)
+# {{hora:FECHA-ISO}} lo pinta el navegador con la hora de quien lo lee («hoy a las 16:13»).
+def hora_bot(t):
+    return '{{hora:' + datetime.fromtimestamp(t, timezone.utc).isoformat(timespec='seconds') + '}}'
+
+
+def duracion(seg):
+    seg = int(max(0, seg))
+    if seg < 90:
+        return 'unos segundos'
+    m = round(seg / 60)
+    if m < 60:
+        return f'{m} minuto{"s" if m != 1 else ""}'
+    h, m = divmod(m, 60)
+    if h < 48:
+        return f'{h} hora{"s" if h != 1 else ""}' + (f' y {m} minuto{"s" if m != 1 else ""}' if m else '')
+    d = round(h / 24)
+    return f'{d} días'
+
+
+def bot_a_todas(con, texto):
+    """Un mensaje del bot de cada mesa en el chat de todas las campañas (con el nombre que le haya puesto su DM)."""
+    for camp, nombre in con.execute('SELECT id, bot_nombre FROM campanas').fetchall():
+        con.execute('INSERT INTO chat (campana, autor, nombre, texto, fecha) VALUES (?,?,?,?,?)',
+                    (camp, '', nombre or BOT_NOMBRE, texto, ahora()))
+
+
+def leer_ajuste(con, clave):
+    f = con.execute('SELECT valor FROM ajustes WHERE clave=?', (clave,)).fetchone()
+    return f[0] if f else None
+
+
+def poner_ajuste(con, clave, valor):
+    if valor is None:
+        con.execute('DELETE FROM ajustes WHERE clave=?', (clave,))
+    else:
+        con.execute('INSERT OR REPLACE INTO ajustes VALUES (?, ?)', (clave, str(valor)))
+
+
+def anunciar_encendido():
+    """Al arrancar. Si la última vez se apagó bien, ya se avisó entonces; si no (corte de luz, ventana cerrada...),
+    se avisa ahora con la hora del último latido. Después: encendido y, si cambió la versión, las novedades."""
+    def hacer(con):
+        t = time.time()
+        apagado, latido = leer_ajuste(con, 'servidor-apagado'), leer_ajuste(con, 'servidor-latido')
+        desde = None
+        if apagado:
+            desde = float(apagado)
+        elif latido:
+            desde = float(latido)
+            bot_a_todas(con, f'🔴 El servidor se apagó sin avisar {hora_bot(desde)}, más o menos '
+                             '(corte de luz, ventana cerrada o el PC apagado).')
+        bot_a_todas(con, f'🟢 El servidor se ha encendido {hora_bot(t)}.'
+                         + (f' Ha estado apagado {duracion(t - desde)}.' if desde else ''))
+        if leer_ajuste(con, 'version-anunciada') != VERSION:
+            bot_a_todas(con, f'✨ La taberna se ha actualizado a la V{VERSION}: {NOVEDADES}')
+            poner_ajuste(con, 'version-anunciada', VERSION)
+        poner_ajuste(con, 'servidor-apagado', None)
+        poner_ajuste(con, 'servidor-latido', t)
+    con_escritura(hacer)
+
+
+def anunciar_apagado():
+    def hacer(con):
+        t = time.time()
+        bot_a_todas(con, f'🔴 El servidor se ha apagado {hora_bot(t)}.')
+        poner_ajuste(con, 'servidor-apagado', t)
+    con_escritura(hacer)
+
+
+def latidos():
+    """Cada minuto apunta que sigue vivo: si se apaga de golpe, al volver se sabe cuándo fue."""
+    while True:
+        time.sleep(60)
+        try:
+            con_escritura(lambda con: poner_ajuste(con, 'servidor-latido', time.time()))
+        except Exception as e:   # que un fallo puntual no pare los latidos
+            print('Latido no guardado:', e, file=sys.stderr)
+
+
+def ajustar_bot(actor, cuerpo):
+    """El DM de la mesa (o el superusuario) cambia el nombre del bot y su mensaje de bienvenida."""
+    if not es_dm(actor):
+        raise Rechazo('permiso', 'Solo el DM de la mesa o el superusuario pueden cambiar el bot.')
+    nombre = re.sub(r'\s+', ' ', texto_limpio(cuerpo.get('nombre'), MAX_BOT_NOMBRE + 1, False))
+    bienvenida = texto_limpio(cuerpo.get('bienvenida'), MAX_BIENVENIDA + 1)
+    if not nombre or len(nombre) > MAX_BOT_NOMBRE:
+        raise Rechazo('invalida', f'El nombre del bot debe tener entre 1 y {MAX_BOT_NOMBRE} caracteres.')
+    if not bienvenida or len(bienvenida) > MAX_BIENVENIDA:
+        raise Rechazo('invalida', f'La bienvenida debe tener entre 1 y {MAX_BIENVENIDA} caracteres.')
+    camp = actor['campana']
+
+    def hacer(con):
+        antes = bot_de(con, camp)
+        con.execute('UPDATE campanas SET bot_nombre=?, bot_bienvenida=? WHERE id=?',
+                    (None if nombre == BOT_NOMBRE else nombre, None if bienvenida == BOT_BIENVENIDA else bienvenida, camp))
+        if antes['nombre'] != nombre:
+            apuntar(con, camp, actor, 'mesa', f'cambió el nombre del bot del chat: {antes["nombre"]} → {nombre}')
+        if antes['bienvenida'] != bienvenida:
+            apuntar(con, camp, actor, 'mesa', 'cambió el mensaje de bienvenida del bot del chat')
+        return {'ok': True, 'bot': {'nombre': nombre, 'bienvenida': bienvenida}}
+    return con_escritura(hacer)
 
 
 # ----------------------------------------------------------------------- HTTP
@@ -2463,12 +2769,14 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 if ruta == '/api/estado':
                     if actor['rol'] != 'admin':
                         dar_odre_inicial(camp, actor['clave'])   # V3.8: el odre de 3 L con el que empieza cada jugador
+                    bienvenida_si_es_nuevo(camp, actor)   # V3.9: el bot del chat anuncia a quien llega por primera vez
                     rev = rev_actual(con, camp)
                     try:
                         desde = int(q.get('rev', ['-1'])[0] or -1)
                     except ValueError:
                         desde = -1
-                    base = {'ok': True, 'rev': rev, 'usuario': actor, 'presencia': lista_presencia(con, camp)}
+                    base = {'ok': True, 'rev': rev, 'usuario': actor, 'presencia': lista_presencia(con, camp),
+                            'chat': ultimo_chat(con, camp), 'chatBorrados': borrados_chat(con, camp)}   # V3.9: chat (nuevos / moderados)
                     if es_dm(actor):   # cuentas de Discord esperando aprobación (aviso en «En línea»)
                         base['pendientes'] = con.execute('SELECT COUNT(*) FROM usuarios WHERE pendiente=1 AND baneado=0').fetchone()[0]
                     if actor['rol'] == 'admin':   # solicitudes de campaña esperando (aviso al superusuario)
@@ -2482,6 +2790,15 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                             'SELECT rev, autor, resumen FROM transacciones WHERE campana=? AND rev>? ORDER BY rev LIMIT 20',
                             (camp, desde))]
                     return self.json(200, {**base, 'datos': estado_completo(con, camp, actor['clave']), 'cambios': otros})
+                if ruta == '/api/chat':   # V3.9: ?desde=ID (los nuevos) o ?antes=ID (los anteriores)
+                    try:
+                        desde = int(q['desde'][0]) if 'desde' in q else None
+                        antes = int(q['antes'][0]) if 'antes' in q else None
+                    except ValueError:
+                        desde = antes = None
+                    return self.json(200, {'ok': True, 'mensajes': mensajes_chat(con, camp, desde, antes),
+                                           'ultimo': ultimo_chat(con, camp), 'bot': bot_de(con, camp),
+                                           'puedeEditarBot': es_dm(actor), 'borrados': borrados_chat(con, camp)})
                 if ruta == '/api/presencia':
                     return self.json(200, {'ok': True, 'presencia': lista_presencia(con, camp)})
                 if ruta == '/api/historial':
@@ -2541,8 +2858,9 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     '/api/campanas/crear', '/api/registro/desbloquear', '/api/campanas/renombrar', '/api/campanas/unirse',
                     '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave', '/api/historial/deshacer', '/api/yo/avatar',
                     '/api/discord/empezar', '/api/discord/desvincular', '/api/usuarios/aprobar',
-                    '/api/recuperar', '/api/recuperar/nueva', '/api/correo/verificar', '/api/yo/correo',
-                    '/api/campanas/solicitar', '/api/campanas/solicitud/cancelar', '/api/campanas/solicitud/resolver')
+                    '/api/recuperar', '/api/recuperar/nueva', '/api/correo/verificar', '/api/yo/correo', '/api/registro/confirmar',
+                    '/api/campanas/solicitar', '/api/campanas/solicitud/cancelar', '/api/campanas/solicitud/resolver',
+                    '/api/chat/enviar', '/api/chat/bot', '/api/chat/borrar')
         if ruta not in acciones:
             return self.json(404, {'ok': False, 'mensaje': 'No existe.'})
         largo = int(self.headers.get('Content-Length') or 0)
@@ -2566,6 +2884,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, recuperar_contrasena(cuerpo))
             if ruta == '/api/correo/verificar':
                 return self.json(200, verificar_correo(cuerpo))
+            if ruta == '/api/registro/confirmar':
+                return self.json(200, confirmar_alta(cuerpo))
             if ruta == '/api/salir':
                 if self.token():
                     u = usuario_de_token(self.token())
@@ -2638,6 +2958,12 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, poner_clave_mesa(actor, cuerpo))
             if ruta == '/api/historial/deshacer':
                 return self.json(200, deshacer(actor, cuerpo))
+            if ruta == '/api/chat/enviar':
+                return self.json(200, enviar_chat(actor, cuerpo))
+            if ruta == '/api/chat/bot':
+                return self.json(200, ajustar_bot(actor, cuerpo))
+            if ruta == '/api/chat/borrar':
+                return self.json(200, borrar_mensaje(actor, cuerpo))
         except Rechazo as r:
             codigo = {'stock': 409, 'conflicto': 409, 'existe': 409, 'permiso': 403,
                       'credenciales': 401, 'clave': 401, 'espera': 429, 'baneado': 403, 'bloqueado': 429,
@@ -2765,6 +3091,16 @@ def main():
         sys.exit(orden_consola(sys.argv[1:]))
     preparar_bd()
     threading.Thread(target=copias_periodicas, daemon=True).start()
+    anunciar_encendido()   # V3.9: el bot lo dice en el chat de cada mesa
+    threading.Thread(target=latidos, daemon=True).start()
+
+    # Docker para el contenedor con SIGTERM (y en Windows, cerrar la ventana manda SIGBREAK):
+    # se convierte en un cierre normal para que el bot avise del apagado.
+    def parar(*_):
+        raise KeyboardInterrupt
+    for nombre_senal in ('SIGTERM', 'SIGBREAK'):
+        if hasattr(signal, nombre_senal):
+            signal.signal(getattr(signal, nombre_senal), parar)
     http.server.ThreadingHTTPServer.allow_reuse_address = True
     http.server.ThreadingHTTPServer.daemon_threads = True
     with http.server.ThreadingHTTPServer((HOST, PUERTO), Manejador) as srv:
@@ -2784,6 +3120,11 @@ def main():
             srv.serve_forever()
         except KeyboardInterrupt:
             pass
+    try:
+        anunciar_apagado()
+        print('Servidor apagado (avisado en el chat de las mesas).')
+    except Exception as e:
+        print('No se pudo avisar del apagado:', e, file=sys.stderr)
 
 
 if __name__ == '__main__':

@@ -30,6 +30,7 @@ import * as objetos from './objetos.js';
 import * as bolsa from './bolsa.js';
 import * as inventario from './inventario.js';
 import * as odres from './odres.js';
+import * as chat from './chat.js';
 
 // ---- Cauldron toggle state ----
 let caulActive = false;
@@ -280,8 +281,9 @@ function rerenderAfterServer() {
 }
 sync.setHooks({
   presencia(lista) { panel.setPresencia(lista); },
-  pendientes(n) { panel.setPendientes(n); },
-  solicitudes(n) { panel.setSolicitudes(n); },   // solicitudes de campaña (solo superusuario)   // cuentas de Discord esperando aprobación (solo DM)
+  pendientes(n) { panel.setPendientes(n); },   // cuentas de Discord esperando aprobación (solo DM)
+  solicitudes(n) { panel.setSolicitudes(n); },   // solicitudes de campaña (solo superusuario)
+  chat(n, b) { chat.alSondeo(n, b); },   // V3.9: mensajes nuevos (o retirados) en el chat de la mesa
   usuario(u, antes) {
     aplicarRol();
     if (antes && antes.rol !== u.rol) sync.aviso(auth.esDM() ? '👑 Ahora eres DM de la mesa.' : 'Ya no eres DM de la mesa.');
@@ -360,6 +362,7 @@ document.addEventListener('DOMContentLoaded', async () => {
   modulos.construirProximamente(document.querySelector('script[src="js/app.js"]'));
   construirModulos();
   diario.pintarBarra();
+  chat.init();                   // V3.9: chat de la mesa (solo con servidor)
   switchTab('panel');            // las tarjetas aparecen una a una
   if (auth.mensajeDiscord) sync.aviso(auth.mensajeDiscord.texto, auth.mensajeDiscord.tipo);   // vuelta de Discord
 
@@ -463,7 +466,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         editMat(id);
         showAlqSubtab('alta');
         break;
-      case 'mat-renovar': {   // V3.8: el material vuelve a ser nuevo (nadie lo conoce: sale del catálogo de los jugadores)
+      case 'mat-renovar': {   // V3.7: el material vuelve a ser nuevo (nadie lo conoce: sale del catálogo de los jugadores)
         if (soloDM('volver a poner materiales como nuevos')) break;
         const m = state.catalog[id];
         if (!m || !state.descubrimientos?.[id]) break;

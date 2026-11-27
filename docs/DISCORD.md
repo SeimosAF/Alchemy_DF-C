@@ -5,7 +5,7 @@ Se entra siempre con **nombre y contraseña**. Discord sirve para dos cosas:
 - **Crear cuenta sin la palabra de paso.** En «Crear cuenta» aparece el botón azul **Crear con Discord**.
   La persona escribe su nombre y su contraseña (dos veces) y, en lugar de la palabra de paso, demuestra
   con Discord quién es. Cada cuenta de Discord solo puede crear **una** cuenta, así nadie fabrica cuentas
-  en masa. Además la cuenta queda **pendiente** hasta que tú (o un DM) la apruebes en «Quién está en línea».
+  en masa. Desde la V3.9 la cuenta queda creada al momento (ya no hace falta que la apruebe un DM).
 - **Vincular Discord** a una cuenta que ya existe, desde el **Perfil**.
 
 Quien tiene la palabra de paso crea su cuenta como siempre, al momento. El superusuario «DM» no cambia.
@@ -73,13 +73,12 @@ Discord: activo (vuelve a https://TU-MAQUINA.TU-RED.ts.net/api/discord/vuelta)
    derecha) y pulsa **Vincular con Discord**. Discord te pregunta, aceptas y vuelves con el aviso
    «Discord vinculado a tu cuenta».
 2. Para un jugador nuevo sin palabra de paso: en **Crear cuenta** escribe nombre y contraseña (dos veces)
-   y pulsa **Crear con Discord**. Le saldrá que su cuenta espera aprobación.
-3. A ti te sale un aviso. Ve a **Quién está en línea**: arriba verás «Cuentas de Discord esperando
-   aprobación». Pulsa **Aprobar y sentar en esta mesa** (entra como jugador alquimista en la mesa en
-   la que estás) o **Rechazar**.
-4. El jugador entra con su nombre y su contraseña.
+   y pulsa **Crear con Discord**. Al volver de Discord su cuenta ya está creada.
+3. El jugador entra con su nombre y su contraseña. Para jugar en tu mesa, invítale desde «Quién está en línea»
+   (o que entre con la contraseña de la mesa, o que pida una campaña propia).
 
-El botón **Crear con Discord** solo sale si hay palabra de paso (`ALQUIMIA_CLAVE`). Sin ella cualquiera
+Desde la V3.9 el botón **Crear con Discord** sale siempre que Discord esté configurado (ver docs/CORREO.md para
+crear la cuenta con correo). Nota antigua: sin palabra de paso (`ALQUIMIA_CLAVE`) cualquiera
 puede crear cuenta, así que Discord no haría falta.
 
 ## Si algo falla

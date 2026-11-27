@@ -43,7 +43,7 @@
           <input type="password" id="entradaPass2" autocomplete="new-password" maxlength="200">
         </label>
         <label class="entrada-campo" id="filaCorreo" hidden>
-          <span>Correo <small>(opcional, por si olvidas la contraseña)</small></span>
+          <span>Correo <small>(te llegará un enlace para terminar)</small></span>
           <input type="email" id="entradaCorreo" autocomplete="email" maxlength="254" spellcheck="false">
         </label>
         <label class="entrada-campo" id="filaClave" hidden>
@@ -56,12 +56,13 @@
         <button type="button" class="entrada-olvido" id="entradaOlvido" hidden>¿Olvidaste la contraseña?</button>
       </form>
       <div class="entrada-discord" id="entradaDiscord" hidden>
-        <span class="entrada-o">¿Sin palabra de paso?</span>
+        <span class="entrada-o">o bien</span>
         <button type="button" class="btn-discord" id="entradaDiscordBoton">
           <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true"><path fill="currentColor" d="M20.3 4.4A19.8 19.8 0 0 0 15.4 3l-.6 1.3a18.4 18.4 0 0 0-5.6 0L8.6 3a19.7 19.7 0 0 0-4.9 1.5C.6 9.1-.3 13.6.1 18.1a19.9 19.9 0 0 0 6 3l1.3-2.1c-.7-.3-1.4-.6-2-1l.5-.4a14.2 14.2 0 0 0 12.2 0l.5.4c-.6.4-1.3.7-2 1l1.3 2.1a19.8 19.8 0 0 0 6-3c.5-5.2-.8-9.7-3.6-13.7ZM8 15.4c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Zm8 0c-1.2 0-2.2-1.1-2.2-2.4s1-2.4 2.2-2.4 2.2 1.1 2.2 2.4-1 2.4-2.2 2.4Z"/></svg>
           <span>Crear con Discord</span>
         </button>
       </div>
+      <button type="button" class="entrada-olvido entrada-usar-clave" id="entradaUsarClave" hidden>¿Tienes la palabra de paso de la mesa?</button>
     </div>
     <div class="pergamino-rollo pergamino-rollo-abajo" aria-hidden="true"></div>
   </div>
@@ -71,6 +72,10 @@
   <div class="header-title-row">
     <h1 class="app-titulo" data-action="switch-tab" data-id="panel" title="Volver a la mesa">🍺 <span class="app-titulo-txt">La taberna de Jhon</span></h1>
     <button class="mesa-chip" data-action="cambiar-mesa" id="mesaChip" hidden></button>
+    <!-- V3.9: chat de la mesa (js/chat.js). El número son los mensajes sin leer -->
+    <button type="button" class="chat-btn" id="chatBtn" title="Chat de la mesa" aria-label="Chat de la mesa" aria-expanded="false" aria-controls="chatPanel" hidden>
+      <span aria-hidden="true">💬</span><span class="chat-contador" id="chatContador"></span>
+    </button>
     <!-- Cuenta: avatar con menú (perfil, en línea, sonido, exportar, contraseña, cerrar sesión). Ver js/cuenta.js -->
     <div class="cuenta" id="cuenta">
       <button type="button" class="cuenta-btn" id="cuentaBtn" aria-haspopup="menu" aria-expanded="false" aria-controls="cuentaMenu">
@@ -84,6 +89,32 @@
   </div>
   <input type="file" id="importFile" accept=".json" style="display:none">
 </header>
+
+<!-- V3.9: panel del chat de la mesa (se abre con 💬). Ver js/chat.js -->
+<aside class="chat-panel" id="chatPanel" aria-label="Chat de la mesa" hidden>
+  <div class="chat-panel-cab">
+    <span class="chat-panel-icono" aria-hidden="true">💬</span>
+    <div class="chat-panel-titulos"><div class="chat-panel-sub">Chat de la mesa</div><div class="chat-panel-titulo" id="chatTitulo"></div></div>
+    <button type="button" class="chat-cab-btn" id="chatAjustesBtn" title="Ajustes del bot (solo DM)" aria-label="Ajustes del bot" hidden>⚙️</button>
+    <button type="button" class="chat-cab-btn" id="chatCerrar" title="Cerrar" aria-label="Cerrar el chat">✕</button>
+  </div>
+  <form class="chat-bot-form" id="chatBotForm" hidden>
+    <div class="chat-bot-tit">🧝 El bot de la mesa</div>
+    <label>Nombre<input type="text" id="chatBotNombre" maxlength="30" required></label>
+    <label>Mensaje de bienvenida<textarea id="chatBotBienvenida" maxlength="300" rows="3" required></textarea></label>
+    <p class="chat-bot-ayuda">Lo dice el bot la primera vez que alguien entra en la mesa. <code>{nombre}</code> = quien llega, <code>{mesa}</code> = el nombre de la mesa.</p>
+    <p class="chat-bot-error" id="chatBotError"></p>
+    <div class="chat-bot-botones"><button type="button" class="btn btn-sm btn-info" id="chatBotCancelar">Cancelar</button><button type="submit" class="btn btn-sm">Guardar</button></div>
+  </form>
+  <div class="chat-lista" id="chatLista">
+    <button type="button" class="chat-anteriores" id="chatAnteriores" hidden>Ver mensajes anteriores</button>
+    <div id="chatMensajes"></div>
+  </div>
+  <form class="chat-form" id="chatForm">
+    <textarea id="chatTexto" rows="1" maxlength="1000" placeholder="Escribe a la mesa…" aria-label="Mensaje"></textarea>
+    <button type="submit" id="chatEnviar" title="Enviar (Intro)" aria-label="Enviar">➤</button>
+  </form>
+</aside>
 
 <!-- Las pestañas y las tarjetas de la mesa salen del registro de módulos (js/modulos.js, js/app.js) -->
 <nav class="tab-bar" id="barraModulos"></nav>

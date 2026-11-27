@@ -1,5 +1,9 @@
 # Recuperar la contraseña por correo (V3.8)
 
+**Crear cuenta (V3.9):** nombre, contraseña (dos veces) y **correo** o **Discord**. Con correo, la cuenta no
+existe hasta que se abre el enlace que llega (caduca en 24 horas); con Discord se crea al volver de Discord.
+Debajo, escondida, sigue la opción «¿Tienes la palabra de paso de la mesa?» (`ALQUIMIA_CLAVE`), por si acaso.
+
 Quien olvide su contraseña pulsa **«¿Olvidaste la contraseña?»** en la pantalla de entrada, escribe su
 nombre o su correo y le llega un enlace para elegir una nueva. Solo funciona con un correo **confirmado**:
 cada jugador lo pone en **Perfil → 📧 Poner correo** (o al crear la cuenta) y abre el enlace que le llega.

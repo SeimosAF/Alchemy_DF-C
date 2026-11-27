@@ -204,3 +204,15 @@ tener una pendiente a la vez (índice único en `solicitudes_campana`). El super
 (`js/panel.js`, «📨 Solicitudes de campaña») y la aprueba (se crea con el catálogo vacío y quien la pidió es su DM)
 o la rechaza con un motivo. Se avisa por correo si la cuenta lo tiene confirmado. Rutas: `POST /api/campanas/solicitar`,
 `/api/campanas/solicitud/cancelar` y `/api/campanas/solicitud/resolver` (solo superusuario).
+
+## V3.9: chat de la mesa y su bot (Dobby)
+
+- Cada campaña tiene su chat (`js/chat.js`). Se abre con el botón 💬 de la cabecera; el número rojo son los mensajes sin leer (lo leído se apunta en el navegador, por cuenta y por mesa). Lo leen y escriben los de la mesa y el superusuario.
+- Servidor: tabla `chat` (id, campana, autor, nombre, texto, fecha; autor vacío = el bot). Solo se añaden mensajes. Rutas `GET /api/chat` (últimos 60, `?desde=ID` los nuevos, `?antes=ID` los anteriores), `POST /api/chat/enviar` (máx. 1000 caracteres, 8 mensajes cada 10 s por persona) y `POST /api/chat/bot` (solo DM o superusuario).
+- Cada sondeo de `/api/estado` trae `chat` = id del último mensaje; si es mayor que el que tiene el navegador, pide solo los nuevos. Con el chat cerrado salen avisos pequeños con los mensajes de los demás.
+- El bot: la primera vez que alguien entra en una mesa (tabla `chat_llegadas`, una fila por campaña y persona), el bot escribe la bienvenida. Si le sacan y vuelve, no se repite. Al actualizar, los que ya estaban en una mesa cuentan como llegados (no hay bienvenidas en masa). El superusuario no se anuncia.
+- Nombre y bienvenida del bot por campaña (`campanas.bot_nombre`, `campanas.bot_bienvenida`; vacío = «Dobby» y el texto por defecto). Se cambian con ⚙️ en el chat; `{nombre}` y `{mesa}` se sustituyen. El cambio queda en el historial de la mesa.
+- El texto se guarda limpio (sin caracteres de control) y se pinta siempre escapado: nadie puede meter HTML en el chat.
+- Moderación: el DM de la mesa y el superusuario tienen una 🗑️ en cada mensaje (`POST /api/chat/borrar`). El mensaje desaparece para todos; en la base queda marcado (`borrado`, `borrado_por`, `borrado_fecha`) y en el historial de la mesa. El sondeo trae `chatBorrados` y, si cambia, el navegador recarga la lista.
+- Apagado y encendido: al arrancar, el bot dice en todas las mesas que el servidor se ha encendido y cuánto tiempo estuvo apagado. Al apagarse bien (Ctrl+C, `docker compose down`/SIGTERM, cerrar la ventana en Windows) dice que se apaga. Si se apaga de golpe (corte de luz), al volver dice «se apagó sin avisar» con la hora del último latido (`ajustes.servidor-latido`, cada minuto). Las horas van como `{{hora:FECHA}}` y cada navegador las pinta en su hora local.
+- Versiones: `VERSION` y `NOVEDADES` al principio de `servidor.py`. Si al arrancar la versión no es la última anunciada (`ajustes.version-anunciada`), el bot lo cuenta con esa línea. **Al publicar una versión nueva, cambia las dos.**

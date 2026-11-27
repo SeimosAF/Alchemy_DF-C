@@ -47,7 +47,7 @@ let cola = [];                      // transacciones pendientes de confirmar
 let enviando = false;
 let reintento = 0;
 let cambiosLocales = 0;             // sube con cada saveState: detecta carreras con el sondeo
-let hooks = { remoto: () => {}, rechazo: () => {}, presencia: () => {}, usuario: () => {}, pendientes: () => {}, solicitudes: () => {} };
+let hooks = { remoto: () => {}, rechazo: () => {}, presencia: () => {}, usuario: () => {}, pendientes: () => {}, solicitudes: () => {}, chat: () => {} };
 let lugar = 'panel';                // qué parte de la app está mirando (para "Usuarios en línea")
 
 export function setHooks(h) { hooks = { ...hooks, ...h }; }
@@ -259,6 +259,7 @@ export async function refrescar({ forzar = false, silencioso = false, presencia 
   if (r.j.presencia) hooks.presencia(r.j.presencia);
   if (typeof r.j.pendientes === 'number') hooks.pendientes(r.j.pendientes);
   if (typeof r.j.solicitudes === 'number') hooks.solicitudes(r.j.solicitudes);   // V3.8: solo el superusuario
+  if (typeof r.j.chat === 'number') hooks.chat(r.j.chat, r.j.chatBorrados);   // V3.9: último mensaje del chat de la mesa
   if (r.j.usuario && auth.usuario) {   // le han cambiado el rol, la disciplina o el nombre de la mesa
     const antes = { rol: auth.usuario.rol, disciplina: auth.usuario.disciplina, personaje: JSON.stringify(auth.usuario.personaje || null) };
     if (auth.actualizarDesdeServidor(r.j.usuario)) hooks.usuario(auth.usuario, antes);

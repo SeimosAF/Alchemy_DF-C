@@ -33,7 +33,7 @@ export let usuario = null;
 export let servidor = false;    // ¿hay servidor con cuentas?
 export let mesa = null;         // { id, nombre, rol, disciplina } la campaña en la que se está jugando
 export let campanas = [];       // las campañas de esta cuenta
-let otras = [];                 // V3.8: campañas en las que no juega (para el selector)
+let otras = [];                 // V3.7: campañas en las que no juega (para el selector)
 export let puedeCrear = false;  // ¿puede crear campañas? (el superusuario)
 let puedeSolicitar = false;     // V3.8: ¿puede pedir una campaña al superusuario?
 let solicitud = null;           // su solicitud de campaña: pendiente, o la última resuelta (7 días)
@@ -79,7 +79,7 @@ async function pedirInfo() {
 
 // Lo que trae la dirección al volver de Discord (y se borra de la barra de direcciones)
 function leerVueltaCorreo() {
-  const m = /^#(recuperar|verificar)=([A-Za-z0-9_\-]{20,100})$/.exec(location.hash);
+  const m = /^#(recuperar|verificar|alta)=([A-Za-z0-9_\-]{20,100})$/.exec(location.hash);
   if (!m) return null;
   try { history.replaceState(null, '', location.pathname + location.search); } catch (_) { location.hash = ''; }
   return { tipo: m[1], token: m[2] };
@@ -142,7 +142,10 @@ export async function iniciar() {
   }
   servidor = true;
   let avisoEntrada = null;   // lo que se enseña en el pergamino (cuenta pendiente, error de Discord)
-  if (vuelta?.estado === 'pendiente') {
+  if (vuelta?.estado === 'creada') {   // V3.9: con Discord la cuenta ya está creada
+    avisoEntrada = { modo: 'entrar', nombre: vuelta.nombre || '',
+      nota: `🎉 Cuenta <strong>${escH(vuelta.nombre || '')}</strong> creada con Discord. Entra con tu nombre y tu contraseña.` };
+  } else if (vuelta?.estado === 'pendiente') {
     avisoEntrada = { modo: 'entrar', nombre: vuelta.nombre || '',
       nota: `⏳ Cuenta <strong>${escH(vuelta.nombre || '')}</strong> creada con Discord. <strong>Tiene que aprobarla el DM</strong>:
       avísale, y cuando lo haga entra aquí con tu nombre y tu contraseña.` };
@@ -156,6 +159,13 @@ export async function iniciar() {
     // Elegir contraseña nueva. Al cambiarla se cierran todas las sesiones de la cuenta, también esta.
     await mostrarPantalla(pantalla, false, { modo: 'nueva', token: enlace.token });
     return { modo: 'servidor', recienEntrado: true };
+  }
+  if (enlace?.tipo === 'alta') {   // V3.9: el enlace del correo termina de crear la cuenta y entra con ella
+    const r = await api('/api/registro/confirmar', { token: enlace.token }).catch(() => ({ j: null }));
+    if (r.j?.ok) {
+      lsSet(K_SESION, r.j.token);
+      mensajeDiscord = { texto: `🎉 Cuenta ${r.j.usuario?.nombre || ''} creada y correo confirmado. ¡Bienvenido a la taberna!`, tipo: 'info' };
+    } else avisoEntrada = { modo: 'crear', error: r.j?.mensaje || 'No se pudo crear la cuenta.' };
   }
   if (enlace?.tipo === 'verificar') {
     const r = await api('/api/correo/verificar', { token: enlace.token }).catch(() => ({ j: null }));
@@ -256,6 +266,7 @@ function elegirMesa(pantalla) {
     hoja.querySelector('.entrada-pestanas')?.setAttribute('hidden', '');
     hoja.querySelector('#entradaForm')?.setAttribute('hidden', '');
     hoja.querySelector('#entradaDiscord')?.setAttribute('hidden', '');
+    hoja.querySelector('#entradaUsarClave')?.setAttribute('hidden', '');
     let caja = hoja.querySelector('.entrada-mesas');
     if (!caja) { caja = document.createElement('div'); caja.className = 'entrada-mesas'; hoja.appendChild(caja); }
     const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -430,7 +441,12 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
     const nota = pantalla.querySelector('#entradaNota');
     let modo = aviso?.modo || (info.hayUsuarios ? 'entrar' : 'crear');
     const cajaDiscord = pantalla.querySelector('#entradaDiscord');
-    const conDiscord = !!(cajaDiscord && info.discord && info.pideClave && info.hayUsuarios);
+    // V3.9: con correo o Discord en el servidor, la cuenta se crea con uno de los dos. La palabra de paso
+    // de la mesa queda como opción escondida («por si acaso»), debajo.
+    const verificacion = !!(info.correo || info.discord);
+    const conDiscord = !!(cajaDiscord && info.discord && info.hayUsuarios);
+    const botonClave = pantalla.querySelector('#entradaUsarClave');
+    let usarClave = false;
 
     function pintarModo() {
       pantalla.dataset.modo = modo;
@@ -444,10 +460,15 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
       filaPass.hidden = modo === 'olvido';
       filaPass.querySelector('span').textContent = modo === 'nueva' ? 'Contraseña nueva' : 'Contraseña';
       pantalla.querySelector('#filaPass2').hidden = !nuevaPass;
-      pantalla.querySelector('#filaClave').hidden = !(modo === 'crear' && info.pideClave);
-      pantalla.querySelector('#filaCorreo').hidden = !(modo === 'crear' && info.correo);
+      const conClave = verificacion ? usarClave : info.pideClave;
+      pantalla.querySelector('#filaClave').hidden = !(modo === 'crear' && conClave);
+      pantalla.querySelector('#filaCorreo').hidden = !(modo === 'crear' && info.correo && !usarClave);
+      if (botonClave) {
+        botonClave.hidden = !(modo === 'crear' && verificacion && info.pideClave);
+        botonClave.textContent = usarClave ? '← Crear con correo o Discord' : '¿Tienes la palabra de paso de la mesa?';
+      }
       olvido.hidden = !(modo === 'entrar' && info.correo);
-      if (cajaDiscord) cajaDiscord.hidden = !(conDiscord && modo === 'crear');
+      if (cajaDiscord) cajaDiscord.hidden = !(conDiscord && modo === 'crear' && !usarClave);
       pass.autocomplete = nuevaPass ? 'new-password' : 'current-password';
       boton.querySelector('span').textContent = { crear: 'Inscribir mi nombre', olvido: 'Mandarme el enlace',
         nueva: 'Guardar la contraseña' }[modo] || 'Cruzar el umbral';
@@ -460,14 +481,17 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
           : 'Elige tu contraseña nueva (mínimo 6 caracteres). Al guardarla se cerrarán todas las sesiones abiertas de tu cuenta.';
         return;
       }
-      nota.innerHTML = modo === 'crear'
-        ? (info.hayUsuarios
-            ? 'Tu nombre quedará escrito en el libro de la mesa.' + (info.pideClave ? ' La <strong>palabra de paso</strong> te la da el DM.' : '')
-            : '👑 Eres el primero en llegar: <strong>tu cuenta será la del DM</strong>, el señor de la mesa.')
-          + (conDiscord ? '<br>¿No tienes la palabra de paso? Rellena nombre y contraseña y usa <strong>Crear con Discord</strong>: el DM tendrá que aprobar tu cuenta.' : '')
-        : 'Escribe el nombre y la contraseña de tu cuenta.';
+      const notaCrear = !info.hayUsuarios ? '👑 Eres el primero en llegar: <strong>tu cuenta será la del DM</strong>, el señor de la mesa.'
+        : usarClave || !verificacion
+          ? 'Tu nombre quedará escrito en el libro de la mesa.' + (info.pideClave ? ' La <strong>palabra de paso</strong> te la da el DM.' : '')
+          : info.correo
+            ? 'Escribe tu correo y te mandaremos un enlace para terminar de crear la cuenta'
+              + (conDiscord ? ', o rellena nombre y contraseña y usa <strong>Crear con Discord</strong>.' : '.')
+            : 'Rellena nombre y contraseña y usa <strong>Crear con Discord</strong>.';
+      nota.innerHTML = modo === 'crear' ? notaCrear : 'Escribe el nombre y la contraseña de tu cuenta.';
     }
     olvido.addEventListener('click', () => { modo = 'olvido'; pintarModo(); nombre.focus(); });
+    botonClave?.addEventListener('click', () => { usarClave = !usarClave; pintarModo(); (usarClave ? claveMesa : correo).focus(); });
     nota.addEventListener('click', e => {
       if (e.target.closest('[data-volver-entrar]')) { modo = 'entrar'; pintarModo(); nombre.focus(); }
     });
@@ -539,13 +563,18 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
       if (!pass.value) return fallo('Escribe tu contraseña.');
       if (modo === 'crear' && pass.value.length < 6) return fallo('La contraseña debe tener al menos 6 caracteres.');
       if (modo === 'crear' && pass.value !== pass2.value) return fallo('Las dos contraseñas no coinciden.');
+      const porCorreo = modo === 'crear' && verificacion && !usarClave;
+      if (porCorreo && !info.correo) return fallo('Usa «Crear con Discord».');
+      if (porCorreo && !correo.value.trim()) return fallo('Escribe tu correo' + (conDiscord ? ' o usa «Crear con Discord».' : '.'));
+      if (modo === 'crear' && verificacion && usarClave && !claveMesa.value) return fallo('Escribe la palabra de paso de la mesa.');
       boton.disabled = true;
       pantalla.classList.add('ocupada');
       let r;
       try {
         r = await api(modo === 'crear' ? '/api/registro' : '/api/entrar', {
-          nombre: nombre.value, contrasena: pass.value, clave: claveMesa.value,
-          ...(modo === 'crear' && correo.value.trim() ? { correo: correo.value.trim() } : {}),
+          nombre: nombre.value, contrasena: pass.value,
+          ...(modo !== 'crear' || !porCorreo ? { clave: claveMesa.value } : {}),
+          ...(porCorreo ? { correo: correo.value.trim() } : {}),
         });
       } catch (_) {
         r = { status: 0, j: { mensaje: 'No se puede hablar con el servidor. ¿Está encendido?' } };
@@ -553,11 +582,16 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
       boton.disabled = false;
       pantalla.classList.remove('ocupada');
       if (r.status !== 200 || !r.j?.ok) return fallo(r.j?.mensaje || 'Algo ha fallado. Vuelve a probar.');
+      if (r.j.alta) {   // con correo: la cuenta se termina de crear desde el enlace que le llega
+        const n = nombre.value;
+        modo = 'entrar'; pintarModo();
+        nombre.value = n; pass.value = pass2.value = correo.value = '';
+        nota.innerHTML = '📜 ' + escH(r.j.mensaje);
+        return;
+      }
       lsSet(K_SESION, r.j.token);
       usuario = r.j.usuario;
       campanas = r.j.campanas || [];
-      if (modo === 'crear' && correo.value.trim())
-        mensajeDiscord = { texto: `📧 Te hemos mandado un enlace a ${correo.value.trim()} para confirmar el correo.`, tipo: 'info' };
       pass.value = pass2.value = claveMesa.value = correo.value = '';
       try { await cargarYo(); } catch (_) {}
       const c = mesaSinPreguntar() || await elegirMesa(pantalla);

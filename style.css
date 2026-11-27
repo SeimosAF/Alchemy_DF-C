@@ -1625,7 +1625,7 @@ body:not(.es-dm) #tab-inventario .inv-barra .subtab-bar { display:none; }
 }
 .mat-card-stepper { margin-right:6px; }
 
-/* ===================== V3.8: oficios por jugador (el DM marca a cuáles tiene acceso) ===================== */
+/* ===================== V3.7: oficios por jugador (el DM marca a cuáles tiene acceso) ===================== */
 .usr-disciplinas { display:inline-block; margin-left:6px; font-size:.78em; font-family:var(--f-rotulo); vertical-align:middle; position:relative; }
 .usr-disciplinas > summary { list-style:none; cursor:pointer; padding:2px 8px; border-radius:10px; background:#efe4cc; color:#5e4a34; border:1px solid #b9a27c; }
 .usr-disciplinas > summary::-webkit-details-marker { display:none; }
@@ -1635,7 +1635,7 @@ body:not(.es-dm) #tab-inventario .inv-barra .subtab-bar { display:none; }
 .btn-renovar { font-size:.75em; padding:2px 8px; margin-left:4px; background:#6d8a5a; }
 
 
-/* ===================== V3.8: la mesa en 3D (tu foto es un planeta y los módulos giran en su órbita) ===================== */
+/* ===================== V3.7: la mesa en 3D (tu foto es un planeta y los módulos giran en su órbita) ===================== */
 .mesa-tarjetas { display:block; max-width:none; }
 .orbita3d { position:relative; max-width:720px; margin:0 auto; user-select:none; touch-action:pan-y; }
 .orbita3d-escena { position:relative; height:470px; }
@@ -1711,7 +1711,7 @@ body:not(.es-dm) #tab-inventario .inv-barra .subtab-bar { display:none; }
 .orbita3d-item.bloqueada { cursor:default; }
 .orbita3d-item.bloqueada .orbita3d-luna { box-shadow:0 0 0 3px var(--acento), 0 0 0 5px #c9ad78, inset -10px -14px 22px rgba(80,45,10,.45), 0 10px 18px rgba(0,0,0,.45); }
 
-/* V3.8: el planeta es un portal a las campañas */
+/* V3.7: el planeta es un portal a las campañas */
 .orbita3d-remolino { position:absolute; inset:-20px; border-radius:50%; pointer-events:none; z-index:-1;
   background:conic-gradient(from 0deg, rgba(120,170,255,0), rgba(120,170,255,.85), rgba(200,140,255,.3), rgba(242,213,138,.8), rgba(120,170,255,0));
   filter:blur(3px); animation:remolino 6s linear infinite; }
@@ -1753,3 +1753,80 @@ body:not(.es-dm) #tab-inventario .inv-barra .subtab-bar { display:none; }
 .mesa-solicitud .mesa-enlace { display:block; margin-top:6px; }
 .mesa-solicitud-rechazada { background:rgba(150,30,20,.07); border-color:rgba(150,30,20,.3); }
 .mesa-pedir .muted { font-size:.85em; margin:6px 0 0; }
+.entrada-usar-clave { font-size:.8em; opacity:.7; margin-top:14px; }
+
+/* ============================================================
+   V3.9 · Chat de la mesa (js/chat.js) y su bot (Dobby)
+   ============================================================ */
+.chat-btn { position:relative; flex:none; width:44px; height:44px; border-radius:50%; cursor:pointer; font-size:1.3em; line-height:1;
+  border:1px solid rgba(242,213,138,.45); background:rgba(0,0,0,.22); color:var(--oro-claro); transition:background .15s, box-shadow .15s; }
+.chat-btn:hover, .chat-btn[aria-expanded="true"] { background:rgba(0,0,0,.4); box-shadow:0 0 0 2px rgba(242,213,138,.35); }
+.chat-btn:focus-visible { outline:2px solid var(--oro-claro); outline-offset:2px; }
+.chat-btn[hidden] { display:none; }
+.chat-contador { position:absolute; top:-4px; right:-4px; min-width:19px; height:19px; padding:0 5px; border-radius:10px; background:#b3261e; color:#fff;
+  font:700 .62em/19px system-ui, sans-serif; box-shadow:0 0 0 2px var(--border); }
+.chat-contador:empty { display:none; }
+
+.chat-panel { position:fixed; top:0; right:0; bottom:0; width:380px; max-width:100vw; z-index:500; display:flex; flex-direction:column;
+  background:linear-gradient(#f5ead3, #ecdcbc); border-left:3px solid var(--border); box-shadow:-8px 0 28px rgba(0,0,0,.35); }
+.chat-panel[hidden] { display:none; }
+.chat-panel-cab { display:flex; align-items:center; gap:10px; padding:10px 12px; background:var(--border); color:var(--oro-claro); flex:none; }
+.chat-panel-icono { font-size:1.4em; }
+.chat-panel-titulos { flex:1; min-width:0; }
+.chat-panel-sub { font-family:var(--f-texto); font-style:italic; font-size:.82em; opacity:.85; }
+.chat-panel-titulo { font-family:var(--f-rotulo); font-weight:700; font-size:1.05em; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chat-cab-btn { flex:none; width:36px; height:36px; border-radius:50%; border:1px solid rgba(242,213,138,.4); background:rgba(0,0,0,.2); color:#fff; cursor:pointer; font-size:1em; }
+.chat-cab-btn:hover { background:rgba(0,0,0,.4); }
+.chat-cab-btn[hidden] { display:none; }
+
+.chat-bot-form { flex:none; padding:10px 14px; border-bottom:1px dashed rgba(110,70,34,.5); background:#efe1c4; display:flex; flex-direction:column; gap:6px; }
+.chat-bot-form[hidden] { display:none; }
+.chat-bot-tit { font-family:var(--f-rotulo); font-weight:700; color:var(--border); }
+.chat-bot-form label { display:flex; flex-direction:column; gap:3px; font-size:.85em; color:#5b3a29; }
+.chat-bot-form input, .chat-bot-form textarea { font:inherit; font-size:1em; padding:6px 8px; border:1px solid #b59a72; border-radius:6px; background:#fffaf0; color:var(--text); resize:vertical; }
+.chat-bot-ayuda { margin:0; font-size:.78em; color:#6b4420; }
+.chat-bot-ayuda code { background:rgba(110,70,34,.12); padding:0 3px; border-radius:3px; }
+.chat-bot-error { margin:0; font-size:.82em; color:#8a2a2a; }
+.chat-bot-error:empty { display:none; }
+.chat-bot-botones { display:flex; gap:8px; justify-content:flex-end; }
+
+.chat-lista { flex:1; overflow-y:auto; padding:10px 12px; overscroll-behavior:contain; }
+.chat-anteriores { display:block; margin:0 auto 10px; border:none; background:rgba(110,70,34,.14); color:#5b3a29; border-radius:14px; padding:4px 12px; cursor:pointer; font-size:.8em; }
+.chat-anteriores[hidden] { display:none; }
+.chat-vacio { text-align:center; font-family:var(--f-texto); font-style:italic; color:#7a5a3a; margin-top:30px; }
+.chat-msg { display:flex; align-items:flex-end; gap:8px; margin-top:10px; }
+.chat-msg.chat-seguido { margin-top:3px; }
+.chat-msg.chat-seguido .chat-avatar { visibility:hidden; }
+.chat-avatar { width:30px; height:30px; flex:none; font-size:.85em; background:radial-gradient(circle at 35% 30%, #c98d4a, #7a4a22 75%); color:#fff; }
+.chat-burbuja { max-width:78%; padding:6px 10px 7px; border-radius:12px 12px 12px 4px; background:#fffaf0; border:1px solid #d6c19b; box-shadow:0 1px 2px rgba(0,0,0,.08); min-width:0; }
+.chat-cab { font-size:.75em; color:#7a5a3a; margin-bottom:2px; }
+.chat-cab b { color:var(--border); font-size:1.08em; }
+.chat-cab time { opacity:.8; margin-left:2px; }
+.chat-texto { white-space:pre-wrap; overflow-wrap:anywhere; font-size:.95em; line-height:1.35; }
+.chat-mio { justify-content:flex-end; }
+.chat-mio .chat-burbuja { background:#e2efd6; border-color:#a9c48f; border-radius:12px 12px 4px 12px; }
+.chat-mio .chat-cab { text-align:right; }
+.chat-bot .chat-avatar-bot { display:flex; align-items:center; justify-content:center; font-size:1.1em; background:radial-gradient(circle at 35% 30%, #7fb37a, #2f6b3a 75%); }
+.chat-bot .chat-burbuja { max-width:85%; background:#efe6fb; border-color:#bda6e0; font-family:var(--f-texto); }
+.chat-bot .chat-cab b { color:#4a2a8a; }
+.chat-etiqueta { display:inline-block; padding:0 5px; border-radius:6px; background:#4a2a8a; color:#fff; font:700 .8em/1.5 system-ui, sans-serif; text-transform:uppercase; letter-spacing:.5px; }
+
+.chat-form { flex:none; display:flex; gap:8px; align-items:flex-end; padding:10px 12px calc(10px + env(safe-area-inset-bottom)); border-top:1px solid #c9b89a; background:#f1e4c8; }
+.chat-form textarea { flex:1; min-height:40px; max-height:120px; resize:none; font:inherit; font-size:16px; padding:9px 12px; border:1px solid #b59a72; border-radius:20px; background:#fffaf0; color:var(--text); }
+.chat-form textarea:focus { outline:2px solid var(--accent); outline-offset:0; }
+.chat-form button { flex:none; width:42px; height:42px; border-radius:50%; border:none; background:var(--accent); color:#fff; font-size:1.1em; cursor:pointer; }
+.chat-form button:disabled { opacity:.5; cursor:default; }
+
+body.chat-abierto #syncAvisos { right:396px; }
+@media (max-width:640px) {
+  .chat-panel { width:100vw; border-left:none; }
+  body.chat-abierto { overflow:hidden; }
+  body.chat-abierto #syncAvisos { right:12px; left:12px; bottom:auto; top:70px; }
+  .chat-btn { width:40px; height:40px; font-size:1.15em; }
+}
+/* Moderación (DM y superusuario): la papelera sale al pasar por encima; en pantallas táctiles, siempre (tenue) */
+.chat-borrar { flex:none; align-self:center; border:none; background:none; cursor:pointer; font-size:.85em; padding:4px; border-radius:50%; opacity:0; transition:opacity .15s, background .15s; }
+.chat-msg:hover .chat-borrar, .chat-borrar:focus-visible { opacity:.75; }
+.chat-borrar:hover { opacity:1; background:rgba(138,42,42,.15); }
+@media (hover:none) { .chat-borrar { opacity:.45; } }
+.chat-mio .chat-borrar { order:-1; }
