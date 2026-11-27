@@ -159,8 +159,7 @@ function cerrar() {
 
 // Al entrar en Alquimia: si hay una página que no has leído, el diario se abre solo
 export function alEntrarEnAlquimia() {
-  pintarBarra();
-  if (hayPaginaNueva()) setTimeout(() => abrir(), 350);
+  pintarBarra();   // ya no se abre solo: el botón del diario lleva el sello «NUEVO» cuando hay página nueva
 }
 
 // Barra de nivel que se ve arriba en la pestaña Alquimia
@@ -184,6 +183,5 @@ export function pintarBarra() {
       ${cambiar ? `<button class="btn btn-sm" data-action="nivel-propio" data-id="-1" ${n <= 1 ? 'disabled' : ''} title="Bajar nivel">−</button>
         <button class="btn btn-sm" data-action="nivel-propio" data-id="1" ${n >= niveles.NIVEL_MAX ? 'disabled' : ''} title="Subir nivel">+</button>` : ''}
       <button class="btn btn-diario ${hayPaginaNueva() ? 'con-novedad' : ''}" data-action="abrir-diario">📓 Diario de Jhon Arbaquel</button>
-      <button class="btn btn-sm btn-info" data-action="switch-tab" data-id="info">📜 Compendio</button>
     </div>`;
 }

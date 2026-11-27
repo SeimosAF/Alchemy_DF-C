@@ -2,6 +2,9 @@
 import { APLICACION_OPTIONS } from './data.js';
 import { state } from './state.js';
 
+// ---- El inventario único (js/inventario.js) se repinta solo al oír esto ----
+export function repintarInventario() { document.dispatchEvent(new Event('inventario:repintar')); }
+
 // ---- Materiales sin identificar ----
 // De un material sin identificar se sabe su NOMBRE y DÓNDE se encontró, pero no qué es
 // (campo, polaridad, efectos). Por eso se enseña su nombre, nunca "???".

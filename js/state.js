@@ -18,6 +18,9 @@ export function getDefaultState() {
     lootPotions: {},
     libros: {},          // libros del inventario (módulo Lectura)
     objetos: {},         // inventario general: armas, armaduras, objetos mágicos... (js/objetos.js)
+    bolsa: {},           // monedas: bolsa.oro (js/bolsa.js)
+    odres: { inicial: { name: 'Odre', capacidad: 3, litros: 0, disolvente: null } },   // disolventes que no son agua (js/odres.js)
+    descubrimientos: {}, // de la mesa: material -> { jugador: fecha } (lo rellena el servidor)
     perfil: {},          // lo que fija el DM: perfil.alquimia.nivel (módulo Alquimia)
     damageTypes: ['Fuego','Frío','Rayo','Ácido','Veneno','Necrótico','Radiante','Psíquico','Trueno'],
     settings: JSON.parse(JSON.stringify(DEFAULT_SETTINGS)),
@@ -39,6 +42,9 @@ export function normalizeState(s) {
   if (!s.libros)        s.libros        = {};
   if (!s.objetos)       s.objetos       = {};
   if (!s.perfil)        s.perfil        = {};
+  if (!s.bolsa)         s.bolsa         = {};
+  if (!s.odres)         s.odres         = sync.modo === 'servidor' ? {} : def.odres;
+  if (!s.descubrimientos) s.descubrimientos = {};
   if (!s.character)     s.character     = def.character;
   if (!s.settings)      s.settings      = def.settings;
   if (!s.settings.disolventes) s.settings.disolventes = def.settings.disolventes;

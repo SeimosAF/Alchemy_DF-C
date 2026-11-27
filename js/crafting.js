@@ -7,6 +7,8 @@ import {
 }  from './utils.js';
 import { elabDC, applyModifiers, modCompat, getDisolvente, mergePools } from './model.js';
 import * as niveles from './niveles.js';
+import * as odres from './odres.js';
+import { infoOculta } from './conocimiento.js';
 import {
   renderElaboracion, renderPotPicker,
   renderInvMateriales, renderInvPociones,
@@ -181,6 +183,8 @@ export function craftStockProblem() {
     if (!craftSelectedBase) return null;
     const base = state.catalog[craftSelectedBase];
     if (!base) return 'El reactivo elegido ya no existe: otra persona lo ha borrado del catálogo.';
+    const sinOdre = odres.problema(base.campo);
+    if (sinOdre) return sinOdre;
     need[craftSelectedBase] = 1;
     const mods = compatMods(base, craftSelectedMods);
     for (const mid in mods) need[mid] = (need[mid] || 0) + mods[mid];
@@ -188,6 +192,7 @@ export function craftStockProblem() {
       const have = state.inventory[id] || 0;
       const m = state.catalog[id];
       if (!m) return 'Uno de los materiales elegidos ya no existe: otra persona lo ha borrado.';
+      if (infoOculta(m)) return `«${nombreMat(m)}» todavía no sabes qué hace: el DM no te lo ha dado a conocer.`;
       if (have < need[id]) return `No queda suficiente «${nombreMat(m)}»: hay ${have} y hacen falta ${need[id]}. Otra persona lo habrá usado.`;
     }
     for (const mid in craftSelectedMods) if (craftSelectedMods[mid] > 0 && !state.catalog[mid]) return 'Uno de los modificadores elegidos ya no existe: otra persona lo ha borrado.';
@@ -218,6 +223,8 @@ function confirmCraftElab() {
 
   state.inventory[craftSelectedBase]--;
   for (const mid in modsObj) state.inventory[mid] -= modsObj[mid];
+  odres.gastar(base.campo);   // 0,5 L del disolvente (el agua no se gasta de ningún odre)
+  const notaOdre = odres.usaOdre(base.campo) ? `<p class="muted">🫙 Gastas ${odres.litros(odres.LITROS_POCION)} de ${odres.nombreDisolvente(base.campo).toLowerCase()} · te quedan ${odres.litros(odres.litrosDe(base.campo))}.</p>` : '';
 
   if (success) {
     const applied = applyModifiers(base, modsObj, state.catalog);
@@ -253,10 +260,10 @@ function confirmCraftElab() {
     saveState();
     const ai = state.potionCatalog[ck];
     const al = ai?.apodo ? ` "${ai.apodo}"` : '';
-    resultEl.innerHTML = `<div class="result-box success"><div class="verdict">✅ ¡Éxito! d20(${roll})+bono(${bonus})=${total} vs CD ${dc}</div><p>Elaborada: <strong>${potName}</strong>${al}</p></div>`;
+    resultEl.innerHTML = `<div class="result-box success"><div class="verdict">✅ ¡Éxito! d20(${roll})+bono(${bonus})=${total} vs CD ${dc}</div><p>Elaborada: <strong>${potName}</strong>${al}</p>${notaOdre}</div>`;
   } else {
     saveState();
-    resultEl.innerHTML = `<div class="result-box fail"><div class="verdict puterio">❌ Fallido. d20(${roll})+bono(${bonus})=${total} vs CD ${dc}</div><p>Se pierden los materiales.</p></div>`;
+    resultEl.innerHTML = `<div class="result-box fail"><div class="verdict puterio">❌ Fallido. d20(${roll})+bono(${bonus})=${total} vs CD ${dc}</div><p>Se pierden los materiales.</p>${notaOdre}</div>`;
   }
   craftSelectedSolvent = null; craftSelectedBase = null; craftSelectedMods = {}; craftPotionPicks = [];
   renderCrafteo(); renderInvMateriales(); renderInvPociones();

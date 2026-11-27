@@ -14,6 +14,8 @@ import { rarityBadge, campoClass, nombreMat as nombreDe, notaSinIdentificar } fr
 import * as niveles from './niveles.js';
 import * as lectura from './lectura.js';
 import * as objetos from './objetos.js';
+import * as bolsa from './bolsa.js';
+import * as odres from './odres.js';
 import { nombreDisciplina } from './panel.js';
 
 let jugadores = [];
@@ -54,10 +56,10 @@ export function render() {
   const j = jugadores.find(x => x.clave === elegido);
   const foco = document.activeElement?.dataset?.dmSet;   // no machacar un número a medio escribir
   if (foco && el.contains(document.activeElement)) return;
-  if (el.contains(document.activeElement) && document.activeElement.matches('[data-dm-pruebas], #dmLibroNombre, #dmLibroBono, #dmLibroN, #dmLibroPruebas')) return;
+  if (el.contains(document.activeElement) && document.activeElement.matches('[data-dm-bolsa-num], [data-dm-pruebas], #dmLibroNombre, #dmLibroBono, #dmLibroN, #dmLibroPruebas, [data-dm-odre-l], [data-dm-odre-d], #dmOdreCap')) return;
 
   const chips = jugadores.map(x => `<button class="dm-chip ${x.clave === elegido ? 'activo' : ''}" data-dm="elegir" data-clave="${esc(x.clave)}">
-      ${x.rol === 'dm' ? '👑' : '⚔️'} ${esc(x.nombre)}${x.clave === auth.usuario.clave ? ' (tú)' : ''}${x.personaje ? ` · ${esc(x.personaje)}` : ''} <span class="muted">${nombreDisciplina(x.disciplina).split(' ')[0]}</span></button>`).join('');
+      ${x.rol === 'dm' ? '👑' : '⚔️'} ${esc(x.nombre)}${x.clave === auth.usuario.clave ? ' (tú)' : ''}${x.personaje ? ` · ${esc(x.personaje)}` : ''} <span class="muted">${x.rol === 'dm' ? '' : nombreDisciplina(x.disciplina).split(' · ').map(t => t.split(' ')[0]).join('')}</span></button>`).join('');
   if (!j) { el.innerHTML = `<div class="dm-chips">${chips}</div><p class="muted">No hay jugadores todavía.</p>`; return; }
 
   // Materiales: todos los del catálogo, con lo que tiene este jugador
@@ -67,8 +69,12 @@ export function render() {
   const filas = ids.filter(id => (!filtro || nombreMat(id).toLowerCase().includes(filtro)) && (!soloConStock || (j.inventory[id] || 0) > 0))
     .map(id => {
       const m = state.catalog[id], n = j.inventory[id] || 0;
+      // V3.8: hasta que no lo recibe por primera vez, no le sale en su catálogo
+      const nuevo = j.rol !== 'dm' && !state.descubrimientos?.[id]?.[j.clave]
+        ? `<span class="badge badge-sin-dar" title="${esc(j.nombre)} aún no lo conoce: al darle uno, le aparecerá en su catálogo">🆕 nuevo para ${esc(j.nombre)}</span>` : '';
+      const oculto = m.unknown ? '<span class="badge badge-oculto" title="Marcado como desconocido: ve el nombre, no qué hace">🙈</span>' : '';
       return `<div class="inv-row ${n ? '' : 'dm-cero'}">
-        <div class="inv-name"><span class="badge badge-${m.unknown ? 'sin-id' : campoClass(m.campo)}" style="margin-right:4px">${esc(m.type?.[0] || '?')}</span>${esc(nombreMat(id))} ${rarityBadge(m.rarity)} ${notaSinIdentificar(m)}</div>
+        <div class="inv-name"><span class="badge badge-${m.unknown ? 'sin-id' : campoClass(m.campo)}" style="margin-right:4px">${esc(m.type?.[0] || '?')}</span>${esc(nombreMat(id))} ${rarityBadge(m.rarity)} ${oculto} ${nuevo}</div>
         <div class="inv-stepper">
           <button class="btn btn-sm" data-dm="mat" data-id="${esc(id)}" data-n="-1" ${n ? '' : 'disabled'}>−</button>
           <input type="number" min="0" class="dm-num" value="${n}" data-dm-set="${esc(id)}" data-antes="${n}" title="Escribe la cantidad exacta y pulsa Intro">
@@ -113,6 +119,10 @@ export function render() {
       <button class="btn btn-sm" data-dm="nivel" data-n="1" ${nivel >= niveles.NIVEL_MAX ? 'disabled' : ''}>+ Subir</button>
     </div>`;
 
+  // Monedas de este jugador
+  const oro = bolsa.cuantas(j.bolsa);
+  const bloqueBolsa = `<div class="bolsa bolsa-dm" id="dmBolsa" role="group" aria-label="Monedas de oro de ${esc(j.nombre)}">${bolsa.html(oro, 'data-dm-bolsa', `Bolsa de ${esc(j.nombre)}`)}</div>`;
+
   // Libros de este jugador
   const libros = Object.entries(j.libros || {});
   const filasLibros = libros.map(([id, l]) => {
@@ -139,9 +149,10 @@ export function render() {
 
   el.innerHTML = `
     <div class="dm-chips">${chips}</div>
-    <p class="muted dm-ayuda">Estás cambiando el inventario de <strong>${esc(j.nombre)}</strong> (${nombreDisciplina(j.disciplina)}) en «${esc(auth.mesa?.nombre || '')}»${j.baneado ? ' <b>(desterrado)</b>' : ''}. Cada cambio se guarda al momento y ${esc(j.nombre)} lo ve en unos segundos. La disciplina se cambia en «En línea».</p>
-    ${bloqueNivel}
+    <p class="muted dm-ayuda">Estás cambiando el inventario de <strong>${esc(j.nombre)}</strong> (${nombreDisciplina(j.disciplina)}) en «${esc(auth.mesa?.nombre || '')}»${j.baneado ? ' <b>(desterrado)</b>' : ''}. Cada cambio se guarda al momento y ${esc(j.nombre)} lo ve en unos segundos. Sus oficios se marcan en «En línea».</p>
+    <div class="dm-fila-arriba">${bloqueNivel}${bloqueBolsa}</div>
     ${bloqueObjetos}
+    ${odres.htmlDM(j)}
     <div class="dm-grid">
       <div class="dm-col">
         <h3>📦 Materiales</h3>
@@ -182,6 +193,19 @@ export function render() {
   if (filtro) { const f = document.getElementById('dmFiltro'); f.focus(); f.setSelectionRange(f.value.length, f.value.length); }
 }
 
+// Cambia la bolsa de un jugador. «exacto»: el DM ha escrito el total (va con el valor que veía,
+// por si el jugador gastó entretanto); si no, es una suma/resta que nunca pisa lo que haga el jugador.
+function cambiarBolsa(j, nuevo, exacto) {
+  const antes = bolsa.cuantas(j.bolsa);
+  if (nuevo === null || nuevo === antes) { render(); return; }
+  if (nuevo < 0) { sync.aviso(`${j.nombre} solo lleva ${antes.toLocaleString('es-ES')} mo.`, 'error'); render(); return; }
+  if (nuevo > bolsa.MAX) { sync.aviso('Eso son demasiadas monedas.', 'error'); render(); return; }
+  const n = nuevo - antes;
+  const op = { t: 'num', c: 'bolsa', id: 'oro', n, u: j.clave };
+  if (exacto) op.e = antes;
+  enviar([op], exacto ? `monedas de oro = ${nuevo} (para ${j.nombre})` : `${n > 0 ? '+' : ''}${n} monedas de oro (para ${j.nombre})`);
+}
+
 async function enviar(ops, resumen) {
   if (ocupado) return;
   ocupado = true;
@@ -197,6 +221,12 @@ export function init() {
   const el = document.getElementById('dmPanel');
   if (!el) return;
   el.addEventListener('click', e => {
+    const bb = e.target.closest('button[data-dm-bolsa]');
+    if (bb && !bb.disabled) {
+      const j = jugadores.find(x => x.clave === elegido);
+      if (j) cambiarBolsa(j, bolsa.cuantas(j.bolsa) + parseInt(bb.dataset.dmBolsa, 10), false);
+      return;
+    }
     const bo = e.target.closest('[data-obj]');
     if (bo && !bo.disabled) {
       const j = jugadores.find(x => x.clave === elegido);
@@ -210,6 +240,11 @@ export function init() {
     const para = j ? ` (para ${j.nombre})` : '';
     if (accion === 'elegir') return elegir(b.dataset.clave);
     if (!j) return;
+    if (accion.startsWith('odre-')) {
+      const r = odres.opsDM(accion, id, j, el);
+      if (r) enviar(r[0], r[1]);
+      return;
+    }
     const u = j.clave;
     if (accion === 'mat')
       return enviar([{ t: 'num', c: 'inventory', id, n, u }], `${n > 0 ? '+' : ''}${n} ${nombreMat(id)}${para}`);
@@ -279,6 +314,23 @@ export function init() {
     const id = inp.dataset.dmSet;
     enviar([{ t: 'num', c: 'inventory', id, n: ahora - antes, e: antes, u: j.clave }], `${nombreMat(id)} = ${ahora} (para ${j.nombre})`);
   };
+  // Monedas: «250» = total, «+50» / «-12» = dar / quitar
+  el.addEventListener('focusin', e => { if (e.target.matches('[data-dm-bolsa-num]')) { e.target.value = e.target.dataset.antes === '0' ? '' : e.target.dataset.antes; e.target.select(); } });
+  el.addEventListener('focusout', e => {
+    if (!e.target.matches('[data-dm-bolsa-num]')) return;
+    const j = jugadores.find(x => x.clave === elegido);
+    const antes = parseInt(e.target.dataset.antes) || 0, txt = e.target.value.trim();
+    e.target.dataset.antes = '-';   // evita mandarlo dos veces
+    if (!j || antes !== bolsa.cuantas(j.bolsa)) return;
+    if (!txt) { render(); return; }
+    const nuevo = bolsa.leer(txt, antes);
+    setTimeout(() => cambiarBolsa(j, nuevo, /^\d/.test(txt.replace(/\s/g, ''))), 0);
+  });
+  el.addEventListener('keydown', e => {
+    if (!e.target.matches('[data-dm-bolsa-num]')) return;
+    if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); }
+    if (e.key === 'Escape') { e.target.value = ''; e.target.blur(); }
+  });
   el.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.dataset.dmSet) { e.preventDefault(); fijar(e.target); e.target.blur(); } });
   el.addEventListener('focusout', e => { if (e.target.dataset?.dmSet) fijar(e.target); });
   el.addEventListener('input', e => { if (e.target.id === 'dmFiltro') render(); });

@@ -28,6 +28,7 @@ export let usuario = null;
 export let servidor = false;    // ¿hay servidor con cuentas?
 export let mesa = null;         // { id, nombre, rol, disciplina } la campaña en la que se está jugando
 export let campanas = [];       // las campañas de esta cuenta
+let otras = [];                 // V3.9: campañas en las que no juega (para el selector)
 export let puedeCrear = false;  // ¿puede crear campañas? (el superusuario)
 let info = {};
 export let mensajeDiscord = null;   // { texto, tipo } para enseñar al arrancar la app (vinculado, error...)
@@ -154,6 +155,7 @@ async function cargarYo() {
   if (r.status !== 200 || !r.j?.usuario) return false;
   usuario = r.j.usuario;
   campanas = r.j.campanas || [];
+  otras = r.j.otras || [];
   puedeCrear = !!r.j.puedeCrear;
   return true;
 }
@@ -218,19 +220,37 @@ function elegirMesa(pantalla) {
     let caja = hoja.querySelector('.entrada-mesas');
     if (!caja) { caja = document.createElement('div'); caja.className = 'entrada-mesas'; hoja.appendChild(caja); }
     const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    let busca = '', abierta = null;   // texto del buscador y la mesa con candado que pide contraseña
+    const normal = t => String(t || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
     function pintar(error = '') {
-      const lista = campanas.map(c => `<button type="button" class="mesa-opcion" data-mesa="${esc(c.id)}">
+      const coincide = c => !busca || normal(c.nombre).includes(normal(busca));
+      const mias = campanas.filter(coincide), ajenas = otras.filter(coincide);
+      const lista = mias.map(c => `<button type="button" class="mesa-opcion" data-mesa="${esc(c.id)}">
           <span class="mesa-opcion-nombre">${esc(c.nombre)}</span>
           <span class="mesa-opcion-rol">${c.rol === 'admin' ? '🛡️ Superusuario' : c.rol === 'dm' ? '👑 DM' : '⚔️ Jugador'}
-            ${c.rol !== 'admin' ? ' · ' + esc(NOMBRE_DISC[c.disciplina] || '') : ''}</span>
-        </button>`).join('');
+            ${c.rol === 'jugador' ? ' · ' + esc(NOMBRE_DISC[c.disciplina] || String(c.disciplina || '').split(',').map(d => NOMBRE_DISC[d] || '').join(' · ')) : ''}</span>
+        </button>`).join('') + ajenas.map(c => c.conClave ? `
+        <div class="mesa-opcion mesa-ajena ${abierta === c.id ? 'abierta' : ''}">
+          <button type="button" class="mesa-ajena-boton" data-mesa-candado="${esc(c.id)}">
+            <span class="mesa-opcion-nombre">🔒 ${esc(c.nombre)}</span>
+            <span class="mesa-opcion-rol">Con contraseña · pulsa para unirte</span></button>
+          ${abierta === c.id ? `<form class="mesa-candado" data-mesa-unir="${esc(c.id)}">
+              <input type="password" maxlength="100" autocomplete="off" placeholder="Contraseña de la mesa" aria-label="Contraseña de ${esc(c.nombre)}">
+              <button type="submit" class="btn btn-sm">🔓 Entrar</button></form>` : ''}
+        </div>` : `
+        <div class="mesa-opcion mesa-ajena mesa-cerrada" title="El DM tiene que invitarte">
+          <span class="mesa-opcion-nombre">✉️ ${esc(c.nombre)}</span>
+          <span class="mesa-opcion-rol">Solo por invitación del DM</span>
+        </div>`).join('');
+      const total = campanas.length + otras.length;
       caja.innerHTML = `
         <p class="entrada-nota">${campanas.length
           ? `Bienvenido, <strong>${esc(usuario.nombre)}</strong>. ¿A qué mesa te sientas hoy?`
           : `<strong>${esc(usuario.nombre)}</strong>, todavía no te has sentado en ninguna mesa.<br>
              ${puedeCrear ? 'Crea la primera campaña aquí abajo.' : `Pide al DM de tu campaña que te invite (dile tu nombre, <strong>${esc(usuario.nombre)}</strong>) o únete con la contraseña de la mesa.`}`}</p>
-        <div class="mesa-opciones">${lista}</div>
-        ${!puedeCrear ? `<details class="mesa-unirse" ${campanas.length ? '' : 'open'}>
+        ${total ? `<input type="search" class="mesa-buscar" placeholder="🔍 Buscar campaña" value="${esc(busca)}" aria-label="Buscar campaña">` : ''}
+        <div class="mesa-opciones">${lista || (busca ? '<p class="muted">Ninguna campaña se llama así.</p>' : '')}</div>
+        ${!puedeCrear && !otras.length ? `<details class="mesa-unirse" ${campanas.length ? '' : 'open'}>
             <summary>🔑 Unirme a una mesa con su contraseña</summary>
             <form class="mesa-crear" id="mesaUnirseForm">
               <label class="entrada-campo"><span>Nombre de la mesa</span><input type="text" id="mesaUnirseNombre" maxlength="40"></label>
@@ -250,7 +270,21 @@ function elegirMesa(pantalla) {
         </div>`;
     }
     pintar();
+    caja.oninput = e => {
+      if (!e.target.matches('.mesa-buscar')) return;
+      busca = e.target.value;
+      pintar();
+      const q = caja.querySelector('.mesa-buscar');
+      q.focus(); q.setSelectionRange(busca.length, busca.length);
+    };
     caja.onclick = async e => {
+      const cand = e.target.closest('[data-mesa-candado]');
+      if (cand) {   // mesa con candado: pide la contraseña ahí mismo
+        abierta = abierta === cand.dataset.mesaCandado ? null : cand.dataset.mesaCandado;
+        pintar();
+        caja.querySelector('.mesa-candado input')?.focus();
+        return;
+      }
       const b = e.target.closest('[data-mesa], [data-mesa-accion]');
       if (!b) return;
       if (b.dataset.mesa) {
@@ -266,6 +300,14 @@ function elegirMesa(pantalla) {
     };
     caja.onsubmit = async e => {
       e.preventDefault();
+      if (e.target.dataset.mesaUnir) {   // unirse a una mesa con candado desde la lista
+        const r = await api('/api/campanas/unirse', { id: e.target.dataset.mesaUnir,
+          clave: e.target.querySelector('input').value }, true).catch(() => ({ j: null }));
+        if (!r.j?.ok) return pintar(r.j?.mensaje || 'No se pudo entrar en la mesa.');
+        try { await cargarYo(); } catch (_) {}
+        caja.onclick = null;
+        return resolve(campanas.find(c => c.id === r.j.campana.id) || r.j.campana);
+      }
       if (e.target.id === 'mesaUnirseForm') {   // unirse con la contraseña de la mesa
         const r = await api('/api/campanas/unirse', { nombre: caja.querySelector('#mesaUnirseNombre').value,
           clave: caja.querySelector('#mesaUnirseClave').value }, true).catch(() => ({ j: null }));
@@ -383,15 +425,38 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
   });
 }
 
-// El sello se rompe, el pergamino se enrolla y aparece la mesa
+// El sello se rompe, el pergamino se enrolla y aparece la mesa.
+// La pantalla no se quita hasta que el pergamino está cerrado del todo: la mesa empieza a
+// cargarse detrás cuando arranca el fundido y la pantalla se retira cuando este termina.
 function sellar(pantalla, c, resolve) {
   ponerMesa(c);
-  pantalla.classList.add('sellado');
-  setTimeout(() => {
-    pantalla.remove();
+  // La hoja puede haber cambiado de alto (p. ej. la lista de mesas): se vuelve a medir
+  // para que los dos rodillos se junten justo en el centro
+  const hoja = pantalla.querySelector('.pergamino-hoja');
+  if (hoja) pantalla.style.setProperty('--media-hoja', (hoja.offsetHeight / 2) + 'px');
+  let mesaLista = false, quitada = false;
+  const mostrarMesa = () => {
+    if (mesaLista) return;
+    mesaLista = true;
     document.body.classList.remove('sin-sesion');
     resolve();
-  }, 1100);
+  };
+  const quitar = () => {
+    if (quitada) return;
+    quitada = true;
+    mostrarMesa();
+    pantalla.remove();
+  };
+  pantalla.addEventListener('animationstart', e => {
+    if (e.target === pantalla && e.animationName === 'fundido') mostrarMesa();
+  });
+  pantalla.addEventListener('animationend', e => {
+    if (e.target === pantalla && e.animationName === 'fundido') quitar();
+  });
+  pantalla.classList.add('sellado');
+  // Por si el navegador no avisa (pestaña en segundo plano, animaciones desactivadas…)
+  setTimeout(mostrarMesa, 1200);
+  setTimeout(quitar, 1800);
 }
 
 export async function salir() {

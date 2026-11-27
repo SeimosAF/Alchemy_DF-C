@@ -15,6 +15,7 @@
 // armas y efectos los lea sin tener que cambiar cómo se guardan los objetos.
 import { state, saveState, genId } from './state.js';
 import * as filtros from './filtros.js';
+import { repintarInventario } from './utils.js';
 
 export const CATEGORIAS = {
   arma:        { icono: '⚔️', nombre: 'Arma' },
@@ -40,14 +41,12 @@ const abiertos = new Set();   // objetos con la descripción desplegada
 // Filtros de la barra (los de buscar por nombre los pone filtros.js)
 const CORTO = { arma: 'Armas', armadura: 'Armaduras', magico: 'Maravillosos', joya: 'Joyas', pergamino: 'Pergaminos',
   herramienta: 'Herramientas', equipo: 'Equipo', consumible: 'Consumibles', tesoro: 'Tesoros', otro: 'Otros' };
-filtros.grupo('objetos', 'cat', [['', 'Todo'], ...Object.entries(CATEGORIAS).map(([k, c]) => [k, `${c.icono} ${CORTO[k]}`])]);
-filtros.grupo('objetos', 'marca', [['', 'Cualquiera'], ['equipado', '✋ Equipado'], ['sintonia', '🔗 Sintonizado'], ['magico', '✨ Mágico']]);
-
-const esMagico = o => !!(o.rareza || o.sintonizacion || o.arma?.bonif);
+export const esMagico = o => !!(o.rareza || o.sintonizacion || o.arma?.bonif);
 export const sintonizados = objs => Object.values(objs || {}).filter(o => o.sintonizado).length;
 
 // ---- Una fila del inventario (la usan el jugador y el panel del DM) ----
-export function tarjeta(id, o, dm = false) {
+// «extra»: botones de más (p. ej. «🤝 Dar» en el inventario del jugador)
+export function tarjeta(id, o, dm = false, extra = '') {
   const c = cat(o);
   const n = o.cantidad ?? 1;
   const etqs = [`<span class="etq">${c.icono} ${esc(c.nombre)}</span>`];
@@ -89,12 +88,16 @@ export function tarjeta(id, o, dm = false) {
           ${o.categoria === 'arma' || o.categoria === 'armadura' || o.equipado ? `<button class="btn btn-sm ${o.equipado ? 'activo' : ''}" data-obj="equipar" data-id="${esc(id)}" title="${o.equipado ? 'Quitarse' : 'Equiparse'}">✋</button>` : ''}
           ${o.sintonizacion ? `<button class="btn btn-sm ${o.sintonizado ? 'activo' : ''}" data-obj="sintonizar" data-id="${esc(id)}" title="${o.sintonizado ? 'Romper la sintonía' : 'Sintonizarse (descanso corto)'}">🔗</button>` : ''}
           <button class="btn btn-sm btn-edit" data-obj="editar" data-id="${esc(id)}" title="Editar${dm ? ' (como DM)' : ''}">✏️</button>
+          ${extra}
           <button class="btn btn-sm btn-danger" data-obj="quitar" data-id="${esc(id)}" title="Quitar del inventario">🗑️</button>
         </div>
       </div>
     </div>`;
 }
 
+export function textoBusqueda(o) {
+  return [o.name, cat(o).nombre, o.rareza, o.descripcion, o.notas, o.arma?.tipoDano, o.arma?.propiedades, o.armadura?.tipo];
+}
 function pasa(o) {
   const e = filtros.estado('objetos');
   if (!filtros.coincide('objetos', o.name, cat(o).nombre, o.rareza, o.descripcion, o.notas, o.arma?.tipoDano, o.arma?.propiedades, o.armadura?.tipo)) return false;
@@ -113,12 +116,10 @@ export function ordenar(objs) {
     || String(a.name).localeCompare(String(b.name), 'es'));
 }
 
+// El inventario es una sola lista (js/inventario.js): aquí solo se pinta el resumen de arriba
 export function render() {
-  const el = document.getElementById('invObjetosList');
-  if (!el) return;
+  repintarInventario();
   const todos = ordenar(state.objetos);
-  const vistos = todos.filter(([, o]) => pasa(o));
-  filtros.cuenta('objetos', vistos.length, todos.length);
   const s = sintonizados(state.objetos);
   const cab = document.getElementById('objetosResumen');
   if (cab) cab.innerHTML = todos.length
@@ -126,8 +127,6 @@ export function render() {
        <span>✋ <b>${todos.filter(([, o]) => o.equipado).length}</b> equipado${todos.filter(([, o]) => o.equipado).length === 1 ? '' : 's'}</span>
        <span class="${s > MAX_SINTONIA ? 'obj-aviso' : ''}" title="En D&D 5e puedes estar sintonizado con ${MAX_SINTONIA} objetos a la vez">🔗 <b>${s}</b>/${MAX_SINTONIA} sintonizados</span>`
     : '';
-  if (!todos.length) { el.innerHTML = '<p class="muted">Todavía no llevas nada. Apunta aquí tus armas, armaduras, objetos mágicos y el resto de tu equipo.</p>'; return; }
-  el.innerHTML = vistos.length ? vistos.map(([id, o]) => tarjeta(id, o)).join('') : filtros.vacio('objetos');
 }
 
 export function resumen() {
@@ -173,7 +172,7 @@ export function accion(b, objs, guardar, quien = '') {
 }
 
 export function init() {
-  const caja = document.getElementById('invSub-objetos');
+  const caja = document.getElementById('invSub-todo');
   if (!caja) return;
   caja.addEventListener('click', e => {
     const b = e.target.closest('[data-obj]');

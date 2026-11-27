@@ -21,7 +21,7 @@ import * as auth from './auth.js';
 
 // Colecciones que se guardan en el servidor. Un módulo nuevo con datos propios se añade aquí
 // (y en COLECCIONES / POR_JUGADOR de servidor.py).
-export const COLS = { inventory: 'num', potions: 'qty', lootPotions: 'qty', catalog: 'obj', potionCatalog: 'obj', libros: 'obj', perfil: 'obj', objetos: 'obj' };
+export const COLS = { inventory: 'num', potions: 'qty', lootPotions: 'qty', catalog: 'obj', potionCatalog: 'obj', libros: 'obj', perfil: 'obj', objetos: 'obj', bolsa: 'num', odres: 'obj', descubrimientos: 'obj' };
 export const META = ['version', 'settings', 'damageTypes'];
 
 const K_COLA_VIEJA = 'alquimiaColaPendiente';            // de antes de las cuentas
@@ -71,7 +71,8 @@ export function desdeServidor(d, character) {
   return s;
 }
 export function servidorVacio(d) {
-  return Object.keys(COLS).every(c => !Object.keys(d[c] || {}).length);
+  // Los odres (el de 3 L lo pone el servidor) y los descubrimientos no cuentan como «datos»
+  return Object.keys(COLS).filter(c => c !== 'odres' && c !== 'descubrimientos').every(c => !Object.keys(d[c] || {}).length);
 }
 
 // ---- Diferencias -> operaciones ----
@@ -91,7 +92,7 @@ export function diferencias(antes, despues) {
         if (vb === undefined) { ops.push({ t: 'num', c, id, n: 0, borrar: true }); continue; } // material borrado
         const n = (Number(vb) || 0) - (Number(va) || 0);
         ops.push({ t: 'num', c, id, n });
-        if (n) texto.push(`${n > 0 ? '+' : ''}${n} ${nombreMat(despues, id)}`);
+        if (n) texto.push(`${n > 0 ? '+' : ''}${n} ${c === 'bolsa' ? 'monedas de oro' : nombreMat(despues, id)}`);
       } else if (tipo === 'qty') {
         const qa = va ? (va.qty || 0) : 0, qb = vb ? (vb.qty || 0) : 0;
         const op = { t: 'qty', c, id, n: qb - qa };
@@ -108,6 +109,8 @@ export function diferencias(antes, despues) {
         else if (c === 'libros') texto.push(!va ? `nuevo libro ${vb.name}` : !vb ? `quitó el libro ${va.name}` : `lectura de ${vb.name}`);
         else if (c === 'perfil') texto.push('nivel de alquimia');
         else if (c === 'objetos') texto.push(!va ? `nuevo objeto ${vb.name}` : !vb ? `quitó ${va.name}` : `editó ${vb.name}`);
+        else if (c === 'odres') texto.push(!va ? `nuevo odre` : !vb ? `tiró un odre` : (vb.litros < va.litros ? `gastó ${String(va.litros - vb.litros).replace('.', ',')} L de disolvente` : 'odre'));
+        else if (c === 'descubrimientos') texto.push('descubrimientos');
         else texto.push('ajustes');
       }
     }

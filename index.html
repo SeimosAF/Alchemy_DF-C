@@ -126,27 +126,215 @@
     <p class="muted">En cada <b>descanso corto o largo</b> puedes avanzar una lectura de un libro. Las lecturas marcadas con 🌙 piden
       <b>sí o sí un descanso largo</b> y una <b>tirada de comprensión</b>: d20 + mod. INT (<b id="lecturaIntMod">+0</b>, se cambia en
       <a href="#" data-action="switch-tab" data-id="perfil">tu perfil</a>) contra la dificultad que fija el DM. Al terminar el libro obtienes su bono.</p>
-    <p class="muted">Los libros se dan de alta en <a href="#" data-action="ir-libros">Inventario → Libros</a>.</p>
+    <p class="muted">¿Has encontrado un libro? <a href="#" data-action="ir-libros">Dalo de alta abajo</a>. Tus libros también salen en el inventario, donde puedes dárselos a otro jugador.</p>
   </div>
   <div id="lecturaAviso"></div>
   <div id="lecturaLista"></div>
+      <details class="panel libro-form" id="libroAlta">
+        <summary><h3>➕ Dar de alta un libro</h3></summary>
+        <div class="form-row-2">
+          <div class="form-row"><label>Título *</label><input type="text" id="libroNombre" maxlength="120"></div>
+          <div class="form-row"><label>Número de lecturas</label><input type="number" id="libroLecturas" value="8" min="1" max="100" style="width:90px"></div>
+        </div>
+        <div class="form-row"><label>Bono al terminarlo</label><input type="text" id="libroBono" maxlength="300" placeholder="p. ej. +1 a las pruebas de Arcanos; aprendes el conjuro Identificar"></div>
+        <div class="form-row"><label>Descripción (opcional)</label><textarea id="libroDesc" rows="2" maxlength="1000"></textarea></div>
+        <div class="form-row"><label>Lecturas que piden descanso largo y tirada de comprensión</label>
+          <input type="text" id="libroPruebas" placeholder="p. ej. 4, 8">
+          <p class="muted" id="libroPruebasAyuda" style="font-size:.85em;margin:4px 0 0"></p></div>
+        <div class="btn-row">
+          <button class="btn" data-lec="guardar-libro" id="libroGuardar">➕ Añadir libro</button>
+          <button class="btn" style="background:#777" data-lec="cancelar-libro" id="libroCancelar" hidden>✖ Cancelar edición</button>
+        </div>
+      </details>
 </section>
 
-<!-- ====== COMPENDIO (catálogos de alquimia) ====== -->
-<section id="tab-info" class="tab-content">
-  <div class="subtab-bar">
-    <button class="subtab-btn active" data-action="info-subtab" data-id="catalogo">🗃️ Catálogo Materiales</button>
-    <button class="subtab-btn" data-action="info-subtab" data-id="pociones">🧪 Catálogo Pociones</button>
-    <button class="subtab-btn" data-action="info-subtab" data-id="identificacion">📋 Identificación</button>
-    <button class="subtab-btn" data-action="info-subtab" data-id="parametros">⚙️ Parámetros</button>
+<!-- ====== INVENTARIO TAB (js/inventario.js): todo lo que llevas, en una sola lista ====== -->
+<section id="tab-inventario" class="tab-content">
+  <div class="panel">
+    <div class="inv-barra">
+    <!-- Bolsa de monedas (js/bolsa.js): siempre a la vista -->
+    <div class="bolsa" id="bolsa" role="group" aria-label="Monedas de oro"></div>
+    <div class="subtab-bar">
+      <button class="subtab-btn active" data-action="inv-subtab" data-id="todo">🎒 Mi inventario</button>
+      <button class="subtab-btn subtab-dm solo-dm" data-action="inv-subtab" data-id="dm">👑 Inventarios de la mesa (DM)</button>
+    </div>
+    </div>
+    <div id="invSub-dm" style="display:none"><div id="dmPanel"></div></div>
+    <div id="invSub-todo">
+      <div class="inv-acciones">
+        <div class="obj-resumen" id="objetosResumen"></div>
+        <div class="btn-row">
+          <button class="btn btn-sm" data-obj="nuevo">➕ Objeto</button>
+          <button class="btn btn-sm" data-inv="nuevo-loot">➕ Poción encontrada</button>
+        </div>
+      </div>
+      <div class="filtros" data-filtros="inv" data-texto="Buscar en tu inventario…"></div>
+      <div id="drinkResult"></div>
+      <div id="invLista"></div>
+    </div>
+  </div>
+</section>
+
+<!-- ====== CRAFTEO TAB ====== -->
+<section id="tab-crafteo" class="tab-content">
+  <div class="panel nivel-barra" id="alqNivelBar"></div>
+  <div class="subtab-bar alq-subtabs" role="tablist">
+    <button class="subtab-btn active" data-action="alq-subtab" data-id="caldero">🔥 Caldero</button>
+    <button class="subtab-btn" data-action="alq-subtab" data-id="materiales">🗃️ Materiales</button>
+    <button class="subtab-btn" data-action="alq-subtab" data-id="recetario">📚 Recetario</button>
+    <button class="subtab-btn" data-action="alq-subtab" data-id="odres">🫙 Odres</button>
+    <button class="subtab-btn subtab-dm solo-dm-o-local" data-action="alq-subtab" data-id="alta">➕ Alta de materiales</button>
+    <button class="subtab-btn subtab-dm solo-dm-o-local" data-action="alq-subtab" data-id="parametros">⚙️ Parámetros</button>
+  </div>
+  <div id="alqSub-caldero">
+  <div class="panel">
+    <h2>Tipo de crafteo</h2>
+    <div class="mode-btn-bar">
+      <button class="btn mode-btn active" data-action="craft-set-mode" data-id="elaboracion">🧪 Elaboración</button>
+      <button class="btn mode-btn" data-action="craft-set-mode" data-id="concentracion">✨ Concentración</button>
+      <button class="btn mode-btn" data-action="craft-set-mode" data-id="multipocion">🌀 Multipoción</button>
+    </div>
+    <p class="muted" id="craftModeHint"></p>
+    <!-- Toggle: only visible in elaboración mode -->
+    <div class="caul-toggle-bar" id="caulToggleBar">
+      <button class="btn btn-sm caul-toggle-btn" id="caulToggleBtn" data-action="toggle-cauldron">
+        🫧 Vista Caldero
+      </button>
+      <span class="muted" style="font-size:.8em">Interfaz visual con arrastrar y soltar</span>
+    </div>
   </div>
 
-  <!-- Identificación -->
-  <div id="infoSub-identificacion" style="display:none">
+  <!-- Cauldron visual panel (hidden by default) -->
+  <div id="craftCalderoPanel" class="panel" style="display:none;padding:0"></div>
+
+  <!-- Elaboración -->
+  <div id="craftElaboracionPanels">
     <div class="panel">
-      <h2 id="matFormTitle">➕ Identificar componente</h2>
+      <h2>1. Echa el disolvente</h2>
+      <p class="muted">El caldero empieza vacío. El disolvente da la textura y el color inicial al líquido.</p>
+      <div id="craftSolventList"></div>
+    </div>
+    <div class="panel" id="craftReactivoPanel" style="display:none">
+      <h2>2. Elige el Reactivo</h2>
+      <div id="craftBaseList"></div>
+    </div>
+    <div class="panel" id="craftModPanel" style="display:none">
+      <h2>3. Elige los Modificadores</h2>
+      <div id="craftModList"></div>
+    </div>
+  </div>
+
+  <!-- Concentración -->
+  <div id="craftConcentracionPanels" style="display:none">
+    <div class="panel">
+      <h2>1. Elige las 2 pociones a concentrar (mismo reactivo)</h2>
+      <div id="craftPotionList"></div>
+    </div>
+  </div>
+
+  <!-- Multipoción -->
+  <div id="craftMultipocionPanels" style="display:none">
+    <div class="panel">
+      <h2>1. Elige las 2 pociones a combinar</h2>
+      <div id="craftMultiList"></div>
+    </div>
+  </div>
+
+  <!-- Aplicación -->
+  <div id="craftAplicacionPanel" class="panel" style="display:none">
+    <h2 id="craftAplicStep">2. Método de aplicación</h2>
+    <p class="muted">Elige uno o más métodos. Cada tipo añade dificultad a la tirada.</p>
+    <div class="aplicacion-grid" id="aplicacionGrid">
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="brebaje" checked>
+        🍵 <strong>Brebaje</strong> — Al Beber
+        <span class="aplic-diff" id="ad-brebaje">+0</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="hemica">
+        🩸 <strong>Hémica</strong> — Contacto con Sangre
+        <span class="aplic-diff" id="ad-hemica">+1</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="corrosiva">
+        🖐️ <strong>Corrosiva</strong> — Contacto con Piel
+        <span class="aplic-diff" id="ad-corrosiva">+2</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="inhalable" id="aplicInhalable">
+        💨 <strong>Inhalable</strong> — Al oler (1m×1m)
+        <span class="aplic-diff" id="ad-inhalable">+3</span>
+      </label>
+      <label class="aplic-opt">
+        <input type="checkbox" name="craftAplic" value="fumigena" id="aplicFumigena">
+        💨 <strong>Fumígena</strong> — Nube inhalable (3m×3m)
+        <span class="aplic-diff" id="ad-fumigena">+4</span>
+      </label>
+    </div>
+    <p class="muted" id="aplicConflictWarn" style="display:none;color:#a00">⚠️ Inhalable y Fumígena no pueden combinarse.</p>
+    <p style="margin-top:6px">Penalización de aplicación: <strong id="aplicDiffTotal">+0</strong></p>
+  </div>
+
+  <!-- Craftea -->
+  <div class="panel" id="craftConfirmPanel">
+    <h2 id="craftStepLabel">3. Craftea</h2>
+    <p>Dificultad total: <strong id="craftDifficulty">—</strong></p>
+    <div class="form-row" style="max-width:260px">
+      <label>Bono situacional de esta tirada</label>
+      <input type="number" id="craftBonus" value="0">
+    </div>
+    <div class="btn-row">
+      <button class="btn" id="craftConfirmBtn" data-action="craft-confirm" disabled>🎲 Craftear</button>
+      <button class="btn" style="background:#777" data-action="craft-reset">❌ Reiniciar</button>
+    </div>
+    <div id="craftResult"></div>
+  </div>
+  </div><!-- /alqSub-caldero -->
+
+  <!-- Catálogo de materiales: cada jugador ve los que ha recibido alguna vez -->
+  <div id="alqSub-materiales" style="display:none">
+    <div class="panel panel-filtros">
+      <div class="filtros" data-filtros="cat-mat" data-campos data-sin-id data-tipos data-texto="Buscar material por nombre, lugar, efecto…"></div>
+      <div id="catMatNada"></div>
+    </div>
+    <div class="panel">
+      <h2 id="catUnknownTitulo">❓ Sin identificar</h2>
+      <div id="catUnknownList"><p class="muted">No hay componentes sin identificar.</p></div>
+    </div>
+    <div class="panel">
+      <h2>🌿 Reactivos</h2>
+      <div id="catBaseList"><p class="muted">No hay reactivos registrados.</p></div>
+    </div>
+    <div class="panel">
+      <h2>🧪 Modificadores</h2>
+      <div id="catModList"><p class="muted">No hay modificadores registrados.</p></div>
+    </div>
+  </div>
+
+  <!-- Recetario: las pociones que se han elaborado en la mesa -->
+  <div id="alqSub-recetario" style="display:none">
+    <div class="panel">
+      <h2>📚 Recetario: pociones descubiertas</h2>
+      <div class="filtros" data-filtros="cat-pot" data-campos data-texto="Buscar poción por nombre, apodo o ingrediente…"></div>
+      <div id="potionCatalogList"><p class="muted">Todavía no has creado ninguna poción.</p></div>
+    </div>
+  </div>
+
+  <!-- Odres: disolventes que no son agua (js/odres.js) -->
+  <div id="alqSub-odres" style="display:none">
+    <div class="panel">
+      <h2>🫙 Tus odres</h2>
+      <div id="alqOdres"></div>
+    </div>
+  </div>
+
+  <!-- Alta de materiales (solo DM) -->
+  <div id="alqSub-alta" style="display:none">
+    <div class="panel">
+      <h2 id="matFormTitle">➕ Dar de alta un material</h2>
+      <p class="muted">Solo el DM da de alta materiales. Un material nuevo <b>no sale en el catálogo de los jugadores</b> hasta que se lo das a cada uno por primera vez (desde «Inventarios de la mesa»).</p>
       <label class="check-label" style="margin-bottom:10px;padding:8px 10px;background:#faf6ef;border:1px solid #d8cdb4;border-radius:6px">
-        <input type="checkbox" id="matUnknown"> <strong>Estado desconocido (???)</strong> — solo nombre y lugar
+        <input type="checkbox" id="matUnknown"> <strong>🙈 Desconocido para los jugadores</strong> — verán su nombre y dónde se encontró, pero no qué hace ni podrán usarlo en el caldero. Puedes rellenar toda la ficha igualmente y quitar la marca cuando quieras darlo a conocer.
       </label>
       <div class="form-row-2">
         <div class="form-row">
@@ -381,223 +569,19 @@
       </div><!-- /matKnownFields -->
 
       <div class="btn-row">
-        <button class="btn" data-action="add-mat" id="matSubmitBtn">➕ Añadir componente</button>
+        <button class="btn" data-action="add-mat" id="matSubmitBtn">➕ Añadir material</button>
         <button class="btn" style="display:none;background:#777" id="matCancelEditBtn" data-action="cancel-edit-mat">✖ Cancelar edición</button>
       </div>
     </div>
   </div>
 
-  <!-- Catálogo Materiales -->
-  <div id="infoSub-catalogo">
-    <div class="panel panel-filtros">
-      <div class="filtros" data-filtros="cat-mat" data-campos data-sin-id data-tipos data-texto="Buscar material por nombre, lugar, efecto…"></div>
-      <div id="catMatNada"></div>
-    </div>
-    <div class="panel">
-      <h2>❓ Sin identificar</h2>
-      <div id="catUnknownList"><p class="muted">No hay componentes sin identificar.</p></div>
-    </div>
-    <div class="panel">
-      <h2>🌿 Reactivos</h2>
-      <div id="catBaseList"><p class="muted">No hay reactivos registrados.</p></div>
-    </div>
-    <div class="panel">
-      <h2>🧪 Modificadores</h2>
-      <div id="catModList"><p class="muted">No hay modificadores registrados.</p></div>
-    </div>
-  </div>
-
-  <!-- Parámetros -->
-  <div id="infoSub-parametros" style="display:none">
+  <!-- Parámetros (solo DM) -->
+  <div id="alqSub-parametros" style="display:none">
     <div class="panel">
       <h2>⚙️ Disolventes y dificultades</h2>
       <p class="muted">El campo de cada componente fija su disolvente. Aquí puedes cambiar el nombre de cada disolvente y lo que suma a la CD.</p>
       <div id="settingsPanel"></div>
     </div>
-  </div>
-
-  <!-- Catálogo Pociones -->
-  <div id="infoSub-pociones" style="display:none">
-    <div class="panel">
-      <h2>📚 Pociones descubiertas</h2>
-      <div class="filtros" data-filtros="cat-pot" data-campos data-texto="Buscar poción por nombre, apodo o ingrediente…"></div>
-      <div id="potionCatalogList"><p class="muted">Todavía no has creado ninguna poción.</p></div>
-    </div>
-  </div>
-</section>
-
-<!-- ====== INVENTARIO TAB ====== -->
-<section id="tab-inventario" class="tab-content">
-  <div class="panel">
-    <div class="subtab-bar">
-      <button class="subtab-btn active" data-action="inv-subtab" data-id="objetos">🎒 Objetos</button>
-      <button class="subtab-btn" data-action="inv-subtab" data-id="materiales">📦 Materiales</button>
-      <button class="subtab-btn" data-action="inv-subtab" data-id="pociones">🧪 Pociones</button>
-      <button class="subtab-btn" data-action="inv-subtab" data-id="loot">🔍 Loot</button>
-      <button class="subtab-btn" data-action="inv-subtab" data-id="libros">📚 Libros</button>
-      <button class="subtab-btn subtab-dm solo-dm" data-action="inv-subtab" data-id="dm">👑 Inventarios de la mesa (DM)</button>
-    </div>
-    <div id="invSub-dm" style="display:none"><div id="dmPanel"></div></div>
-    <!-- Inventario general (js/objetos.js): armas, armaduras, objetos mágicos, equipo... -->
-    <div id="invSub-objetos">
-      <div class="obj-cabecera">
-        <div class="obj-resumen" id="objetosResumen"></div>
-        <button class="btn" data-obj="nuevo">➕ Nuevo objeto</button>
-      </div>
-      <div class="filtros" data-filtros="objetos" data-texto="Buscar objeto por nombre, efecto, propiedad…"></div>
-      <div id="invObjetosList"></div>
-    </div>
-    <div id="invSub-materiales" style="display:none">
-      <div class="filtros" data-filtros="inv-mat" data-campos data-sin-id data-tipos data-tengo data-texto="Buscar material por nombre, lugar, tipo…"></div>
-      <div id="invMatList"></div>
-    </div>
-    <div id="invSub-pociones" style="display:none">
-      <div class="filtros" data-filtros="inv-pot" data-campos data-texto="Buscar poción por nombre o apodo…"></div>
-      <div id="invPotList"></div>
-      <div id="drinkResult"></div>
-    </div>
-    <div id="invSub-libros" style="display:none">
-      <div id="invLibrosList"></div>
-      <div class="libro-form">
-        <h3>➕ Dar de alta un libro</h3>
-        <div class="form-row-2">
-          <div class="form-row"><label>Título *</label><input type="text" id="libroNombre" maxlength="120"></div>
-          <div class="form-row"><label>Número de lecturas</label><input type="number" id="libroLecturas" value="8" min="1" max="100" style="width:90px"></div>
-        </div>
-        <div class="form-row"><label>Bono al terminarlo</label><input type="text" id="libroBono" maxlength="300" placeholder="p. ej. +1 a las pruebas de Arcanos; aprendes el conjuro Identificar"></div>
-        <div class="form-row"><label>Descripción (opcional)</label><textarea id="libroDesc" rows="2" maxlength="1000"></textarea></div>
-        <div class="form-row"><label>Lecturas que piden descanso largo y tirada de comprensión</label>
-          <input type="text" id="libroPruebas" placeholder="p. ej. 4, 8">
-          <p class="muted" id="libroPruebasAyuda" style="font-size:.85em;margin:4px 0 0"></p></div>
-        <div class="btn-row">
-          <button class="btn" data-lec="guardar-libro" id="libroGuardar">➕ Añadir libro</button>
-          <button class="btn" style="background:#777" data-lec="cancelar-libro" id="libroCancelar" hidden>✖ Cancelar edición</button>
-        </div>
-      </div>
-    </div>
-    <div id="invSub-loot" style="display:none">
-      <div class="form-row-2">
-        <div class="form-row">
-          <label>Nombre de la poción loot</label>
-          <input type="text" id="lootName" placeholder="Poción sin identificar...">
-        </div>
-        <div class="form-row">
-          <label>Cantidad</label>
-          <input type="number" id="lootQty" value="1" min="1" style="width:80px">
-        </div>
-      </div>
-      <button class="btn" data-action="add-loot">➕ Añadir poción loot</button>
-      <div class="filtros" data-filtros="loot" data-texto="Buscar en el botín…" style="margin-top:12px"></div>
-      <div id="lootPotList"></div>
-      <div id="lootResult"></div>
-    </div>
-  </div>
-</section>
-
-<!-- ====== CRAFTEO TAB ====== -->
-<section id="tab-crafteo" class="tab-content">
-  <div class="panel nivel-barra" id="alqNivelBar"></div>
-  <div class="panel">
-    <h2>Tipo de crafteo</h2>
-    <div class="mode-btn-bar">
-      <button class="btn mode-btn active" data-action="craft-set-mode" data-id="elaboracion">🧪 Elaboración</button>
-      <button class="btn mode-btn" data-action="craft-set-mode" data-id="concentracion">✨ Concentración</button>
-      <button class="btn mode-btn" data-action="craft-set-mode" data-id="multipocion">🌀 Multipoción</button>
-    </div>
-    <p class="muted" id="craftModeHint"></p>
-    <!-- Toggle: only visible in elaboración mode -->
-    <div class="caul-toggle-bar" id="caulToggleBar">
-      <button class="btn btn-sm caul-toggle-btn" id="caulToggleBtn" data-action="toggle-cauldron">
-        🫧 Vista Caldero
-      </button>
-      <span class="muted" style="font-size:.8em">Interfaz visual con arrastrar y soltar</span>
-    </div>
-  </div>
-
-  <!-- Cauldron visual panel (hidden by default) -->
-  <div id="craftCalderoPanel" class="panel" style="display:none;padding:0"></div>
-
-  <!-- Elaboración -->
-  <div id="craftElaboracionPanels">
-    <div class="panel">
-      <h2>1. Echa el disolvente</h2>
-      <p class="muted">El caldero empieza vacío. El disolvente da la textura y el color inicial al líquido.</p>
-      <div id="craftSolventList"></div>
-    </div>
-    <div class="panel" id="craftReactivoPanel" style="display:none">
-      <h2>2. Elige el Reactivo</h2>
-      <div id="craftBaseList"></div>
-    </div>
-    <div class="panel" id="craftModPanel" style="display:none">
-      <h2>3. Elige los Modificadores</h2>
-      <div id="craftModList"></div>
-    </div>
-  </div>
-
-  <!-- Concentración -->
-  <div id="craftConcentracionPanels" style="display:none">
-    <div class="panel">
-      <h2>1. Elige las 2 pociones a concentrar (mismo reactivo)</h2>
-      <div id="craftPotionList"></div>
-    </div>
-  </div>
-
-  <!-- Multipoción -->
-  <div id="craftMultipocionPanels" style="display:none">
-    <div class="panel">
-      <h2>1. Elige las 2 pociones a combinar</h2>
-      <div id="craftMultiList"></div>
-    </div>
-  </div>
-
-  <!-- Aplicación -->
-  <div id="craftAplicacionPanel" class="panel" style="display:none">
-    <h2 id="craftAplicStep">2. Método de aplicación</h2>
-    <p class="muted">Elige uno o más métodos. Cada tipo añade dificultad a la tirada.</p>
-    <div class="aplicacion-grid" id="aplicacionGrid">
-      <label class="aplic-opt">
-        <input type="checkbox" name="craftAplic" value="brebaje" checked>
-        🍵 <strong>Brebaje</strong> — Al Beber
-        <span class="aplic-diff" id="ad-brebaje">+0</span>
-      </label>
-      <label class="aplic-opt">
-        <input type="checkbox" name="craftAplic" value="hemica">
-        🩸 <strong>Hémica</strong> — Contacto con Sangre
-        <span class="aplic-diff" id="ad-hemica">+1</span>
-      </label>
-      <label class="aplic-opt">
-        <input type="checkbox" name="craftAplic" value="corrosiva">
-        🖐️ <strong>Corrosiva</strong> — Contacto con Piel
-        <span class="aplic-diff" id="ad-corrosiva">+2</span>
-      </label>
-      <label class="aplic-opt">
-        <input type="checkbox" name="craftAplic" value="inhalable" id="aplicInhalable">
-        💨 <strong>Inhalable</strong> — Al oler (1m×1m)
-        <span class="aplic-diff" id="ad-inhalable">+3</span>
-      </label>
-      <label class="aplic-opt">
-        <input type="checkbox" name="craftAplic" value="fumigena" id="aplicFumigena">
-        💨 <strong>Fumígena</strong> — Nube inhalable (3m×3m)
-        <span class="aplic-diff" id="ad-fumigena">+4</span>
-      </label>
-    </div>
-    <p class="muted" id="aplicConflictWarn" style="display:none;color:#a00">⚠️ Inhalable y Fumígena no pueden combinarse.</p>
-    <p style="margin-top:6px">Penalización de aplicación: <strong id="aplicDiffTotal">+0</strong></p>
-  </div>
-
-  <!-- Craftea -->
-  <div class="panel" id="craftConfirmPanel">
-    <h2 id="craftStepLabel">3. Craftea</h2>
-    <p>Dificultad total: <strong id="craftDifficulty">—</strong></p>
-    <div class="form-row" style="max-width:260px">
-      <label>Bono situacional de esta tirada</label>
-      <input type="number" id="craftBonus" value="0">
-    </div>
-    <div class="btn-row">
-      <button class="btn" id="craftConfirmBtn" data-action="craft-confirm" disabled>🎲 Craftear</button>
-      <button class="btn" style="background:#777" data-action="craft-reset">❌ Reiniciar</button>
-    </div>
-    <div id="craftResult"></div>
   </div>
 </section>
 

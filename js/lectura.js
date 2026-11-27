@@ -11,7 +11,7 @@
 // El servidor solo deja al DM cambiar "pruebas" (qué casillas piden tirada y su CD).
 import { state, saveState, genId } from './state.js';
 import * as auth from './auth.js';
-import { roll20 } from './utils.js';
+import { roll20, repintarInventario } from './utils.js';
 
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const conSigno = n => (n >= 0 ? '+' : '') + n;
@@ -73,7 +73,7 @@ export function render() {
     el.innerHTML = `<div class="lec-vacio">
       <div class="lec-vacio-icono">📚</div>
       <p>No llevas ningún libro encima.</p>
-      <p class="muted">Dalos de alta en <a href="#" data-action="ir-libros">Inventario → Libros</a>${auth.servidor ? ' o pídeselos al DM' : ''}.</p>
+      <p class="muted">Dalos de alta <a href="#" data-action="ir-libros">aquí abajo</a>${auth.servidor ? ' o pídeselos al DM' : ''}.</p>
     </div>`;
     return;
   }
@@ -112,6 +112,10 @@ export function render() {
         <div class="lec-cab">
           <h3 class="lec-titulo">📖 ${esc(l.name)}</h3>
           <span class="lec-cuenta">${e.hecho} / ${e.total} lecturas</span>
+          <span class="lec-botones">
+            <button class="btn btn-sm btn-edit" data-lec="editar" data-id="${esc(id)}" title="Editar el libro">✏️</button>
+            <button class="btn btn-sm btn-danger" data-lec="quitar" data-id="${esc(id)}" title="Quitar el libro">🗑️</button>
+          </span>
         </div>
         ${l.descripcion ? `<p class="lec-desc">${esc(l.descripcion)}</p>` : ''}
         <p class="lec-bono"><b>Al terminarlo:</b> ${l.bono ? esc(l.bono) : '<span class="muted">sin bono escrito</span>'}</p>
@@ -185,20 +189,11 @@ function aviso(texto, tipo = 'info') {
 // ---- Inventario → Libros: dar de alta, editar y quitar ----
 let editando = null;
 
+// Los libros salen también en el inventario único (js/inventario.js); el alta y la edición, aquí en Lectura
 export function renderInventario() {
-  const el = document.getElementById('invLibrosList');
-  if (!el) return;
-  const libros = Object.entries(state.libros || {}).sort(([, a], [, b]) => String(a.name).localeCompare(String(b.name)));
-  el.innerHTML = libros.map(([id, l]) => {
-    const e = estadoLibro(l);
-    return `<div class="inv-row">
-      <div class="inv-name">📖 ${esc(l.name)} <span class="muted">· ${e.hecho}/${e.total} lecturas${e.terminado ? ' · terminado' : ''}</span></div>
-      <div class="inv-stepper">
-        <button class="btn btn-sm btn-edit" data-lec="editar" data-id="${esc(id)}">✏️</button>
-        <button class="btn btn-sm btn-danger" data-lec="quitar" data-id="${esc(id)}" title="Quitar del inventario">🗑️</button>
-      </div>
-    </div>`;
-  }).join('') || '<p class="muted">No tienes libros. Añade uno con el formulario.</p>';
+  repintarInventario();
+  const alta = document.getElementById('libroAlta');
+  if (alta && !Object.keys(state.libros || {}).length) alta.open = true;
   const ayudaCD = document.getElementById('libroPruebasAyuda');
   if (ayudaCD) ayudaCD.textContent = puedeFijarCD()
     ? 'Escribe casilla:CD, por ejemplo «4:14, 8:16». Sin «:CD» la tirada queda pendiente de dificultad.'
@@ -255,6 +250,8 @@ function editar(id) {
   document.getElementById('libroPruebas').disabled = !puedeFijarCD();   // una vez dado de alta, solo el DM las cambia
   document.getElementById('libroGuardar').textContent = '💾 Guardar cambios';
   document.getElementById('libroCancelar').hidden = false;
+  const alta = document.getElementById('libroAlta');
+  if (alta) { alta.open = true; alta.scrollIntoView({ behavior: 'smooth', block: 'start' }); }
   document.getElementById('libroNombre').focus();
 }
 

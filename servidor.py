@@ -85,10 +85,21 @@ COLECCIONES = {
     'libros': 'obj',        # libros del inventario y cuánto se ha leído de cada uno
     'perfil': 'obj',        # progreso del personaje que fija el DM (p. ej. nivel de alquimia)
     'objetos': 'obj',       # inventario general: armas, armaduras, objetos mágicos, equipo... (V3.5)
+    'bolsa': 'num',         # monedas del jugador: bolsa['oro'] = monedas de oro (V3.7)
+    'odres': 'obj',         # odres de cada jugador para los disolventes que no son agua (V3.8)
+    'descubrimientos': 'obj',  # de la mesa: material -> {jugador: fecha} en que lo recibió por primera vez (V3.8)
 }
 # Estas son de cada jugador; las demás, de toda la mesa.
 # Un módulo nuevo (cocina, ficha...) que guarde cosas de cada jugador se añade aquí.
-POR_JUGADOR = ('inventory', 'potions', 'lootPotions', 'libros', 'perfil', 'objetos')
+POR_JUGADOR = ('inventory', 'potions', 'lootPotions', 'libros', 'perfil', 'objetos', 'bolsa', 'odres')
+MAX_MONEDAS = 999_999_999       # tope de la bolsa (para que nadie escriba un número absurdo)
+# Odres (V3.8): los disolventes que no son agua se llevan en odres. Cada poción gasta 0,5 L.
+# Cada jugador empieza con un odre vacío de 3 L (se lo da el servidor la primera vez que entra en la mesa).
+DISOLVENTES_ODRE = ('Mente', 'Alma', 'Mágico')     # campos cuyo disolvente va en odre (Cuerpo = agua)
+ODRE_INICIAL = {'name': 'Odre', 'capacidad': 3, 'litros': 0, 'disolvente': None}
+MAX_LITROS_ODRE = 100
+# Lo que un jugador puede pasar a otro de su mesa (op «dar»)
+SE_PUEDE_DAR = ('inventory', 'potions', 'lootPotions', 'objetos', 'libros', 'odres', 'bolsa')
 COMUN = ''   # "dueño" de lo que es de toda la mesa
 
 # Campañas (mesas). Todo lo que hay en «entradas» y «transacciones» es de una campaña.
@@ -98,6 +109,22 @@ NOMBRE_PRIMERA = 'La primera campaña'
 # 'desempleado' no tiene ningún oficio; 'pluriempleado' los tiene todos (elige cuál usar en la mesa).
 DISCIPLINAS = ('alquimista', 'cocinero', 'hechicero', 'herrero', 'desempleado', 'pluriempleado')
 DISCIPLINA_DEFECTO = 'alquimista'
+# V3.9: el DM marca a qué oficios tiene acceso cada jugador (uno, varios, todos o ninguno).
+# Se guarda en miembros.disciplina: 'desempleado' (ninguno), un oficio, o varios separados por comas.
+OFICIOS = ('alquimista', 'cocinero', 'hechicero', 'herrero')
+
+
+def normalizar_disciplina(x):
+    """Lista de oficios (o texto antiguo) -> lo que se guarda. None si no vale."""
+    if isinstance(x, str):
+        if x in ('desempleado', 'pluriempleado'):
+            x = [] if x == 'desempleado' else list(OFICIOS)
+        else:
+            x = [t.strip() for t in x.split(',') if t.strip()]
+    if not isinstance(x, list) or len(x) > len(OFICIOS) or any(t not in OFICIOS for t in x):
+        return None
+    elegidos = [o for o in OFICIOS if o in x]
+    return ','.join(elegidos) if elegidos else 'desempleado'
 
 ITERACIONES = 200_000             # PBKDF2-SHA256 para las contraseñas
 DIAS_SESION = 30                  # una sesión sin usar caduca a los 30 días
@@ -219,6 +246,14 @@ def preparar_bd():
             adoptar_huerfanos(con, PRIMERA, dm[0])
             con.execute('COMMIT')
         con.execute('DELETE FROM sesiones WHERE vista < ?', (time.time() - DIAS_SESION * 86400,))
+        # V3.8: lo que ya llevaba cada jugador cuenta como material descubierto (una sola vez)
+        if not con.execute("SELECT 1 FROM ajustes WHERE clave='descubrimientos-v38'").fetchone():
+            con.execute('BEGIN IMMEDIATE')
+            n = migrar_descubrimientos(con)
+            con.execute("INSERT OR IGNORE INTO ajustes VALUES ('descubrimientos-v38', ?)", (ahora(),))
+            con.execute('COMMIT')
+            if n:
+                print(f'Catálogo por descubrimiento: {n} materiales que ya tenían los jugadores cuentan como descubiertos.')
     finally:
         if con:
             con.close()
@@ -543,10 +578,21 @@ def campanas_de(con, u):
     """Las campañas en las que juega esta cuenta (el superusuario las ve todas)."""
     if es_admin(u):
         filas = con.execute('SELECT id, nombre FROM campanas ORDER BY creada, nombre').fetchall()
-        return [{'id': i, 'nombre': n, 'rol': 'admin', 'disciplina': DISCIPLINA_DEFECTO} for i, n in filas]
+        return [{'id': i, 'nombre': n, 'rol': 'admin', 'disciplina': 'pluriempleado'} for i, n in filas]
     filas = con.execute('SELECT c.id, c.nombre, m.rol, m.disciplina FROM miembros m JOIN campanas c ON c.id=m.campana '
                         'WHERE m.usuario=? ORDER BY c.creada, c.nombre', (u['clave'],)).fetchall()
     return [{'id': i, 'nombre': n, 'rol': r, 'disciplina': d} for i, n, r, d in filas]
+
+
+def otras_campanas(con, u):
+    """V3.9: las campañas en las que NO juega, para el selector (con candado si tienen contraseña).
+    Las que no tienen contraseña solo se ven: se entra por invitación del DM."""
+    if es_admin(u):
+        return []
+    filas = con.execute('SELECT c.id, c.nombre, c.clave_hash FROM campanas c WHERE NOT EXISTS '
+                        '(SELECT 1 FROM miembros m WHERE m.campana=c.id AND m.usuario=?) ORDER BY c.creada, c.nombre',
+                        (u['clave'],)).fetchall()
+    return [{'id': i, 'nombre': n, 'conClave': bool(h)} for i, n, h in filas]
 
 
 def puede_crear_campanas(con, u):
@@ -564,7 +610,8 @@ def actor_en_mesa(con, u, camp):
     if not c:
         return None
     if es_admin(u):
-        return {**u, 'campana': camp, 'mesa': c[0], 'disciplina': DISCIPLINA_DEFECTO, 'personaje': None, 'conClave': bool(c[1])}
+        # El superusuario tiene los poderes de un DM en todas las campañas y puede usar todos los oficios
+        return {**u, 'campana': camp, 'mesa': c[0], 'disciplina': 'pluriempleado', 'personaje': None, 'conClave': bool(c[1])}
     m = con.execute('SELECT rol, disciplina, personaje FROM miembros WHERE campana=? AND usuario=?', (camp, u['clave'])).fetchone()
     if not m:
         return None
@@ -779,14 +826,21 @@ def unirse(u, cuerpo, ip):
         raise Rechazo('espera', 'Demasiados intentos fallidos. Espera un minuto y vuelve a probar.')
     nombre = re.sub(r'\s+', ' ', unicodedata.normalize('NFC', str(cuerpo.get('nombre') or '')).strip())
     clave = str(cuerpo.get('clave') or '')
+    camp_id = cuerpo.get('id')   # V3.9: desde el selector de campañas se une por su id
 
     def hacer(con):
-        c = con.execute('SELECT id, nombre, clave_hash FROM campanas WHERE nombre=? COLLATE NOCASE', (nombre,)).fetchone()
+        if isinstance(camp_id, str) and camp_id:
+            c = con.execute('SELECT id, nombre, clave_hash FROM campanas WHERE id=?', (camp_id,)).fetchone()
+        else:
+            c = con.execute('SELECT id, nombre, clave_hash FROM campanas WHERE nombre=? COLLATE NOCASE', (nombre,)).fetchone()
         # Mismo mensaje si no existe, si no tiene contraseña o si es incorrecta: no se delata qué mesas hay
         if not c or not c[2] or not comprobar_contrasena(clave, c[2]):
             if not c or not c[2]:
                 comprobar_contrasena(clave, HASH_FALSO)
             FALLOS[ip] = (fallos + 1 if time.time() - desde < 60 else 1, desde if time.time() - desde < 60 else time.time())
+            if isinstance(camp_id, str) and camp_id:
+                raise Rechazo('credenciales', 'Esa contraseña no abre la mesa.' if c and c[2]
+                              else 'A esta mesa solo se entra si el DM te invita.')
             raise Rechazo('credenciales', 'No hay ninguna mesa con ese nombre y esa contraseña. '
                           'Si la mesa no tiene contraseña, pide al DM que te invite.')
         FALLOS.pop(ip, None)
@@ -924,8 +978,9 @@ def miembro(actor, cuerpo):
 def cambiar_disciplina(actor, cuerpo):
     if not es_dm(actor):
         raise Rechazo('permiso', 'Solo el DM puede asignar disciplinas.')
-    camp, objetivo, disc = actor['campana'], clave_de(cuerpo.get('usuario')), cuerpo.get('disciplina')
-    if disc not in DISCIPLINAS:
+    camp, objetivo = actor['campana'], clave_de(cuerpo.get('usuario'))
+    disc = normalizar_disciplina(cuerpo['disciplinas'] if 'disciplinas' in cuerpo else cuerpo.get('disciplina'))
+    if disc is None:
         raise Rechazo('invalida', 'Disciplina desconocida.')
 
     def hacer(con):
@@ -1079,11 +1134,13 @@ def nombre_material(con, camp, id_):
 def nombre_entrada(con, camp, col, id_, valor):
     if col == 'inventory':
         return '«' + nombre_material(con, camp, id_) + '»'
+    if col == 'bolsa':
+        return 'las monedas de oro'
     if isinstance(valor, dict) and valor.get('name'):
         return '«' + str(valor['name']) + '»'
     return {'potions': 'esa poción', 'lootPotions': 'esa poción de botín', 'catalog': 'ese material',
             'potionCatalog': 'esa ficha de poción', 'meta': 'los ajustes', 'libros': 'ese libro', 'objetos': 'ese objeto',
-            'perfil': 'el nivel de alquimia'}.get(col, 'ese dato')
+            'perfil': 'el nivel de alquimia', 'odres': 'ese odre', 'descubrimientos': 'ese descubrimiento'}.get(col, 'ese dato')
 
 
 def mayus(t):
@@ -1210,7 +1267,11 @@ def aplicar_op(con, op, actor, rev, registro=None):
         return
     if col not in COLECCIONES or not isinstance(id_, str) or not id_ or len(id_) > 200:
         raise Rechazo('invalida', 'Operación mal formada (colección o id).')
+    if t == 'dar':
+        return dar(con, op, actor, rev, registro)
     tipo = COLECCIONES[col]
+    if col == 'bolsa' and id_ != 'oro':
+        raise Rechazo('invalida', 'En la bolsa solo se guardan monedas de oro.')
     dueno = dueno_de(con, op, col, actor)
     actual, autor_prev = leer(con, camp, col, dueno, id_)
     if registro is not None:   # para el historial: lo que había ANTES de esta transacción
@@ -1225,14 +1286,22 @@ def aplicar_op(con, op, actor, rev, registro=None):
         tenia = actual if isinstance(actual, int) else 0
         if 'e' in op and tenia != op['e']:   # "pon exactamente X" del DM: solo si nadie lo cambió
             raise Rechazo('conflicto',
-                f'{mayus(nombre_entrada(con, camp, col, id_, actual))} ha cambiado mientras tanto (ahora hay {tenia}){quien(autor_prev, autor)}.',
+                f'{mayus(nombre_entrada(con, camp, col, id_, actual))} {"han" if col == "bolsa" else "ha"} cambiado mientras tanto (ahora hay {tenia}){quien(autor_prev, autor)}.',
                 {'col': col, 'id': id_, 'hay': tenia})
         queda = tenia + n
+        if col == 'bolsa':
+            if queda < 0:
+                raise Rechazo('stock', f'No hay suficientes monedas de oro: hay {tenia} y hacían falta {-n}{quien(autor_prev, autor)}.',
+                              {'col': col, 'id': id_, 'hay': tenia, 'falta': -n})
+            if queda > MAX_MONEDAS:
+                raise Rechazo('invalida', f'Demasiadas monedas: el máximo es {MAX_MONEDAS:,}.'.replace(',', '.'))
         if queda < 0:
             raise Rechazo('stock',
                 f'No queda suficiente {nombre_entrada(con, camp, col, id_, actual)}: hay {tenia} y hacían falta {-n}{quien(autor_prev, autor)}.',
                 {'col': col, 'id': id_, 'hay': tenia, 'falta': -n})
         escribir(con, camp, col, dueno, id_, queda, autor, rev)
+        if col == 'inventory' and n > 0:
+            descubrir(con, camp, id_, dueno, autor, rev)   # la primera vez que le llega, sale en su catálogo
 
     elif t == 'qty' and tipo == 'qty':
         n = entero(op.get('n', 0), 'n')
@@ -1267,6 +1336,8 @@ def aplicar_op(con, op, actor, rev, registro=None):
         esperado, nuevo = op.get('e'), op.get('v')
         if col == 'objetos' and nuevo is not None:
             validar_objeto(nuevo)
+        if col == 'odres' and nuevo is not None:
+            validar_odre(nuevo)
         if not es_dm(actor):
             permiso_jugador(col, actual, nuevo, id_)
         if actual != esperado and actual != nuevo:
@@ -1280,8 +1351,181 @@ def aplicar_op(con, op, actor, rev, registro=None):
                 for d, v in con.execute("SELECT dueno, valor FROM entradas WHERE campana=? AND col='inventory' AND id=?", (camp, id_)):
                     registro.setdefault(('inventory', d, id_), json.loads(v))
             con.execute("DELETE FROM entradas WHERE campana=? AND col='inventory' AND id=?", (camp, id_))
+            con.execute("DELETE FROM entradas WHERE campana=? AND col='descubrimientos' AND id=?", (camp, id_))
     else:
         raise Rechazo('invalida', 'Operación desconocida.')
+
+
+# ---- Catálogo por descubrimiento (V3.8)
+# Un material que da de alta el DM no sale en el catálogo de un jugador hasta que lo recibe por primera vez
+# (normalmente porque se lo da el DM; también si se lo pasa otro jugador). Se apunta aquí y no se olvida.
+def es_dm_de(con, camp, clave):
+    if con.execute("SELECT 1 FROM usuarios WHERE clave=? AND rol='admin'", (clave,)).fetchone():
+        return True   # el superusuario es DM en todas las campañas
+    fila = con.execute('SELECT rol FROM miembros WHERE campana=? AND usuario=?', (camp, clave)).fetchone()
+    return bool(fila) and fila[0] == 'dm'
+
+
+def descubrir(con, camp, mid, clave, autor, rev):
+    if not clave or es_dm_de(con, camp, clave):
+        return   # el DM ya lo conoce todo
+    if not leer(con, camp, 'catalog', COMUN, mid)[0]:
+        return
+    actual, _ = leer(con, camp, 'descubrimientos', COMUN, mid)
+    actual = actual if isinstance(actual, dict) else {}
+    if clave in actual:
+        return
+    escribir(con, camp, 'descubrimientos', COMUN, mid, {**actual, clave: ahora()}, autor, rev)
+
+
+def migrar_descubrimientos(con):
+    """Al pasar a la V3.8: lo que ya llevaba cada jugador cuenta como descubierto (si no, desaparecería de su catálogo)."""
+    n = 0
+    filas = con.execute("SELECT campana, dueno, id, valor FROM entradas WHERE col='inventory' AND dueno!=''").fetchall()
+    for camp, dueno, mid, valor in filas:
+        try:
+            v = json.loads(valor)
+        except ValueError:
+            continue
+        if not isinstance(v, int) or v <= 0 or es_dm_de(con, camp, dueno) or not leer(con, camp, 'catalog', COMUN, mid)[0]:
+            continue
+        actual, _ = leer(con, camp, 'descubrimientos', COMUN, mid)
+        actual = actual if isinstance(actual, dict) else {}
+        if dueno not in actual:
+            escribir(con, camp, 'descubrimientos', COMUN, mid, {**actual, dueno: ahora()}, 'La taberna', rev_actual(con, camp))
+            n += 1
+    return n
+
+
+# ---- Odres (V3.8)
+def litros_ok(x, maximo):
+    return isinstance(x, (int, float)) and not isinstance(x, bool) and 0 <= x <= maximo and float(x * 2).is_integer()
+
+
+def validar_odre(o):
+    if not isinstance(o, dict):
+        raise Rechazo('invalida', 'Odre mal formado.')
+    for k in o:
+        if k not in ('name', 'disolvente', 'capacidad', 'litros', 'creado'):
+            raise Rechazo('invalida', f'Campo desconocido en el odre: {k}.')
+    if not isinstance(o.get('name'), str) or not o['name'].strip() or len(o['name']) > 60:
+        raise Rechazo('invalida', 'El odre necesita un nombre (hasta 60 letras).')
+    if 'creado' in o and (not isinstance(o['creado'], str) or len(o['creado']) > 40):
+        raise Rechazo('invalida', 'Odre mal formado.')
+    cap = o.get('capacidad')
+    if not litros_ok(cap, MAX_LITROS_ODRE) or cap < 0.5:
+        raise Rechazo('invalida', f'La capacidad de un odre va de 0,5 a {MAX_LITROS_ODRE} litros, de medio en medio.')
+    if not litros_ok(o.get('litros', 0), cap):
+        raise Rechazo('invalida', f'Los litros de un odre van de medio en medio, entre 0 y {cap} L.')
+    d = o.get('disolvente')
+    if d is not None and d not in DISOLVENTES_ODRE:
+        raise Rechazo('invalida', 'En un odre solo van disolventes que no son agua.')
+    if o.get('litros', 0) > 0 and d is None:
+        raise Rechazo('invalida', 'Un odre con líquido tiene que decir qué disolvente lleva.')
+
+
+def dar_odre_inicial(camp, clave):
+    """Cada jugador empieza con un odre vacío de 3 L (una sola vez por campaña)."""
+    if (camp, clave) in ODRES_DADOS:
+        return
+    marca = f'odre-inicial:{camp}:{clave}'
+
+    def hacer(con):
+        if con.execute('SELECT 1 FROM ajustes WHERE clave=?', (marca,)).fetchone():
+            return
+        if not leer(con, camp, 'odres', clave, 'inicial')[0]:
+            rev = rev_actual(con, camp) + 1
+            escribir(con, camp, 'odres', clave, 'inicial', {**ODRE_INICIAL, 'creado': ahora()}, 'La taberna', rev)
+            con.execute('UPDATE campanas SET rev=? WHERE id=?', (rev, camp))
+        con.execute('INSERT OR IGNORE INTO ajustes VALUES (?, ?)', (marca, ahora()))
+    con_escritura(hacer)
+    ODRES_DADOS.add((camp, clave))
+
+
+ODRES_DADOS = set()
+
+
+# ---- Dar algo a otro jugador de la mesa (V3.8)
+# Todo en la misma transacción: se quita al que lo da y se pone al que lo recibe, o no pasa nada.
+def dar(con, op, actor, rev, registro=None):
+    camp, autor, origen = actor['campana'], actor['nombre'], actor['clave']
+    col, id_, destino = op.get('c'), op.get('id'), op.get('u')
+    if col not in SE_PUEDE_DAR:
+        raise Rechazo('invalida', 'Eso no se puede dar a otro jugador.')
+    if not isinstance(destino, str) or not destino or destino == origen:
+        raise Rechazo('invalida', 'Elige a quién se lo das.')
+    if not es_miembro(con, camp, destino):
+        raise Rechazo('invalida', 'Ese jugador no está en esta campaña.')
+    if col == 'bolsa' and id_ != 'oro':
+        raise Rechazo('invalida', 'En la bolsa solo se guardan monedas de oro.')
+    actual, autor_prev = leer(con, camp, col, origen, id_)
+    if registro is not None:
+        registro.setdefault((col, origen, id_), actual)
+    tipo = COLECCIONES[col]
+    para = nombre_de(con, destino)
+
+    def poner(id_dest, valor):
+        if registro is not None:
+            registro.setdefault((col, destino, id_dest), leer(con, camp, col, destino, id_dest)[0])
+        escribir(con, camp, col, destino, id_dest, valor, autor, rev)
+
+    def id_libre(base):
+        if not leer(con, camp, col, destino, base)[0]:
+            return base
+        return (base[:180] + '-' + secrets.token_hex(3))
+
+    if tipo == 'num':
+        n = entero(op.get('n'), 'n')
+        if n < 1:
+            raise Rechazo('invalida', 'Hay que dar al menos uno.')
+        tenia = actual if isinstance(actual, int) else 0
+        if tenia < n:
+            raise Rechazo('stock', f'No te queda suficiente {nombre_entrada(con, camp, col, id_, actual)}: tienes {tenia} y querías dar {n}{quien(autor_prev, autor)}.',
+                          {'col': col, 'id': id_, 'hay': tenia, 'falta': n})
+        escribir(con, camp, col, origen, id_, tenia - n, autor, rev)
+        suyo = leer(con, camp, col, destino, id_)[0]
+        suyo = suyo if isinstance(suyo, int) else 0
+        if col == 'bolsa' and suyo + n > MAX_MONEDAS:
+            raise Rechazo('invalida', f'{para} no puede llevar tantas monedas.')
+        poner(id_, suyo + n)
+        if col == 'inventory':
+            descubrir(con, camp, id_, destino, autor, rev)
+        return
+    if actual is None:
+        raise Rechazo('stock', f'Ya no tienes {nombre_entrada(con, camp, col, id_, op.get("e"))}: lo habrás usado o dado.', {'col': col, 'id': id_})
+    if 'e' in op and op['e'] is not None and (resto(actual) if tipo == 'qty' else actual) != op['e']:
+        raise Rechazo('conflicto', f'{mayus(nombre_entrada(con, camp, col, id_, actual))} ha cambiado mientras tanto: mira cómo está y vuelve a intentarlo.', {'col': col, 'id': id_})
+    if tipo == 'qty':
+        n = entero(op.get('n'), 'n')
+        tiene = entero(actual.get('qty', 0), 'qty')
+        if n < 1 or n > tiene:
+            raise Rechazo('stock', f'No tienes tantas: hay {tiene} de {nombre_entrada(con, camp, col, id_, actual)}.', {'col': col, 'id': id_, 'hay': tiene, 'falta': n})
+        escribir(con, camp, col, origen, id_, {**actual, 'qty': tiene - n} if tiene > n else None, autor, rev)
+        suyo = leer(con, camp, col, destino, id_)[0]
+        # Pociones: la misma receta va a la misma pila (su id dice qué es); el botín, aparte si no es igual
+        if isinstance(suyo, dict) and (col == 'potions' or resto(suyo) == resto(actual)):
+            poner(id_, {**suyo, 'qty': entero(suyo.get('qty', 0), 'qty') + n})
+        else:
+            poner(id_libre(id_), {**resto(actual), 'qty': n})
+        return
+    # Objetos, libros y odres: van enteros (de un objeto con cantidad se puede dar una parte)
+    if col == 'objetos':
+        cant = actual.get('cantidad', 1)
+        n = op.get('n', cant)
+        n = entero(n if n is not None else cant, 'n')
+        if n < 1 or n > max(cant, 1):
+            raise Rechazo('stock', f'Solo tienes {cant} de «{actual.get("name", "ese objeto")}».', {'col': col, 'id': id_})
+        nuevo = {**actual, 'cantidad': n, 'equipado': False, 'sintonizado': False}
+        validar_objeto(nuevo)
+        escribir(con, camp, col, origen, id_, {**actual, 'cantidad': cant - n} if n < cant else None, autor, rev)
+        poner(id_libre(id_), nuevo)
+        return
+    if col == 'libros':
+        nuevo = {**actual, 'progreso': 0, 'historial': []}   # quien lo recibe empieza a leerlo desde el principio
+    else:
+        nuevo = actual
+    escribir(con, camp, col, origen, id_, None, autor, rev)
+    poner(id_libre(id_), nuevo)
 
 
 # ---- Inventario general (objetos): forma y límites de cada objeto
@@ -1326,9 +1570,23 @@ def validar_objeto(o):
 def permiso_jugador(col, actual, nuevo, id_=''):
     """Lo que un jugador NO puede cambiar por su cuenta (solo el DM o el superusuario).
     Regla general de lo común a la mesa: un jugador puede AÑADIR, pero no editar ni borrar."""
-    if col == 'catalog' and actual is not None:
-        # Dar de alta un componente nuevo sí; cambiarlo o borrarlo afecta a toda la mesa
-        raise Rechazo('permiso', 'Solo el DM puede editar o borrar componentes del catálogo (afectan a toda la mesa).')
+    if col == 'catalog':
+        # V3.8: el alta de materiales es cosa del DM (y del superusuario), igual que editarlos o borrarlos
+        raise Rechazo('permiso', 'Solo el DM da de alta, edita o borra materiales del catálogo (afectan a toda la mesa).')
+    if col == 'descubrimientos':
+        raise Rechazo('permiso', 'Un material se descubre cuando lo recibes, no a mano.')
+    if col == 'odres':
+        if actual is None:
+            raise Rechazo('permiso', 'Los odres los da el DM.')
+        if nuevo is None:
+            return   # tirar un odre propio sí se puede
+        if not isinstance(actual, dict) or not isinstance(nuevo, dict) or \
+                nuevo.get('capacidad') != actual.get('capacidad') or nuevo.get('name') != actual.get('name'):
+            raise Rechazo('permiso', 'Solo el DM puede cambiar un odre.')
+        if (nuevo.get('litros') or 0) > (actual.get('litros') or 0):
+            raise Rechazo('permiso', 'Solo el DM puede llenar los odres.')
+        if nuevo.get('disolvente') != actual.get('disolvente') and (nuevo.get('litros') or 0) > 0:
+            raise Rechazo('permiso', 'Solo el DM puede cambiar lo que lleva un odre.')
     if col == 'potionCatalog' and actual is not None and nuevo is None:
         raise Rechazo('permiso', 'Solo el DM puede borrar pociones del catálogo.')
     if col == 'meta':
@@ -1752,7 +2010,7 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     u = {**u, 'avatar': versiones_avatar(con).get(u['clave'], 0), 'discord': datos_discord(con, u['clave']),
                          'discordActivo': DISCORD_ACTIVO}
                     return self.json(200, {'ok': True, 'usuario': u, 'campanas': campanas_de(con, u),
-                                           'puedeCrear': puede_crear_campanas(con, u)})
+                                           'otras': otras_campanas(con, u), 'puedeCrear': puede_crear_campanas(con, u)})
                 if ruta.startswith('/api/avatar/'):
                     # La foto de una cuenta (solo para quien ha entrado). Va con su tipo exacto y sin
                     # posibilidad de que el navegador la interprete como página o script.
@@ -1781,6 +2039,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     return self.sin_mesa()
                 camp = actor['campana']
                 if ruta == '/api/estado':
+                    if actor['rol'] != 'admin':
+                        dar_odre_inicial(camp, actor['clave'])   # V3.8: el odre de 3 L con el que empieza cada jugador
                     rev = rev_actual(con, camp)
                     try:
                         desde = int(q.get('rev', ['-1'])[0] or -1)

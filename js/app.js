@@ -27,6 +27,9 @@ import * as cuenta from './cuenta.js';
 import * as avatar from './avatar.js';
 import * as filtros from './filtros.js';
 import * as objetos from './objetos.js';
+import * as bolsa from './bolsa.js';
+import * as inventario from './inventario.js';
+import * as odres from './odres.js';
 
 // ---- Cauldron toggle state ----
 let caulActive = false;
@@ -37,32 +40,39 @@ window.addDiceRow = addDiceRow;
 window.removeDiceRow = removeDiceRow;
 
 // ---- Navigation ----
-function showInfoSubtab(id) {
-  ['identificacion','catalogo','pociones','parametros'].forEach(s => {
-    const el = document.getElementById('infoSub-' + s);
+// Alquimia (V3.8): todo lo de la alquimia junto. Alta de materiales y parámetros, solo el DM (o sin servidor).
+const ALQ_SUBS = ['caldero', 'materiales', 'recetario', 'odres', 'alta', 'parametros'];
+let alqSub = 'caldero';
+function showAlqSubtab(id) {
+  if ((id === 'alta' || id === 'parametros') && sync.modo === 'servidor' && !auth.esDM()) id = 'caldero';
+  if (!ALQ_SUBS.includes(id)) id = 'caldero';
+  alqSub = id;
+  ALQ_SUBS.forEach(s => {
+    const el = document.getElementById('alqSub-' + s);
     if (el) el.style.display = s === id ? 'block' : 'none';
   });
-  document.querySelectorAll('[data-action="info-subtab"]').forEach(b => {
-    b.className = 'subtab-btn' + (b.getAttribute('data-id') === id ? ' active' : '');
+  document.querySelectorAll('[data-action="alq-subtab"]').forEach(b => {
+    b.classList.toggle('active', b.getAttribute('data-id') === id);
   });
-  if (id === 'catalogo') renderCatMateriales();
-  if (id === 'pociones') renderCatPociones();
+  if (id === 'caldero') { if (caulActive) renderCauldron(); else renderCrafteo(); }
+  if (id === 'materiales') renderCatMateriales();
+  if (id === 'recetario') renderCatPociones();
+  if (id === 'odres') odres.render();
   if (id === 'parametros') renderSettings();
 }
 
+// Inventario (V3.8): una sola lista con todo; el DM tiene además los inventarios de la mesa
 function showInvSubtab(id) {
-  if (id === 'dm' && !auth.esDM()) id = 'objetos';
-  ['objetos','materiales','pociones','loot','libros','dm'].forEach(s => {
+  if (id === 'dm' && !auth.esDM()) id = 'todo';
+  if (id !== 'dm') id = 'todo';
+  ['todo','dm'].forEach(s => {
     const el = document.getElementById('invSub-' + s);
     if (el) el.style.display = s === id ? 'block' : 'none';
   });
   document.querySelectorAll('[data-action="inv-subtab"]').forEach(b => {
-    b.className = 'subtab-btn' + (b.getAttribute('data-id') === id ? ' active' : '');
+    b.className = 'subtab-btn' + (b.getAttribute('data-id') === id ? ' active' : '') + (b.getAttribute('data-id') === 'dm' ? ' subtab-dm solo-dm' : '');
   });
-  if (id === 'objetos') objetos.render();
-  if (id === 'pociones') renderInvPociones();
-  if (id === 'loot') renderLoot();
-  if (id === 'libros') lectura.renderInventario();
+  if (id === 'todo') { objetos.render(); inventario.render(); }
   if (id === 'dm') { dm.render(); dm.recargar(); }
 }
 
@@ -72,19 +82,19 @@ function showInvSubtab(id) {
 modulos.registrar({ id: 'panel', icono: '🏰', titulo: 'Mesa', lugar: 'panel', lugarTxt: 'en la mesa principal',
   alMostrar() { panel.pintarSaludo(); panel.animarEntrada(); } });
 modulos.registrar({ id: 'inventario', icono: '🎒', titulo: 'Inventario', lugar: 'inventario', lugarTxt: 'revisando su inventario',
-  tarjeta: { orden: 0, clase: 'tarjeta-inventario', texto: 'Tus objetos, materiales, pociones, botín y libros' },
+  tarjeta: { orden: 0, clase: 'tarjeta-inventario', texto: 'Todo lo que llevas: objetos, materiales, pociones, libros y odres' },
   resumen: () => panel.resumenInventario(),
   alMostrar() {
-    objetos.render(); renderInvMateriales(); renderInvPociones(); lectura.renderInventario();
+    objetos.render(); bolsa.render(); inventario.render();
     if (document.getElementById('invSub-dm')?.style.display !== 'none') { dm.render(); dm.recargar(); }
   } });
 // Ranura de oficio (orden 1): cada jugador ve la de su disciplina, que le asigna el DM.
-// Desempleado: ninguna. Pluriempleado: la que elija en la mesa (modulos.setOficio).
+// Desempleado: ninguna. Con varias: todas, cada una con su bola en la mesa y su pestaña.
 modulos.registrar({ id: 'crafteo', icono: '⚗️', titulo: 'Alquimia', lugar: 'alquimia', lugarTxt: 'junto al caldero',
   disciplina: 'alquimista',
-  tarjeta: { orden: 1, clase: 'tarjeta-alquimia', texto: 'Enciende el caldero y elabora' },
+  tarjeta: { orden: 1, clase: 'tarjeta-alquimia', texto: 'El caldero, tus materiales, el recetario y los odres' },
   resumen: () => panel.resumenAlquimia(),
-  alMostrar() { if (caulActive) renderCauldron(); else renderCrafteo(); diario.alEntrarEnAlquimia(); } });
+  alMostrar() { showAlqSubtab(alqSub); diario.alEntrarEnAlquimia(); } });
 modulos.registrar({ id: 'cocina', icono: '🍲', titulo: 'Cocina', lugar: 'cocina', lugarTxt: 'entre fogones',
   disciplina: 'cocinero', proximamente: { texto: 'Guisos, banquetes y raciones que dan fuerza para el camino. Los fogones de la taberna aún se están encendiendo.' },
   tarjeta: { orden: 1, clase: 'tarjeta-cocina', texto: 'Guisos que dan fuerza' },
@@ -98,14 +108,13 @@ modulos.registrar({ id: 'herreria', icono: '⚒️', titulo: 'Herrería', lugar:
   tarjeta: { orden: 1, clase: 'tarjeta-herreria', texto: 'Armas, armaduras y temple' },
   resumen: () => 'Próximamente' });
 modulos.registrar({ id: 'lectura', icono: '📖', titulo: 'Lectura', lugar: 'lectura', lugarTxt: 'leyendo un libro',
-  tarjeta: { orden: 2, clase: 'tarjeta-lectura', texto: 'Tus libros y lo que llevas leído' },
+  tarjeta: { orden: 2, clase: 'tarjeta-lectura', texto: 'Tus libros: darlos de alta y leerlos' },
   resumen: () => lectura.resumen(),
-  alMostrar() { lectura.render(); } });
+  alMostrar() { lectura.render(); lectura.renderInventario(); } });
 // Perfil y En línea no tienen pestaña: se abren desde el menú de la cuenta (arriba a la derecha)
 modulos.registrar({ id: 'perfil', icono: '🧙', titulo: 'Perfil', lugar: 'perfil', lugarTxt: 'mirando perfiles', pestana: false,
+  textoMesa: 'Tu personaje, tu foto y los perfiles de la mesa',
   alMostrar() { perfil.cargar(); } });
-modulos.registrar({ id: 'info', icono: '📜', titulo: 'Compendio', lugar: 'compendio', lugarTxt: 'consultando el compendio',
-  alMostrar() {} });
 modulos.registrar({ id: 'usuarios', icono: '🟢', titulo: 'En línea', lugar: 'usuarios', lugarTxt: 'mirando quién anda por aquí',
   contador: 'navOnlineCount', pestana: false,
   tarjeta: { orden: 3, clase: 'tarjeta-usuarios', icono: '🔮', titulo: 'Usuarios en línea', texto: 'Quién está en la mesa ahora' },
@@ -150,9 +159,14 @@ function verInventarioDe(clave) {
 
 // Pestañas y tarjetas según la disciplina (la ranura de oficio)
 function construirModulos() {
-  modulos.setDisciplina(auth.usuario?.disciplina);
+  // El DM y el superusuario tienen acceso a todos los oficios y eligen cuál usar
+  modulos.setDisciplina(sync.modo === 'servidor' && auth.esDM() ? 'pluriempleado' : auth.usuario?.disciplina);
+  modulos.setDM(sync.modo === 'servidor' && auth.esDM());
   modulos.construirPestanas(document.getElementById('barraModulos'));
-  modulos.construirTarjetas(document.getElementById('mesaTarjetas'));
+  const u = auth.usuario;
+  modulos.construirTarjetas(document.getElementById('mesaTarjetas'),
+    avatar.html(u?.clave, u?.avatar, u ? (String(u.nombre || '').trim()[0] || '?').toUpperCase() : '🧙', 'avatar orbita-avatar'),
+    { alPortal: sync.modo === 'servidor' ? () => auth.cambiarMesa() : null });   // el planeta es el portal a las campañas
   modulos.construirSelectorOficio(document.getElementById('mesaOficios'));
   document.querySelectorAll('nav.tab-bar [data-action="switch-tab"]').forEach(b =>
     b.classList.toggle('active', b.getAttribute('data-id') === vistaActual()));
@@ -170,12 +184,18 @@ function elegirOficio(d) {
 
 // Cosas que solo ve el DM (o que cambian si el DM da o quita poderes)
 function aplicarRol() {
+  if (vistaActual()) {   // (ya arrancada)
+    construirModulos();
+    if (!modulos.visible(modulos.porId(vistaActual()))) switchTab('panel');
+    if (vistaActual() === 'crafteo') showAlqSubtab(alqSub);   // si ya no es DM, fuera del alta de materiales
+    renderAll();   // el catálogo y el inventario dependen de quién mira
+  }
   panel.pintarCabecera();
   cuenta.pintar();
   panel.pintarSaludo();
   diario.pintarBarra();
   lectura.render(); lectura.renderInventario();
-  if (!auth.esDM() && document.getElementById('invSub-dm')?.style.display !== 'none') showInvSubtab('objetos');
+  if (!auth.esDM() && document.getElementById('invSub-dm')?.style.display !== 'none') showInvSubtab('todo');
   if (document.getElementById('tab-usuarios')?.classList.contains('active')) { panel.renderUsuarios(); panel.cargarGestion(); }
 }
 
@@ -265,10 +285,10 @@ sync.setHooks({
     aplicarRol();
     if (antes && antes.rol !== u.rol) sync.aviso(auth.esDM() ? '👑 Ahora eres DM de la mesa.' : 'Ya no eres DM de la mesa.');
     if (antes && antes.personaje !== JSON.stringify(u.personaje || null)) perfil.alCambiarEnServidor();
-    if (antes && antes.disciplina !== u.disciplina) {
+    if (antes && antes.disciplina !== u.disciplina && !auth.esDM()) {
       construirModulos();
       if (!modulos.visible(modulos.porId(vistaActual()))) switchTab('panel');
-      sync.aviso(`El DM te ha asignado una disciplina nueva: ${panel.nombreDisciplina(u.disciplina)}.`);
+      sync.aviso(`El DM ha cambiado tus oficios: ${panel.nombreDisciplina(u.disciplina)}.`);
     }
   },
   remoto(datos, cambios) {
@@ -278,6 +298,8 @@ sync.setHooks({
     panel.pintarTarjetas();
     lectura.renderInventario();
     objetos.render();
+    bolsa.render();
+    if (alqSub === 'odres') odres.render();
     if (vistaActual() === 'lectura' && !document.getElementById('tab-lectura')?.contains(document.activeElement)) lectura.render();
     const nivelAhora = niveles.nivelActual();
     if (nivelAhora !== nivelAntes) {
@@ -320,15 +342,18 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateMatForm();
   // Buscadores y filtros de las listas (ver filtros.js)
   filtros.init({
-    'inv-mat': renderInvMateriales, 'inv-pot': renderInvPociones, 'loot': renderLoot,
-    'objetos': objetos.render, 'cat-mat': () => renderCatMateriales(), 'cat-pot': renderCatPociones, 'usuarios': () => panel.renderUsuarios(),
+    'inv': inventario.render, 'cat-mat': () => renderCatMateriales(), 'cat-pot': renderCatPociones, 'usuarios': () => panel.renderUsuarios(),
   });
   renderAll();
   renderCrafteo();
   dm.init();
   lectura.init();
   objetos.init();
+  inventario.init();
   objetos.render();
+  odres.init();
+  odres.setAlCambiar(() => { if (caulActive) renderCauldron(); else renderCrafteo(); panel.pintarTarjetas(); });
+  bolsa.init();
   panel.initUsuarios(verInventarioDe, verPerfilDe);
   perfil.init(alCambiarPersonaje);
   modulos.construirProximamente(document.querySelector('script[src="js/app.js"]'));
@@ -375,6 +400,9 @@ document.addEventListener('DOMContentLoaded', async () => {
             imported.catalog = state.catalog;
             imported.potionCatalog = { ...imported.potionCatalog, ...state.potionCatalog };
             imported.settings = state.settings;
+            // Los odres los llena el DM y los descubrimientos los apunta el servidor: se conservan
+            imported.odres = state.odres;
+            imported.descubrimientos = state.descubrimientos;
             imported.damageTypes = [...new Set([...(state.damageTypes || []), ...(imported.damageTypes || [])])];
             for (const mid in imported.inventory) if (!state.catalog[mid]) delete imported.inventory[mid];
             for (const [lid, l] of Object.entries(imported.libros || {})) {
@@ -387,7 +415,7 @@ document.addEventListener('DOMContentLoaded', async () => {
                   resetForm();
           renderAll();
           renderCrafteo();
-          lectura.render(); lectura.renderInventario(); objetos.render(); diario.pintarBarra();
+          lectura.render(); lectura.renderInventario(); objetos.render(); bolsa.render(); diario.pintarBarra();
           alert('Datos importados.');
         } catch (err) { alert('Error al importar: ' + err.message); }
       };
@@ -409,7 +437,7 @@ document.addEventListener('DOMContentLoaded', async () => {
       case 'cambiar-mesa':  auth.cambiarMesa(); break;
       case 'foto-perfil':   cuenta.dialogoFoto(alCambiarFoto); break;
       case 'pass-propia':   panel.cambiarMiContrasena(); break;
-      case 'info-subtab':   showInfoSubtab(id); break;
+      case 'alq-subtab':    showAlqSubtab(id); break;
       case 'inv-subtab':    showInvSubtab(id); break;
       case 'craft-set-mode':
         if (craftSetMode(id) === false) break;
@@ -432,8 +460,17 @@ document.addEventListener('DOMContentLoaded', async () => {
       case 'edit-mat':
         if (soloDM('editar o identificar componentes del catálogo')) break;
         editMat(id);
-        showInfoSubtab('identificacion');
+        showAlqSubtab('alta');
         break;
+      case 'mat-renovar': {   // V3.9: el material vuelve a ser nuevo (nadie lo conoce: sale del catálogo de los jugadores)
+        if (soloDM('volver a poner materiales como nuevos')) break;
+        const m = state.catalog[id];
+        if (!m || !state.descubrimientos?.[id]) break;
+        if (!confirm(`¿Volver a poner «${m.name}» como nuevo? Desaparecerá del catálogo de todos los jugadores hasta que se lo vuelvas a dar. Lo que ya lleven en el inventario no se toca.`)) break;
+        delete state.descubrimientos[id];
+        saveState(); renderCatMateriales();
+        break;
+      }
       case 'delete-mat':
         if (soloDM('borrar componentes del catálogo')) break;
         deleteMat(id, craftSelectedBase, craftSelectedMods, renderCrafteo);
@@ -448,13 +485,13 @@ document.addEventListener('DOMContentLoaded', async () => {
       }
       case 'inv-inc':
         state.inventory[id] = (state.inventory[id] || 0) + 1;
-        saveState(); renderInvMateriales();
+        saveState(); renderInvMateriales(); if (alqSub === 'materiales') renderCatMateriales();
         if (caulActive) renderCauldron(); else renderCrafteo();
         break;
       case 'inv-dec':
         if ((state.inventory[id] || 0) > 0) {
           state.inventory[id]--;
-          saveState(); renderInvMateriales();
+          saveState(); renderInvMateriales(); if (alqSub === 'materiales') renderCatMateriales();
           if (caulActive) renderCauldron(); else renderCrafteo();
         }
         break;
@@ -507,7 +544,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
         break;
       }
-      case 'ir-libros': e.preventDefault(); switchTab('inventario'); showInvSubtab('libros'); break;
+      case 'ir-libros': {
+        e.preventDefault();
+        switchTab('lectura');
+        const alta = document.getElementById('libroAlta');
+        if (alta) { alta.open = true; setTimeout(() => alta.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50); }
+        break;
+      }
 
       case 'caul-elaborar': {
         const fresh = sync.refrescar({ silencioso: true });   // mientras gira el caldero
@@ -573,7 +616,6 @@ document.addEventListener('DOMContentLoaded', async () => {
         break;
       }
 
-      case 'add-loot': addLoot(); renderLoot(); break;
       case 'identify-loot': identifyLoot(id); renderLoot(); break;
       case 'use-loot': {
         const li = state.lootPotions[id];
@@ -608,7 +650,7 @@ document.addEventListener('DOMContentLoaded', async () => {
             : '¿Borrar TODOS los datos? Esta acción no se puede deshacer.')) {
           setState(getDefaultState());
           saveState(); resetForm(); renderAll(); renderCrafteo();
-          lectura.render(); lectura.renderInventario(); objetos.render(); diario.pintarBarra();
+          lectura.render(); lectura.renderInventario(); objetos.render(); bolsa.render(); diario.pintarBarra();
         }
         break;
     }

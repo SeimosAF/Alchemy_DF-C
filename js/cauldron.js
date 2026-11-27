@@ -13,6 +13,8 @@ import {
 } from './crafting.js';
 import { reactivosPorCampo } from './render.js';
 import * as niveles from './niveles.js';
+import * as odres from './odres.js';
+import { infoOculta } from './conocimiento.js';
 
 // ── Module state ──────────────────────────────────────────────────────────────
 export const caulAplics = new Set(['brebaje']);
@@ -428,10 +430,13 @@ function floatText(text, color) {
   setTimeout(() => d.remove(), 1700);
 }
 
-// Bucle ambiental: burbujas, chispas y gotas según el estado del caldero
+// Bucle ambiental: burbujas, chispas y gotas según el estado del caldero.
+// Solo trabaja si el caldero se ve: con la pestaña del navegador oculta el temporizador se
+// para del todo, y si estás en otra pestaña de la app (el caldero no se pinta) no crea nada.
 function ambientTick() {
   const panel = document.getElementById('craftCalderoPanel');
   if (!panel || panel.style.display === 'none' || !document.getElementById('caulSvg')) return;
+  if (!panel.getClientRects().length) return;   // oculto por una pestaña de la app
   if (!curLook || reduceMotion() || document.hidden) return;
   const malef = curLook.pol === 'Maleficioso';
   let rate = craftSelectedBase ? .55 : .3;
@@ -453,8 +458,16 @@ function ambientTick() {
     skullTimer = Math.round(rnd(38, 55));
   }
 }
+let ambientVigilado = false;
 function startAmbient() {
-  if (ambientTimer) return;
+  if (!ambientVigilado) {
+    ambientVigilado = true;
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) { clearInterval(ambientTimer); ambientTimer = null; }
+      else startAmbient();
+    });
+  }
+  if (ambientTimer || document.hidden) return;
   ambientTimer = setInterval(ambientTick, 140);
 }
 
@@ -720,13 +733,21 @@ function renderSolvents() {
             <div class="caul-card-sub">${c} · nivel ${niveles.nivelDisolvente(c)} de alquimia</div>
           </div>
         </div>`;
+        const sinOdre = odres.problema(c);
+        if (sinOdre) return `<div class="caul-card ${cfg.cardClass || ''} caul-card-exhausted caul-card-bloqueada" title="${sinOdre}">
+          <div class="caul-card-icon">🫙</div>
+          <div class="caul-card-body">
+            <div class="caul-card-name">${solv.name}</div>
+            <div class="caul-card-sub">${c} · sin ${solv.name.toLowerCase()} en tus odres</div>
+          </div>
+        </div>`;
         return `<div class="caul-card ${cfg.cardClass || ''} ${c === 'Mágico' ? 'caul-shimmer' : ''}"
             draggable="true" data-drag-type="solv" data-drag-id="${c}" data-icon="${CAMPOS[c].icon}" data-label="${solv.name}" title="Arrastra al caldero o haz clic">
           <div class="caul-card-icon">${CAMPOS[c].icon}</div>
           <div class="caul-card-body">
             <div class="caul-card-name">${solv.name}</div>
             <div class="caul-card-sub">${c} · dif:${solv.difficulty >= 0 ? '+' : ''}${solv.difficulty}</div>
-            <div class="caul-card-stock">${counts[c] || 0} reactivo${counts[c] === 1 ? '' : 's'} disponibles</div>
+            <div class="caul-card-stock">${counts[c] || 0} reactivo${counts[c] === 1 ? '' : 's'} disponibles${odres.usaOdre(c) ? ` · 🫙 ${odres.litros(odres.litrosDe(c))}` : ''}</div>
           </div>
           <div class="caul-card-grab">⠿</div>
         </div>`;
@@ -737,7 +758,7 @@ function renderSolvents() {
 function renderBases() {
   const solvName = getDisolvente(state.settings, craftSelectedSolvent).name;
   const todas = Object.keys(state.catalog)
-    .filter(id => state.catalog[id].type === 'Reactivo' && state.catalog[id].campo === craftSelectedSolvent && (state.inventory[id] || 0) > 0);
+    .filter(id => state.catalog[id].type === 'Reactivo' && state.catalog[id].campo === craftSelectedSolvent && (state.inventory[id] || 0) > 0 && !infoOculta(state.catalog[id]));
   const bases = todas.filter(id => niveles.reactivoOk(state.catalog[id]));
   const bloq = todas.length - bases.length;
   const notaBloq = bloq ? `<p class="muted nivel-bloq" style="padding:4px 12px">🔒 ${bloq} reactivo${bloq === 1 ? '' : 's'} de este disolvente se aprende${bloq === 1 ? '' : 'n'} en un nivel superior de alquimia.</p>` : '';
@@ -772,7 +793,7 @@ function renderModifiers() {
       <p class="muted-i" style="padding:8px 12px">Este reactivo no acepta modificadores.</p>`;
 
   const mods = Object.keys(state.catalog)
-    .filter(id => state.catalog[id].type === 'Modificador' && (state.inventory[id] || 0) > 0);
+    .filter(id => state.catalog[id].type === 'Modificador' && (state.inventory[id] || 0) > 0 && !infoOculta(state.catalog[id]));
   const chips = Object.entries(craftSelectedMods)
     .filter(([, qty]) => qty > 0)
     .map(([mid, qty]) => {
@@ -814,7 +835,7 @@ function renderModifiers() {
 function prepareAdd(type, id) {
   if (caulCraftState || brewing) return null;
   if (type === 'solv') {
-    if (!CAMPOS[id] || !niveles.disolventeOk(id)) return null;
+    if (!CAMPOS[id] || !niveles.disolventeOk(id) || odres.problema(id)) return null;
     return () => { setCraftSelectedSolvent(id); setCraftSelectedBase(null); setCraftSelectedMods({}); };
   }
   if (type === 'base') {

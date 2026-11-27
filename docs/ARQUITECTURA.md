@@ -1,7 +1,7 @@
 # Cómo está organizada la app (y cómo añadirle módulos)
 
-La taberna de Jhon es una **mesa con módulos**. Hoy hay: Inventario, Alquimia, Lectura,
-Compendio y Usuarios en línea. La idea es ir sumando más (cocina, ficha de personaje,
+La taberna de Jhon es una **mesa con módulos**. Hoy hay: Inventario, Alquimia, Lectura
+y Usuarios en línea (el antiguo Compendio está ahora dentro de Alquimia). La idea es ir sumando más (cocina, ficha de personaje,
 armas y sus efectos, y algún día mapas) sin tocar lo que ya funciona.
 
 ## Las piezas
@@ -10,9 +10,9 @@ armas y sus efectos, y algún día mapas) sin tocar lo que ya funciona.
 |---|---|---|
 | Núcleo | `js/app.js`, `js/modulos.js`, `js/state.js`, `js/sync.js`, `js/auth.js`, `js/panel.js`, `js/cuenta.js`, `js/avatar.js` | Arranque, registro de módulos, pestañas y tarjetas de la mesa, estado, guardado (local o servidor), cuentas, usuarios en línea, menú de la cuenta y fotos de perfil |
 | Servidor | `servidor.py` | Web + base de datos SQLite con transacciones todo-o-nada, cuentas, campañas, roles (jugador, DM, superusuario), disciplinas y permisos |
-| Inventario | `js/render.js`, `js/form.js`, `js/dm.js` | Materiales, pociones, botín; herramientas del DM |
-| Alquimia | `js/data.js`, `js/model.js`, `js/crafting.js`, `js/cauldron.js`, `js/niveles.js`, `js/diario.js` | Reglas de pociones, caldero, niveles de alquimia y diario de Jhon Arbaquel |
-| Lectura | `js/lectura.js` | Libros, progreso, descansos y tiradas de comprensión |
+| Inventario | `js/inventario.js`, `js/objetos.js`, `js/bolsa.js`, `js/dm.js` | Una sola lista con todo lo que llevas (y dar cosas a otro jugador); herramientas del DM |
+| Alquimia | `js/data.js`, `js/model.js`, `js/crafting.js`, `js/cauldron.js`, `js/render.js`, `js/form.js`, `js/odres.js`, `js/conocimiento.js`, `js/niveles.js`, `js/diario.js` | Caldero, catálogo de materiales, recetario, odres, alta de materiales y parámetros; niveles y diario de Jhon Arbaquel |
+| Lectura | `js/lectura.js` | Alta de libros, progreso, descansos y tiradas de comprensión |
 | Perfil | `js/perfil.js` | El personaje de cada jugador en cada campaña (nombre, raza, clase, nivel, mod. INT, bono, retrato, notas) |
 
 ## El registro de módulos (`js/modulos.js`)
@@ -154,3 +154,36 @@ Un objeto: `name, categoria, cantidad, rareza, valor, peso, descripcion, notas, 
 equipado`, y tres bloques opcionales pensados para futuros módulos (fichas de armas, efectos):
 `arma {dano, tipoDano, propiedades, bonif}`, `armadura {ca, tipo}`, `cargas {actual, max, recarga}`.
 Para añadir un campo nuevo: tocar el formulario de `editor()` en objetos.js y `OBJ_TEXTO`/`OBJ_SUB` en servidor.py.
+
+## V3.8: cada cosa en su zona, odres, inventario único y catálogo por descubrimiento
+
+**Dónde está cada cosa.** Alquimia tiene subpestañas: 🔥 Caldero · 🗃️ Materiales (catálogo) · 📚 Recetario ·
+🫙 Odres · ➕ Alta de materiales y ⚙️ Parámetros (estas dos, solo DM o sin servidor). Lectura tiene el alta de libros
+(abajo) y cada libro su ✏️ y 🗑️. El Inventario es **una sola lista** con secciones (objetos, materiales, pociones,
+botín, libros, odres), un buscador y filtros por clase, por oficio y «✨ Mágico». El DM sigue teniendo
+«👑 Inventarios de la mesa». El DM ve siempre la pestaña de Alquimia aunque su disciplina sea otra (`modulos.setDM`).
+
+**Odres** (`js/odres.js`, colección `odres` por jugador). El agua no se lleva; azogue, polvo etéreo y esencia mágica
+van en odres `{ name, capacidad, litros, disolvente }` (litros de medio en medio). Cada elaboración gasta 0,5 L
+(también si sale mal) del odre de ese disolvente que menos tenga. Sin litros, ese disolvente sale bloqueado en el caldero.
+Cada jugador empieza con un odre vacío de 3 L: lo crea el servidor la primera vez que entra en la mesa
+(`dar_odre_inicial`, una sola vez por campaña: marca en la tabla `ajustes`). Un jugador solo puede gastar o tirar sus
+odres; llenarlos, darlos y cambiarlos es cosa del DM (`permiso_jugador`). Sin servidor, se llenan desde Alquimia → Odres.
+
+**Dar cosas a otro jugador** (op `{t:'dar', c, id, u, n}` de `/api/transaccion`, función `dar()` de `servidor.py`).
+Vale para materiales, pociones, botín, objetos (también una parte de la cantidad), libros (quien lo recibe empieza a
+leerlo desde el principio), odres y monedas. Se quita al que lo da y se pone al que lo recibe en la misma transacción:
+o pasa todo o nada. Queda en el historial y se puede deshacer como lo demás.
+
+**Catálogo por descubrimiento** (`js/conocimiento.js`, colección común `descubrimientos`: material → {jugador: fecha}).
+Solo el DM da de alta materiales (el servidor rechaza el alta de un jugador). Un material no sale en el catálogo de
+un jugador hasta que le llega por primera vez: lo apunta el servidor cada vez que suma stock a un jugador que no es DM
+(`descubrir()`), ya se lo dé el DM o se lo pase otro jugador. Nadie puede escribir esa colección a mano. Al pasar a
+la V3.8, lo que ya llevaba cada jugador cuenta como descubierto (`migrar_descubrimientos`, una vez).
+La marca **🙈 Desconocido** (`unknown` del material) ya no esconde la ficha al DM: la rellena entera y los jugadores
+ven solo nombre y lugar, no pueden usarlo en el caldero ni compararlo al identificar botín, hasta que la quite.
+El DM ve en Alquimia → Materiales «🆕 Sin dar a nadie» / «👥 Lo conocen N» y puede filtrar por ellos, y en los
+inventarios de la mesa, «🆕 nuevo para …» en los materiales que ese jugador aún no conoce.
+
+**Quien no es alquimista** (ni pluriempleado ni DM) ve los materiales alquímicos de su inventario como
+«Material alquímico», sin nombre ni efectos; puede tirarlos o dárselos a otro.

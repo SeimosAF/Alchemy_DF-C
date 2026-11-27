@@ -25,7 +25,14 @@ export const DISCIPLINAS = {
   desempleado:   { icono: '🪑', nombre: 'Desempleado' },     // ningún oficio
   pluriempleado: { icono: '🧰', nombre: 'Pluriempleado' },   // todos los oficios
 };
-export const nombreDisciplina = d => { const x = DISCIPLINAS[d] || DISCIPLINAS.alquimista; return `${x.icono} ${x.nombre}`; };
+// Los oficios que tiene (uno, varios, todos o ninguno), en texto
+export const nombreDisciplina = d => {
+  if (DISCIPLINAS[d] || !d) { const x = DISCIPLINAS[d] || DISCIPLINAS.alquimista; return `${x.icono} ${x.nombre}`; }
+  const l = modulos.listaDisciplinas(d);
+  if (!l.length) return nombreDisciplina('desempleado');
+  if (l.length === modulos.OFICIOS.length) return nombreDisciplina('pluriempleado');
+  return l.map(o => `${DISCIPLINAS[o].icono} ${DISCIPLINAS[o].nombre}`).join(' · ');
+};
 const esc = t => String(t ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
 // ---- Tarjetas de la mesa ----
@@ -45,7 +52,8 @@ export function resumenInventario() {
   const c = contar();
   const libros = Object.keys(state.libros || {}).length;
   const objs = Object.values(state.objetos || {}).reduce((t, o) => t + (o.cantidad ?? 1), 0);
-  return `<b>${objs}</b> objeto${objs === 1 ? '' : 's'} · <b>${c.mats}</b> material${c.mats === 1 ? '' : 'es'} de ${c.tipos} tipo${c.tipos === 1 ? '' : 's'}<br><b>${c.pots}</b> poci${c.pots === 1 ? 'ón' : 'ones'}${c.loot ? ` · <b>${c.loot}</b> de botín` : ''}${libros ? ` · <b>${libros}</b> libro${libros === 1 ? '' : 's'}` : ''}`;
+  const oro = Number.isInteger(state.bolsa?.oro) ? state.bolsa.oro : 0;
+  return `🪙 <b>${oro.toLocaleString('es-ES')}</b> mo · <b>${objs}</b> objeto${objs === 1 ? '' : 's'} · <b>${c.mats}</b> material${c.mats === 1 ? '' : 'es'} de ${c.tipos} tipo${c.tipos === 1 ? '' : 's'}<br><b>${c.pots}</b> poci${c.pots === 1 ? 'ón' : 'ones'}${c.loot ? ` · <b>${c.loot}</b> de botín` : ''}${libros ? ` · <b>${libros}</b> libro${libros === 1 ? '' : 's'}` : ''}`;
 }
 export function resumenAlquimia() {
   const c = contar();
@@ -78,6 +86,7 @@ export function animarEntrada() {
   mesa.classList.remove('aparecer');
   void mesa.offsetWidth;
   mesa.classList.add('aparecer');
+  modulos.recolocarMesa();
   pintarTarjetas();
 }
 
@@ -137,6 +146,7 @@ export function renderUsuarios() {
   const el = document.getElementById('listaUsuarios');
   if (!el) return;
   if (el.contains(document.activeElement) && document.activeElement.matches('select')) return;   // no cerrar un desplegable abierto
+  if (el.querySelector('details.usr-disciplinas[open]')) return;   // ni la lista de oficios mientras el DM la marca
   if (!auth.servidor) {
     el.innerHTML = '<p class="muted">La app está funcionando sin servidor, solo en este navegador. Arráncala con <code>iniciar.bat</code> o con Docker para jugar con otras personas.</p>';
     return;
@@ -145,7 +155,7 @@ export function renderUsuarios() {
   // Las cuentas desterradas solo las ve el superusuario (para poder readmitirlas)
   const todos = [...presencia].filter(p => !p.baneado || auth.esAdmin());
   const en = filtros.estado('usuarios').en;
-  const lista = todos.filter(p => filtros.coincide('usuarios', p.nombre, p.personaje, DISCIPLINAS[p.disciplina]?.nombre, p.rol === 'dm' ? 'DM' : '')
+  const lista = todos.filter(p => filtros.coincide('usuarios', p.nombre, p.personaje, nombreDisciplina(p.disciplina), p.rol === 'dm' ? 'DM' : '')
       && (!en || (en === 'dm' ? p.rol === 'dm' || p.rol === 'admin' : p.estado === en)))
     .sort((a, b) => (a.baneado - b.baneado) || orden[a.estado] - orden[b.estado] || a.nombre.localeCompare(b.nombre));
   filtros.cuenta('usuarios', lista.length, todos.length);
@@ -172,11 +182,19 @@ export function renderUsuarios() {
       acciones.push(`<button class="btn btn-sm btn-danger" data-usr="sacar" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}" title="Sale de esta campaña. No se borra nada: si vuelve, lo recupera todo.">🚪 Sacar de la mesa</button>`);
     const rolTxt = admin ? '<span class="usr-rol rol-dm rol-admin">🛡️ Superusuario</span>'
       : p.rol === 'dm' ? '<span class="usr-rol rol-dm">👑 DM</span>' : '<span class="usr-rol rol-jugador">⚔️ Jugador</span>';
-    // Disciplina: el DM la elige en un desplegable; los demás solo la ven
-    const disc = admin ? '' : auth.esDM()
-      ? `<select class="usr-disciplina" data-usr-disc="${esc(p.clave)}" data-nombre="${esc(p.nombre)}" title="Disciplina (la ranura de oficio que ve en su mesa)">
-          ${Object.entries(DISCIPLINAS).map(([k, d]) => `<option value="${k}" ${k === (p.disciplina || 'alquimista') ? 'selected' : ''}>${d.icono} ${d.nombre}</option>`).join('')}
-        </select>`
+    // Oficios: el DM marca a cuáles tiene acceso cada jugador; los demás solo los ven.
+    // Los DM y el superusuario los tienen todos.
+    const tiene = modulos.listaDisciplinas(p.disciplina);
+    const disc = admin ? '' : p.rol === 'dm' ? `<span class="usr-disc">🧰 Todos los oficios</span>` : auth.esDM()
+      ? `<details class="usr-disciplinas" data-usr-disc="${esc(p.clave)}">
+          <summary title="Oficios a los que tiene acceso">${nombreDisciplina(p.disciplina)} ✏️</summary>
+          <div class="usr-disciplinas-caja">
+            <span class="muted">Oficios de ${esc(p.nombre)}:</span>
+            ${modulos.OFICIOS.map(o => `<label><input type="checkbox" value="${o}" ${tiene.includes(o) ? 'checked' : ''}>
+              ${DISCIPLINAS[o].icono} ${DISCIPLINAS[o].nombre}</label>`).join('')}
+            <span class="muted">Sin ninguno marcado: sin oficio.</span>
+          </div>
+        </details>`
       : `<span class="usr-disc">${nombreDisciplina(p.disciplina)}</span>`;
     if (p.baneado) return `<div class="usr-fila usr-desterrado">
       <span class="avatar avatar-grande">🚫</span>
@@ -276,7 +294,7 @@ function renderGestion() {
           </div></div>`).join('')}
       </div>` : '') + `<div class="gestion-caja">
         <h3>📜 Invitar a «${esc(auth.mesa.nombre)}»</h3>
-        <p class="muted">Cada campaña tiene su propio catálogo, inventarios, libros y niveles. Quien invites empieza aquí con el inventario vacío y como alquimista; cámbiale la disciplina en la lista de abajo.</p>
+        <p class="muted">Cada campaña tiene su propio catálogo, inventarios, libros y niveles. Quien invites empieza aquí con el inventario vacío y como alquimista; márcale sus oficios en la lista de abajo.</p>
         ${fuera.length ? `<div class="dm-dar">
             <select id="mesaInvitar">${fuera.map(c => `<option value="${esc(c.clave)}">${esc(c.nombre)}</option>`).join('')}</select>
             <button class="btn btn-sm" data-usr="invitar">➕ Invitar a la mesa</button>
@@ -341,9 +359,10 @@ export function initUsuarios(verInventario, verPerfil = () => {}) {
   sala?.addEventListener('change', async e => {
     const s = e.target.closest('[data-usr-disc]');
     if (!s) return;
-    const r = await auth.apiMesa('/api/mesa/disciplina', { usuario: s.dataset.usrDisc, disciplina: s.value });
-    s.blur();
-    if (!r.ok) { alert(r.mensaje); }
+    const disciplinas = [...s.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
+    const r = await auth.apiMesa('/api/mesa/disciplina', { usuario: s.dataset.usrDisc, disciplinas });
+    if (!r.ok) { alert(r.mensaje); s.open = false; }
+    else s.querySelector('summary').innerHTML = `${nombreDisciplina(disciplinas.length ? disciplinas.join(',') : 'desempleado')} ✏️`;
     await sync.refrescar({ presencia: true });
   });
   sala?.addEventListener('click', async e => {

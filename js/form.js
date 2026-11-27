@@ -6,6 +6,7 @@ import {
 } from './data.js';
 import { parseDice, formatDice, getDisolvente, hasMaleficio } from './model.js';
 import { renderCatMateriales, renderInvMateriales } from './render.js';
+import { descubierto, infoOculta } from './conocimiento.js';
 
 // Form state
 export let editingMatId = null;
@@ -195,10 +196,7 @@ export function populateDamageTypeSelect() {
 
 // ---- Main form update ----
 export function updateMatForm() {
-  const isUnknown = document.getElementById('matUnknown').checked;
-  const knownFields = document.getElementById('matKnownFields');
-  if (knownFields) knownFields.style.display = isUnknown ? 'none' : 'block';
-  if (isUnknown) return;
+  // V3.8: «Desconocido» ya no esconde la ficha: el DM la rellena entera y los jugadores no la ven hasta que la quite
 
   const type = document.getElementById('matType').value;
   const { campo, polaridad } = currentCampoPol();
@@ -349,8 +347,8 @@ export function resetForm() {
   document.getElementById('matAddSecondaryEffect').value = '';
   formEffects = [];
   editingMatId = null;
-  document.getElementById('matFormTitle').textContent = '➕ Identificar componente';
-  document.getElementById('matSubmitBtn').textContent = '➕ Añadir componente';
+  document.getElementById('matFormTitle').textContent = '➕ Dar de alta un material';
+  document.getElementById('matSubmitBtn').textContent = '➕ Añadir material';
   document.getElementById('matCancelEditBtn').style.display = 'none';
   updateMatForm();
 }
@@ -364,9 +362,7 @@ export function addMat(renderCrafteo) {
     const m = state.catalog[editingMatId];
     for (const k in data) m[k] = data[k];
   } else {
-    const id = genId();
-    state.catalog[id] = data;
-    if (!(id in state.inventory)) state.inventory[id] = 0;
+    state.catalog[genId()] = data;
   }
   saveState(); resetForm(); renderCatMateriales(); renderInvMateriales(); renderCrafteo();
 }
@@ -443,14 +439,12 @@ export function cancelDelete() {
 
 // ---- LOOT CRUD ----
 export function addLoot() {
-  const name = document.getElementById('lootName').value.trim();
-  const qty = parseInt(document.getElementById('lootQty').value) || 1;
-  if (!name) { alert('La poción loot necesita un nombre.'); return; }
-  const id = genId();
-  state.lootPotions[id] = { name, qty, descripcion: '', tipo: '', identificada: false };
-  document.getElementById('lootName').value = '';
-  document.getElementById('lootQty').value = '1';
+  const name = (prompt('Nombre de la poción que has encontrado (p. ej. «Frasco turbio»):') || '').trim();
+  if (!name) return false;
+  const qty = Math.max(1, parseInt(prompt('¿Cuántas?', '1')) || 1);
+  state.lootPotions[genId()] = { name, qty, descripcion: '', tipo: '', identificada: false };
   saveState();
+  return true;
 }
 
 export function deleteLoot(id) {
@@ -463,8 +457,11 @@ export function identifyLoot(id) {
   const loot = state.lootPotions[id]; if (!loot) return;
   if (loot.qty < 1) { alert('No quedan unidades.'); return; }
   const bases = [];
-  for (const bid in state.catalog) if (state.catalog[bid].type === 'Reactivo') bases.push({ id: bid, m: state.catalog[bid] });
-  if (!bases.length) { alert('No tienes reactivos identificados para comparar.'); return; }
+  for (const bid in state.catalog) {
+    const m = state.catalog[bid];
+    if (m.type === 'Reactivo' && descubierto(bid) && !infoOculta(m)) bases.push({ id: bid, m });   // solo los que conoces
+  }
+  if (!bases.length) { alert('No conoces ningún reactivo con el que compararla.'); return; }
   const opts = bases.map((b, i) => `${i + 1}. ${nombreMat(b.m)} (${b.m.campo} · ${b.m.polaridad})`);
   const choice = prompt('Ingeniería inversa: consume 1 unidad.\n\n' + opts.join('\n') + '\n\nNúmero:');
   if (choice == null) return;
@@ -476,6 +473,6 @@ export function identifyLoot(id) {
   loot.qty--;
   if (loot.qty <= 0) delete state.lootPotions[id];
   saveState();
-  document.getElementById('lootResult').innerHTML =
+  document.getElementById('drinkResult').innerHTML =
     `<div class="result-box success"><p>✅ Identificada como: <strong>${loot.tipo}</strong> (consumida 1 unidad)</p></div>`;
 }
