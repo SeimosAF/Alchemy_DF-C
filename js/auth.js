@@ -230,13 +230,14 @@ export function actualizarDesdeServidor(u) {
   if (!u || !usuario || !mesa) return false;
   const pj = JSON.stringify(u.personaje || null);
   const cambia = u.rol !== usuario.rol || (u.disciplina || 'alquimista') !== usuario.disciplina || (u.mesa && u.mesa !== mesa.nombre)
-    || pj !== JSON.stringify(usuario.personaje || null) || !!u.conClave !== !!mesa.conClave;
+    || pj !== JSON.stringify(usuario.personaje || null) || !!u.conClave !== !!mesa.conClave || (u.acceso || '') !== (mesa.acceso || '');
   usuario.rol = u.rol;
   usuario.disciplina = mesa.disciplina = u.disciplina || 'alquimista';
   usuario.personaje = u.personaje || null;   // su personaje en esta campaña (perfil.js)
   if (u.mesa) mesa.nombre = u.mesa;
   mesa.rol = u.rol;
   mesa.conClave = !!u.conClave;               // ¿la mesa tiene contraseña para unirse?
+  mesa.acceso = u.acceso || (u.conClave ? 'clave' : 'invitacion');   // abierta | clave | invitacion
   return cambia;
 }
 
@@ -279,7 +280,11 @@ function elegirMesa(pantalla) {
           <span class="mesa-opcion-nombre">${esc(c.nombre)}</span>
           <span class="mesa-opcion-rol">${c.rol === 'admin' ? '🛡️ Superusuario' : c.rol === 'dm' ? '👑 DM' : '⚔️ Jugador'}
             ${c.rol === 'jugador' ? ' · ' + esc(NOMBRE_DISC[c.disciplina] || String(c.disciplina || '').split(',').map(d => NOMBRE_DISC[d] || '').join(' · ')) : ''}</span>
-        </button>`).join('') + ajenas.map(c => c.conClave ? `
+        </button>`).join('') + ajenas.map(c => c.acceso === 'abierta' ? `
+        <button type="button" class="mesa-opcion mesa-abierta" data-mesa-abierta="${esc(c.id)}" data-nombre="${esc(c.nombre)}">
+          <span class="mesa-opcion-nombre">${esc(c.nombre)}</span>
+          <span class="mesa-opcion-rol">Abierta · pulsa para unirte</span>
+        </button>` : c.acceso === 'clave' || (!c.acceso && c.conClave) ? `
         <div class="mesa-opcion mesa-ajena ${abierta === c.id ? 'abierta' : ''}">
           <button type="button" class="mesa-ajena-boton" data-mesa-candado="${esc(c.id)}">
             <span class="mesa-opcion-nombre">🔒 ${esc(c.nombre)}</span>
@@ -297,7 +302,7 @@ function elegirMesa(pantalla) {
         <p class="entrada-nota">${campanas.length
           ? `Bienvenido, <strong>${esc(usuario.nombre)}</strong>. ¿A qué mesa te sientas hoy?`
           : `<strong>${esc(usuario.nombre)}</strong>, todavía no te has sentado en ninguna mesa.<br>
-             ${puedeCrear ? 'Crea la primera campaña aquí abajo.' : `Pide al DM de tu campaña que te invite (dile tu nombre, <strong>${esc(usuario.nombre)}</strong>) o únete con la contraseña de la mesa.${puedeSolicitar ? ' También puedes pedir una campaña propia.' : ''}`}`}</p>
+             ${puedeCrear ? 'Crea la primera campaña aquí abajo.' : `Únete a una mesa abierta de la lista, entra en una con candado con su contraseña o pide al DM que te invite (dile tu nombre, <strong>${esc(usuario.nombre)}</strong>).${puedeSolicitar ? ' También puedes pedir una campaña propia.' : ''}`}`}</p>
         ${total ? `<input type="search" class="mesa-buscar" placeholder="🔍 Buscar campaña" value="${esc(busca)}" aria-label="Buscar campaña">` : ''}
         <div class="mesa-opciones">${lista || (busca ? '<p class="muted">Ninguna campaña se llama así.</p>' : '')}</div>
         ${!puedeCrear && !otras.length ? `<details class="mesa-unirse" ${campanas.length ? '' : 'open'}>
@@ -356,6 +361,16 @@ function elegirMesa(pantalla) {
         pintar();
         caja.querySelector('.mesa-candado input')?.focus();
         return;
+      }
+      const ab = e.target.closest('[data-mesa-abierta]');
+      if (ab) {   // mesa abierta: se entra directamente, sin contraseña ni invitación
+        if (ab.disabled) return;
+        ab.disabled = true;
+        const r = await api('/api/campanas/unirse', { id: ab.dataset.mesaAbierta }, true).catch(() => ({ j: null }));
+        if (!r.j?.ok) { try { await cargarYo(); } catch (_) {} return pintar(r.j?.mensaje || 'No se pudo entrar en la mesa.'); }
+        try { await cargarYo(); } catch (_) {}
+        caja.onclick = null;
+        return resolve(campanas.find(c => c.id === r.j.campana.id) || r.j.campana);
       }
       const b = e.target.closest('[data-mesa], [data-mesa-accion]');
       if (!b) return;

@@ -1726,7 +1726,7 @@ body:not(.es-dm) #tab-inventario .inv-barra .subtab-bar { display:none; }
 .mesa-buscar { width:100%; padding:8px 12px; border-radius:8px; border:1px solid #b9a27c; background:#fffaf0; font:inherit; margin-top:6px; }
 .mesa-ajena { padding:0; cursor:default; }
 .mesa-ajena-boton { all:unset; box-sizing:border-box; width:100%; display:flex; flex-direction:column; align-items:center; gap:2px; padding:12px 14px; cursor:pointer; }
-.mesa-cerrada { padding:12px 14px; opacity:.7; filter:grayscale(.3); }
+.mesa-cerrada { padding:12px 14px; opacity:.55; filter:grayscale(1); }
 .mesa-cerrada:hover { transform:none; }
 .mesa-candado { display:flex; gap:6px; padding:0 12px 12px; width:100%; box-sizing:border-box; }
 .mesa-candado input { flex:1; min-width:0; padding:6px 10px; border-radius:6px; border:1px solid #b9a27c; font:inherit; }
@@ -1830,3 +1830,51 @@ body.chat-abierto #syncAvisos { right:396px; }
 .chat-borrar:hover { opacity:1; background:rgba(138,42,42,.15); }
 @media (hover:none) { .chat-borrar { opacity:.45; } }
 .chat-mio .chat-borrar { order:-1; }
+
+/* ============================================================
+   Chat: pestañas (mesa / privados / avisos) y «En línea» con todas las cuentas
+   ============================================================ */
+.chat-pestanas { flex:none; display:flex; background:#4a2d1d; }
+.chat-pestanas button { flex:1; border:none; background:none; color:rgba(255,255,255,.7); padding:9px 4px; cursor:pointer; font-size:.88em;
+  border-bottom:3px solid transparent; white-space:nowrap; }
+.chat-pestanas button[aria-selected="true"] { color:#fff; border-bottom-color:var(--oro); }
+.chat-pestanas button:hover { color:#fff; }
+.chat-pestana-n { display:inline-block; min-width:18px; height:18px; padding:0 5px; border-radius:9px; background:#b3261e; color:#fff;
+  font:700 .72em/18px system-ui, sans-serif; text-align:center; vertical-align:1px; }
+.chat-pestana-n:empty { display:none; }
+.chat-lista[hidden], .chat-form[hidden], .chat-volver[hidden] { display:none; }
+.chat-volver { font-size:1.15em; }
+
+.chat-nuevo { display:flex; align-items:center; gap:8px; margin-bottom:10px; font-size:.88em; color:#5b3a29; }
+.chat-nuevo select { flex:1; min-width:0; font:inherit; padding:6px 8px; border:1px solid #b59a72; border-radius:8px; background:#fffaf0; }
+.chat-conv { display:flex; align-items:center; gap:10px; width:100%; text-align:left; padding:9px 8px; border:none; border-bottom:1px solid #e0d3b8;
+  background:none; cursor:pointer; color:inherit; font:inherit; border-radius:8px; }
+.chat-conv:hover { background:rgba(110,70,34,.08); }
+.chat-conv-nueva { background:#fff3d6; }
+.chat-conv-txt { flex:1; min-width:0; display:flex; flex-wrap:wrap; align-items:baseline; gap:0 6px; }
+.chat-conv-txt time { font-size:.72em; color:#7a5a3a; }
+.chat-conv-ultimo { flex-basis:100%; font-size:.85em; color:#6b4420; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.chat-conv-nueva .chat-conv-ultimo { font-weight:700; color:var(--text); }
+
+.chat-aviso { padding:9px 12px; margin-bottom:8px; border-radius:10px; background:#fffaf0; border:1px solid #d6c19b; transition:background .6s; }
+.chat-aviso-nuevo { background:#fff3d6; border-color:#d4a85a; box-shadow:0 0 0 2px rgba(212,168,90,.25); }
+.chat-aviso-texto { font-size:.93em; line-height:1.35; overflow-wrap:anywhere; }
+.chat-aviso-pie { margin-top:3px; font-size:.75em; color:#7a5a3a; }
+
+.usr-seccion { margin:18px 0 4px; padding-top:12px; border-top:2px dashed #c9b89a; font-family:var(--f-rotulo); font-size:1em; color:var(--border); }
+.usr-seccion .muted { font-family:var(--f-texto); font-weight:400; font-style:italic; font-size:.85em; }
+.rol-fuera { background:#ece6da; color:#6b5a45; box-shadow:0 0 0 1px #cfc3ae; }
+.usr-fuera { opacity:.9; }
+@media (max-width:640px) { .chat-pestanas button { font-size:.8em; } }
+.chat-pestanas button { padding:9px 2px; }
+.chat-bot-general .chat-avatar-bot { background:radial-gradient(circle at 35% 30%, #e0b75e, #8a5a2b 75%); }
+.chat-bot-general .chat-burbuja { background:#fbf0d4; border-color:#d4a85a; }
+.chat-bot-general .chat-cab b { color:#8a5a2b; }
+@media (max-width:640px) { .chat-pestanas button { font-size:.74em; } }
+
+/* Ajustes de la campaña: cómo se entra */
+.acceso-opciones { display:flex; flex-direction:column; gap:6px; margin:8px 0; }
+.acceso-opcion { display:flex; gap:8px; align-items:flex-start; padding:8px 10px; border:1px solid #d8cdb4; border-radius:8px; cursor:pointer; }
+.acceso-opcion input { margin-top:4px; }
+.acceso-opcion:has(input:checked) { border-color:var(--accent); background:rgba(138,90,43,.08); }
+.gestion-ajustes .dm-dar { margin-bottom:8px; }

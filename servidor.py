@@ -59,10 +59,10 @@ from urllib.parse import urlparse, parse_qs, unquote, urlencode, quote
 RAIZ = os.path.dirname(os.path.abspath(__file__))
 
 # Versión de la app y lo que trae de nuevo, en una línea. Al arrancar con una versión distinta de la
-# última anunciada, el bot de cada mesa lo cuenta en el chat. Al publicar una versión nueva, cambia las dos.
-VERSION = '3.9'
-NOVEDADES = ('chat de la mesa con Dobby (avisa de quién llega, de apagones y de versiones nuevas; el DM modera), '
-             'crear cuenta con correo o Discord y el giro de la mesa arreglado en el móvil.')
+# última anunciada, Dobby lo cuenta en el chat general. Al publicar una versión nueva, cambia las dos.
+VERSION = '3.10'
+NOVEDADES = ('chat general con Dobby y Dobby Jr. en cada mesa, campañas abiertas, con contraseña o solo por invitación, '
+             '«En línea» con todas las cuentas, avisos personales y chats privados.')
 PUERTO = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else int(os.environ.get('PORT', '8080'))
 HOST = os.environ.get('HOST', '0.0.0.0')
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(RAIZ, 'datos', 'alquimia.db')
@@ -129,6 +129,16 @@ DISCIPLINA_DEFECTO = 'alquimista'
 # V3.7: el DM marca a qué oficios tiene acceso cada jugador (uno, varios, todos o ninguno).
 # Se guarda en miembros.disciplina: 'desempleado' (ninguno), un oficio, o varios separados por comas.
 OFICIOS = ('alquimista', 'cocinero', 'hechicero', 'herrero')
+
+
+NOMBRE_OFICIO = {'alquimista': 'alquimista', 'cocinero': 'cocinero', 'hechicero': 'hechicero', 'herrero': 'herrero'}
+
+
+def texto_oficios(disc):
+    if disc == 'desempleado':
+        return 'sin oficio'
+    lista = [NOMBRE_OFICIO.get(o, o) for o in str(disc).split(',')]
+    return ', '.join(lista[:-1]) + ' y ' + lista[-1] if len(lista) > 1 else lista[0]
 
 
 def normalizar_disciplina(x):
@@ -215,7 +225,7 @@ def preparar_bd():
             -- Campañas (mesas): cada una con su propio contador de revisiones.
             CREATE TABLE IF NOT EXISTS campanas (
                 id TEXT PRIMARY KEY, nombre TEXT NOT NULL, creada TEXT, rev INTEGER NOT NULL DEFAULT 0,
-                clave_hash TEXT);
+                clave_hash TEXT, acceso TEXT NOT NULL DEFAULT 'abierta');
             -- Quién juega en cada campaña, con qué papel (dm / jugador) y con qué disciplina.
             -- HISTORIAL de cada campaña: quién cambió qué y cuándo, con lo que había antes (para deshacer).
             -- Solo se añaden filas: no hay forma de borrarlo ni editarlo desde la app.
@@ -238,6 +248,11 @@ def preparar_bd():
         # Columnas añadidas después (V3.2): contraseña de la mesa y personaje de cada jugador en cada campaña
         if 'clave_hash' not in [f[1] for f in con.execute('PRAGMA table_info(campanas)')]:
             con.execute('ALTER TABLE campanas ADD COLUMN clave_hash TEXT')
+        # Cómo se entra en cada campaña: 'abierta' (cualquier cuenta entra sola), 'clave' (con la contraseña
+        # de la mesa) o 'invitacion' (solo si el DM invita). Al crear la columna: con contraseña → 'clave', sin ella → 'abierta'.
+        if 'acceso' not in [f[1] for f in con.execute('PRAGMA table_info(campanas)')]:
+            con.execute("ALTER TABLE campanas ADD COLUMN acceso TEXT NOT NULL DEFAULT 'abierta'")
+            con.execute("UPDATE campanas SET acceso = CASE WHEN clave_hash IS NOT NULL THEN 'clave' ELSE 'abierta' END")
         if 'personaje' not in [f[1] for f in con.execute('PRAGMA table_info(miembros)')]:
             con.execute('ALTER TABLE miembros ADD COLUMN personaje TEXT')
         if 'baneado' not in [f[1] for f in con.execute('PRAGMA table_info(usuarios)')]:
@@ -288,6 +303,18 @@ def preparar_bd():
         if not con.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='chat_llegadas'").fetchone():
             con.execute('CREATE TABLE chat_llegadas (campana TEXT NOT NULL, usuario TEXT NOT NULL, fecha TEXT, PRIMARY KEY (campana, usuario))')
             con.execute('INSERT OR IGNORE INTO chat_llegadas SELECT campana, usuario, ? FROM miembros', (ahora(),))
+        # Avisos personales: lo que le ha pasado a cada cuenta (le han invitado, le han dado algo, el DM ha
+        # cambiado sus cosas...). Se ven en la pestaña 🔔 del chat. Solo los ve su dueño.
+        con.execute('''CREATE TABLE IF NOT EXISTS avisos (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, usuario TEXT NOT NULL, texto TEXT NOT NULL, campana TEXT, fecha TEXT,
+            leido INTEGER NOT NULL DEFAULT 0)''')
+        con.execute('CREATE INDEX IF NOT EXISTS avisos_usuario ON avisos (usuario, id)')
+        # Chats privados entre dos cuentas (pestaña ✉️ del chat). Solo los ven las dos personas.
+        con.execute('''CREATE TABLE IF NOT EXISTS privados (
+            id INTEGER PRIMARY KEY AUTOINCREMENT, de TEXT NOT NULL, para TEXT NOT NULL, texto TEXT NOT NULL, fecha TEXT,
+            leido INTEGER NOT NULL DEFAULT 0)''')
+        con.execute('CREATE INDEX IF NOT EXISTS privados_para ON privados (para, leido)')
+        con.execute('CREATE INDEX IF NOT EXISTS privados_de ON privados (de, para, id)')
         cols_c = [f[1] for f in con.execute('PRAGMA table_info(campanas)')]
         if 'bot_nombre' not in cols_c:
             con.execute('ALTER TABLE campanas ADD COLUMN bot_nombre TEXT')
@@ -662,15 +689,29 @@ def campanas_de(con, u):
     return [{'id': i, 'nombre': n, 'rol': r, 'disciplina': d} for i, n, r, d in filas]
 
 
+ACCESOS = ('abierta', 'clave', 'invitacion')
+
+
+def acceso_de(acceso, clave_hash):
+    """El modo de entrada de una campaña. 'clave' sin contraseña guardada no puede abrirse: se trata como invitación."""
+    if acceso == 'clave':
+        return 'clave' if clave_hash else 'invitacion'
+    return acceso if acceso in ACCESOS else 'invitacion'
+
+
 def otras_campanas(con, u):
-    """V3.7: las campañas en las que NO juega, para el selector (con candado si tienen contraseña).
-    Las que no tienen contraseña solo se ven: se entra por invitación del DM."""
+    """Las campañas en las que NO juega, para el selector: abiertas (entra sola), con candado (contraseña)
+    o en gris (solo por invitación del DM)."""
     if es_admin(u):
         return []
-    filas = con.execute('SELECT c.id, c.nombre, c.clave_hash FROM campanas c WHERE NOT EXISTS '
+    filas = con.execute('SELECT c.id, c.nombre, c.clave_hash, c.acceso FROM campanas c WHERE NOT EXISTS '
                         '(SELECT 1 FROM miembros m WHERE m.campana=c.id AND m.usuario=?) ORDER BY c.creada, c.nombre',
                         (u['clave'],)).fetchall()
-    return [{'id': i, 'nombre': n, 'conClave': bool(h)} for i, n, h in filas]
+    out = []
+    for i, n, h, a in filas:
+        acc = acceso_de(a, h)
+        out.append({'id': i, 'nombre': n, 'acceso': acc, 'conClave': acc == 'clave'})
+    return out
 
 
 def puede_crear_campanas(con, u):
@@ -684,17 +725,19 @@ def actor_en_mesa(con, u, camp):
     """La persona dentro de una campaña: con su papel en ella (rol) y su disciplina. None si no juega ahí."""
     if not u or not isinstance(camp, str) or not CAMPANA_OK.match(camp):
         return None
-    c = con.execute('SELECT nombre, clave_hash FROM campanas WHERE id=?', (camp,)).fetchone()
+    c = con.execute('SELECT nombre, clave_hash, acceso FROM campanas WHERE id=?', (camp,)).fetchone()
     if not c:
         return None
+    acc = acceso_de(c[2], c[1])
     if es_admin(u):
         # El superusuario tiene los poderes de un DM en todas las campañas y puede usar todos los oficios
-        return {**u, 'campana': camp, 'mesa': c[0], 'disciplina': 'pluriempleado', 'personaje': None, 'conClave': bool(c[1])}
+        return {**u, 'campana': camp, 'mesa': c[0], 'disciplina': 'pluriempleado', 'personaje': None,
+                'conClave': acc == 'clave', 'acceso': acc}
     m = con.execute('SELECT rol, disciplina, personaje FROM miembros WHERE campana=? AND usuario=?', (camp, u['clave'])).fetchone()
     if not m:
         return None
     return {**u, 'rol': m[0], 'campana': camp, 'mesa': c[0], 'disciplina': m[1], 'personaje': leer_personaje(m[2]),
-            'conClave': bool(c[1])}
+            'conClave': acc == 'clave', 'acceso': acc}
 
 
 # ---- Personaje de cada jugador en cada campaña (lo que se ve en su perfil)
@@ -746,6 +789,8 @@ def guardar_personaje(actor, cuerpo):
         if antes != nuevo:
             apuntar(con, camp, actor, 'perfil', f'perfil de {nombre_de(con, objetivo)} ({p["nombre"] or "sin nombre"})',
                     [{'k': 'pj', 'u': objetivo, 'antes': antes, 'despues': nuevo}], [nombre_de(con, objetivo)])
+            if objetivo != actor['clave']:
+                avisar(con, objetivo, f'🧙 {quien_corto(actor)} ha cambiado tu personaje en «{nombre_mesa(con, camp)}».', camp)
         subir_rev(con, camp)
         return {'ok': True, 'personaje': p}
     return con_escritura(hacer)
@@ -875,28 +920,49 @@ def guardar_avatar(actor, cuerpo):
     return {'ok': True, 'avatar': v}
 
 
-# ---- Contraseña de la mesa: si la hay, quien la sepa puede unirse sin invitación
-def poner_clave_mesa(actor, cuerpo):
+# ---- Cómo se entra en la mesa: abierta, con contraseña o solo por invitación (lo deciden el DM y el superusuario)
+TEXTO_ACCESO = {'abierta': 'abierta (cualquiera entra solo)', 'clave': 'con contraseña', 'invitacion': 'solo por invitación'}
+
+
+def poner_acceso_mesa(actor, cuerpo):
     if not es_dm(actor):
-        raise Rechazo('permiso', 'Solo el DM o el superusuario pueden poner la contraseña de la mesa.')
+        raise Rechazo('permiso', 'Solo el DM o el superusuario pueden cambiar cómo se entra en la mesa.')
+    acceso = cuerpo.get('acceso')
+    if acceso not in ACCESOS:
+        raise Rechazo('invalida', 'Elige si la mesa es abierta, con contraseña o solo por invitación.')
     clave = cuerpo.get('clave')
-    if clave in (None, ''):
-        h = None
-    else:
+    h = None
+    if acceso == 'clave' and clave not in (None, ''):
         if not isinstance(clave, str) or not 4 <= len(clave) <= 100:
             raise Rechazo('invalida', 'La contraseña de la mesa debe tener entre 4 y 100 caracteres.')
         h = hash_contrasena(clave)
 
     def hacer(con):
-        con.execute('UPDATE campanas SET clave_hash=? WHERE id=?', (h, actor['campana']))
-        apuntar(con, actor['campana'], actor, 'mesa', 'puso o cambió la contraseña de la mesa' if h else 'quitó la contraseña de la mesa')
+        fila = con.execute('SELECT clave_hash, acceso FROM campanas WHERE id=?', (actor['campana'],)).fetchone()
+        antes = acceso_de(fila[1], fila[0])
+        nuevo_h = h if h else (fila[0] if acceso == 'clave' else None)   # la contraseña solo se guarda en modo 'clave'
+        if acceso == 'clave' and not nuevo_h:
+            raise Rechazo('invalida', 'Escribe la contraseña de la mesa (mínimo 4 caracteres).')
+        con.execute('UPDATE campanas SET clave_hash=?, acceso=? WHERE id=?', (nuevo_h, acceso, actor['campana']))
+        if antes != acceso:
+            apuntar(con, actor['campana'], actor, 'mesa', f'cambió la entrada a la mesa: {TEXTO_ACCESO[acceso]}')
+        elif h:
+            apuntar(con, actor['campana'], actor, 'mesa', 'cambió la contraseña de la mesa')
         subir_rev(con, actor['campana'])
-        return {'ok': True, 'conClave': bool(h)}
+        return {'ok': True, 'acceso': acceso, 'conClave': acceso == 'clave'}
     return con_escritura(hacer)
 
 
+def poner_clave_mesa(actor, cuerpo):
+    """Ruta antigua (/api/mesa/clave): poner contraseña = modo 'clave'; quitarla = mesa abierta."""
+    clave = cuerpo.get('clave')
+    if clave in (None, ''):
+        return poner_acceso_mesa(actor, {'acceso': 'abierta'})
+    return poner_acceso_mesa(actor, {'acceso': 'clave', 'clave': clave})
+
+
 def unirse(u, cuerpo, ip):
-    """Unirse a una campaña con su nombre y su contraseña (sin invitación)."""
+    """Unirse a una campaña sin invitación: si es abierta, con su id; si tiene contraseña, con ella."""
     if es_admin(u):
         raise Rechazo('invalida', 'El superusuario ya entra en todas las campañas.')
     fallos, desde = FALLOS.get(ip, (0, 0))
@@ -907,26 +973,36 @@ def unirse(u, cuerpo, ip):
     camp_id = cuerpo.get('id')   # V3.7: desde el selector de campañas se une por su id
 
     def hacer(con):
-        if isinstance(camp_id, str) and camp_id:
-            c = con.execute('SELECT id, nombre, clave_hash FROM campanas WHERE id=?', (camp_id,)).fetchone()
+        por_id = isinstance(camp_id, str) and bool(camp_id)
+        if por_id:
+            c = con.execute('SELECT id, nombre, clave_hash, acceso FROM campanas WHERE id=?', (camp_id,)).fetchone()
         else:
-            c = con.execute('SELECT id, nombre, clave_hash FROM campanas WHERE nombre=? COLLATE NOCASE', (nombre,)).fetchone()
-        # Mismo mensaje si no existe, si no tiene contraseña o si es incorrecta: no se delata qué mesas hay
-        if not c or not c[2] or not comprobar_contrasena(clave, c[2]):
-            if not c or not c[2]:
+            c = con.execute('SELECT id, nombre, clave_hash, acceso FROM campanas WHERE nombre=? COLLATE NOCASE', (nombre,)).fetchone()
+        acc = acceso_de(c[3], c[2]) if c else None
+        if por_id and c and es_miembro(con, c[0], u['clave']):
+            raise Rechazo('existe', f'Ya estás en «{c[1]}».')
+        if por_id and acc == 'invitacion':
+            raise Rechazo('credenciales', 'A esta mesa solo se entra si el DM te invita.')
+        abierta = por_id and acc == 'abierta'   # abierta: se entra pulsando, sin contraseña
+        # Por nombre solo valen las de contraseña. Mismo mensaje si no existe, si no tiene contraseña o si es
+        # incorrecta: no se delata qué mesas hay
+        if not abierta and (not c or acc != 'clave' or not comprobar_contrasena(clave, c[2])):
+            if not c or acc != 'clave':
                 comprobar_contrasena(clave, HASH_FALSO)
             FALLOS[ip] = (fallos + 1 if time.time() - desde < 60 else 1, desde if time.time() - desde < 60 else time.time())
             if isinstance(camp_id, str) and camp_id:
-                raise Rechazo('credenciales', 'Esa contraseña no abre la mesa.' if c and c[2]
+                raise Rechazo('credenciales', 'Esa contraseña no abre la mesa.' if acc == 'clave'
                               else 'A esta mesa solo se entra si el DM te invita.')
             raise Rechazo('credenciales', 'No hay ninguna mesa con ese nombre y esa contraseña. '
-                          'Si la mesa no tiene contraseña, pide al DM que te invite.')
-        FALLOS.pop(ip, None)
+                          'Las mesas abiertas salen en la lista: pulsa en ellas para entrar.')
+        if not abierta:
+            FALLOS.pop(ip, None)
         if es_miembro(con, c[0], u['clave']):
             raise Rechazo('existe', f'Ya estás en «{c[1]}».')
         con.execute('INSERT INTO miembros (campana, usuario, rol, disciplina, unido) VALUES (?,?,?,?,?)',
                     (c[0], u['clave'], 'jugador', DISCIPLINA_DEFECTO, ahora()))
-        apuntar(con, c[0], u, 'miembros', 'se unió a la mesa con la contraseña', None, [u['nombre']])
+        apuntar(con, c[0], u, 'miembros', 'se unió a la mesa (abierta)' if abierta else 'se unió a la mesa con la contraseña',
+                None, [u['nombre']])
         subir_rev(con, c[0])
         return {'ok': True, 'campana': {'id': c[0], 'nombre': c[1], 'rol': 'jugador', 'disciplina': DISCIPLINA_DEFECTO}}
     return con_escritura(hacer)
@@ -1081,6 +1157,8 @@ def resolver_solicitud(u, cuerpo):
                         (camp, f[0], 'dm', DISCIPLINA_DEFECTO, ahora()))
         con.execute('UPDATE solicitudes_campana SET estado=?, resuelta=?, nota=?, campana=? WHERE id=?',
                     ('aprobada' if aprobar else 'rechazada', ahora(), nota, camp, sid))
+        avisar(con, f[0], (f'🎉 El superusuario ha aprobado tu campaña «{f[1]}». Ya eres su DM.' if aprobar
+                           else f'El superusuario no ha aprobado tu campaña «{f[1]}».') + (f' Nota: {nota}' if nota else ''), camp)
         return f[0], f[1], camp
     usuario, nombre, camp = con_escritura(hacer)
     if aprobar:
@@ -1113,9 +1191,10 @@ def renombrar_campana(u, cuerpo):
 def miembro(actor, cuerpo):
     """El DM invita a una cuenta a su campaña (accion='invitar') o la saca de ella (accion='quitar').
     Sacar a alguien no borra nada: si vuelve, recupera su inventario, sus libros y su nivel."""
-    if not es_dm(actor):
-        raise Rechazo('permiso', 'Solo el DM de la campaña puede invitar o sacar jugadores.')
     camp, objetivo, accion = actor['campana'], clave_de(cuerpo.get('usuario')), cuerpo.get('accion')
+    irse = accion == 'quitar' and objetivo == actor['clave'] and actor.get('rol') != 'admin'   # un jugador se va él solo
+    if not es_dm(actor) and not irse:
+        raise Rechazo('permiso', 'Solo el DM de la campaña puede invitar o sacar jugadores.')
 
     def hacer(con):
         fila = buscar_usuario(con, objetivo)
@@ -1133,18 +1212,29 @@ def miembro(actor, cuerpo):
             con.execute('INSERT INTO miembros (campana, usuario, rol, disciplina, unido) VALUES (?,?,?,?,?)',
                         (camp, objetivo, 'jugador', DISCIPLINA_DEFECTO, ahora()))
             apuntar(con, camp, actor, 'miembros', f'invitó a {fila[1]} a la mesa', None, [fila[1]])
+            avisar(con, objetivo, f'👋 {quien_corto(actor)} te ha invitado a la mesa «{nombre_mesa(con, camp)}». '
+                                  'Elígela en el selector de campañas.', camp)
         elif accion == 'quitar':
             m = con.execute('SELECT rol FROM miembros WHERE campana=? AND usuario=?', (camp, objetivo)).fetchone()
             if not m:
                 raise Rechazo('invalida', f'«{fila[1]}» no está en esta campaña.')
-            if objetivo == actor['clave']:
-                raise Rechazo('invalida', 'No puedes sacarte a ti mismo de la campaña.')
+            if objetivo == actor['clave'] and m[0] == 'dm':
+                raise Rechazo('invalida', 'Un DM no puede irse de su propia campaña. Pide al superusuario que te quite el DM antes.')
             if m[0] == 'dm' and not es_admin(actor):
                 raise Rechazo('permiso', 'Solo el superusuario puede sacar a un DM de la campaña.')
             con.execute('DELETE FROM miembros WHERE campana=? AND usuario=?', (camp, objetivo))
-            apuntar(con, camp, actor, 'miembros', f'sacó a {fila[1]} de la mesa', None, [fila[1]])
-            nombre_mesa = (con.execute('SELECT nombre FROM campanas WHERE id=?', (camp,)).fetchone() or [camp])[0]
-            sacado.append(nombre_mesa)
+            if objetivo == actor['clave']:
+                apuntar(con, camp, actor, 'miembros', 'se fue de la mesa', None, [fila[1]])
+                bot_de_mesa(con, camp, f'🚪 {fila[1]} se ha ido de la mesa.')
+            else:
+                apuntar(con, camp, actor, 'miembros', f'sacó a {fila[1]} de la mesa', None, [fila[1]])
+                bot_de_mesa(con, camp, f'🚪 {fila[1]} ya no está en la mesa: {quien_corto(actor)} le ha sacado.')
+            la_mesa = nombre_mesa(con, camp)
+            if objetivo != actor['clave']:
+                sacado.append(la_mesa)
+                avisar(con, objetivo, f'🚪 {quien_corto(actor)} te ha sacado de la mesa «{la_mesa}». No se ha borrado nada.', camp)
+            else:
+                avisar(con, objetivo, f'🚪 Te has ido de la mesa «{la_mesa}». No se ha borrado nada: si te vuelven a invitar, lo recuperas todo.', camp)
             if (PRESENCIA.get(objetivo) or {}).get('campana') == camp:
                 PRESENCIA.pop(objetivo, None)
         else:
@@ -1181,6 +1271,9 @@ def cambiar_disciplina(actor, cuerpo):
         if antes != disc:
             apuntar(con, camp, actor, 'miembros', f'disciplina de {nombre_de(con, objetivo)}: {antes} → {disc}',
                     [{'k': 'disc', 'u': objetivo, 'antes': antes, 'despues': disc}], [nombre_de(con, objetivo)])
+            if objetivo != actor['clave']:
+                avisar(con, objetivo, f'🧰 {quien_corto(actor)} ha cambiado tus oficios en «{nombre_mesa(con, camp)}»: '
+                                      f'{texto_oficios(disc)}.', camp)
         subir_rev(con, camp)
         return {'ok': True}
     return con_escritura(hacer)
@@ -1226,6 +1319,7 @@ def aprobar_cuenta(actor, cuerpo):
             con.execute('INSERT OR IGNORE INTO miembros (campana, usuario, rol, disciplina, unido) VALUES (?,?,?,?,?)',
                         (camp, objetivo, 'jugador', DISCIPLINA_DEFECTO, ahora()))
             apuntar(con, camp, actor, 'miembros', f'aprobó la cuenta de {fila[1]} (creada con Discord) y la sentó en la mesa', None, [fila[1]])
+            avisar(con, objetivo, f'✅ {quien_corto(actor)} ha aprobado tu cuenta y te ha sentado en la mesa «{nombre_mesa(con, camp)}».', camp)
         else:
             con.execute('DELETE FROM sesiones WHERE usuario=?', (objetivo,))
             con.execute('DELETE FROM avatares WHERE usuario=?', (objetivo,))
@@ -1259,11 +1353,11 @@ def desbloquear_registro(u, cuerpo):
 def resumen_campanas(con):
     """Para el superusuario: todas las campañas con sus DM y cuántos jugadores tienen."""
     out = []
-    for i, n, creada in con.execute('SELECT id, nombre, creada FROM campanas ORDER BY creada, nombre').fetchall():
+    for i, n, creada, h, acc in con.execute('SELECT id, nombre, creada, clave_hash, acceso FROM campanas ORDER BY creada, nombre').fetchall():
         miembros_ = con.execute('SELECT u.nombre, m.rol FROM miembros m JOIN usuarios u ON u.clave=m.usuario '
                                 'WHERE m.campana=? ORDER BY u.nombre COLLATE NOCASE', (i,)).fetchall()
         out.append({'id': i, 'nombre': n, 'creada': creada, 'dms': [x for x, r in miembros_ if r == 'dm'],
-                    'jugadores': len(miembros_)})
+                    'jugadores': len(miembros_), 'acceso': acceso_de(acc, h)})
     return out
 
 
@@ -1297,8 +1391,7 @@ def lista_presencia(con, camp):
     fotos = versiones_avatar(con)
     for clave, nombre, rol, baneado, disciplina, pj in filas:
         p = PRESENCIA.get(clave)
-        if p and p.get('campana') != camp:
-            p = {**p, 'visible': False, 't': p['t'] - AUSENTE_S}   # está en otra campaña
+        otra = bool(p and p.get('campana') != camp)   # conectado, pero jugando en otra campaña
         hace = ahora_s - p['t'] if p else None
         if hace is not None and hace < EN_LINEA_S and p['visible']:
             estado = 'en-linea'
@@ -1308,7 +1401,22 @@ def lista_presencia(con, camp):
             estado = 'desconectado'
         lista.append({'clave': clave, 'nombre': nombre, 'rol': rol, 'estado': estado, 'baneado': bool(baneado),
                       'disciplina': disciplina, 'personaje': (leer_personaje(pj) or {}).get('nombre') or '',
-                      'lugar': p['lugar'] if p and estado != 'desconectado' else None,
+                      'otraMesa': otra and estado != 'desconectado',   # sale «en otra mesa» y no cuenta como de esta
+                      'lugar': p['lugar'] if p and estado != 'desconectado' and not otra else None,
+                      'hace': round(hace) if hace is not None else None, 'avatar': fotos.get(clave, 0)})
+    # Después, todas las demás cuentas (las que no juegan en esta mesa): «fuera». De ellas solo se dice si
+    # están conectadas a la taberna (no dónde). Los desterrados solo los usa el superusuario (el navegador los filtra).
+    dentro = {f[0] for f in filas}
+    for clave, nombre, baneado in con.execute("SELECT clave, nombre, baneado FROM usuarios WHERE rol!='admin' AND pendiente=0 "
+                                              "ORDER BY nombre COLLATE NOCASE").fetchall():
+        if clave in dentro:
+            continue
+        p = PRESENCIA.get(clave)
+        hace = ahora_s - p['t'] if p else None
+        estado = ('en-linea' if hace is not None and hace < EN_LINEA_S and p['visible']
+                  else 'ausente' if hace is not None and hace < AUSENTE_S else 'desconectado')
+        lista.append({'clave': clave, 'nombre': nombre, 'rol': 'fuera', 'fuera': True, 'estado': estado, 'baneado': bool(baneado),
+                      'disciplina': None, 'personaje': '', 'lugar': None,
                       'hace': round(hace) if hace is not None else None, 'avatar': fotos.get(clave, 0)})
     return lista
 
@@ -1829,6 +1937,11 @@ def transaccion(cuerpo, actor):
             if cambios:
                 apuntar(con, camp, actor, 'datos', resumen or 'cambios', cambios,
                         [nombre_de(con, c['d']) for c in cambios if c['d']])
+                # Aviso personal a cada jugador al que le han tocado sus cosas (se lo ha dado otro o lo ha cambiado el DM)
+                da = any(isinstance(o, dict) and o.get('t') == 'dar' for o in ops)
+                for dueno in sorted({c['d'] for c in cambios if c['d'] and c['d'] != actor['clave']}):
+                    icono = '🎁' if da else '🧙'
+                    avisar(con, dueno, f'{icono} {quien_corto(actor)} en «{actor["mesa"]}»: {resumen or "ha cambiado tus cosas"}.', camp)
             con.execute('INSERT INTO transacciones (id, rev, autor, fecha, resumen, ops, campana) VALUES (?,?,?,?,?,?,?)',
                         (tx_id, rev, actor['nombre'], ahora(), resumen, json.dumps(ops, ensure_ascii=False), camp))
             con.execute('COMMIT')
@@ -1864,6 +1977,8 @@ def cambiar_rol(actor, cuerpo):
             raise Rechazo('invalida', 'Tiene que quedar al menos un DM en la campaña.')
         con.execute('UPDATE miembros SET rol=? WHERE campana=? AND usuario=?', (rol, camp, objetivo))
         apuntar(con, camp, actor, 'miembros', f'{"dio" if rol == "dm" else "quitó"} poderes de DM a {fila[1]}', None, [fila[1]])
+        avisar(con, objetivo, (f'👑 {quien_corto(actor)} te ha hecho DM de la mesa «{nombre_mesa(con, camp)}».' if rol == 'dm'
+                               else f'{quien_corto(actor)} te ha quitado los poderes de DM en «{nombre_mesa(con, camp)}».'), camp)
         subir_rev(con, camp)
         return {'ok': True}
     return con_escritura(hacer)
@@ -1884,6 +1999,8 @@ def desterrar(actor, cuerpo):
             if fila[2] == 'admin':
                 raise Rechazo('permiso', 'El superusuario no se puede desterrar.')
             con.execute('UPDATE usuarios SET baneado=? WHERE clave=?', (1 if ban else 0, objetivo))
+            avisar(con, objetivo, '🚫 El superusuario ha suspendido tu cuenta.' if ban
+                   else '🕊️ El superusuario ha levantado la suspensión de tu cuenta. Bienvenido de nuevo.')
             if ban:   # fuera de la mesa ya: se cierran todas sus sesiones
                 con.execute('DELETE FROM sesiones WHERE usuario=?', (objetivo,))
             subir_rev(con)
@@ -1930,6 +2047,7 @@ def cambiar_contrasena(actor, cuerpo):
             con.execute("DELETE FROM enlaces_correo WHERE usuario=? AND tipo='recuperar'", (objetivo,))
             if objetivo != actor['clave']:   # se cierran sus sesiones abiertas
                 con.execute('DELETE FROM sesiones WHERE usuario=?', (objetivo,))
+                avisar(con, objetivo, '🔑 El superusuario te ha puesto una contraseña nueva. Cámbiala por una tuya en el menú de la cuenta.')
             con.execute('COMMIT')
         if objetivo != actor['clave']:
             avisar_por_correo(objetivo, 'el superusuario te ha puesto una contraseña nueva', '''El superusuario ha puesto una contraseña nueva a tu cuenta de La taberna de Jhon y se han cerrado tus
@@ -2426,8 +2544,10 @@ def datos_discord(con, clave):
 # (por defecto «Dobby») avisa cuando alguien entra por PRIMERA vez; su nombre y su mensaje de
 # bienvenida los cambia el DM de la mesa (o el superusuario). En la bienvenida, {nombre} = quien llega
 # y {mesa} = el nombre de la mesa.
-BOT_NOMBRE = 'Dobby'
-BOT_BIENVENIDA = '¡Dobby anuncia que {nombre} ha llegado a «{mesa}» por primera vez! Dobby os desea buena partida.'
+BOT_NOMBRE = 'Dobby Jr.'          # el bot de cada mesa (su DM le puede cambiar el nombre)
+BOT_BIENVENIDA = '¡{nombre} ha llegado a «{mesa}» por primera vez! Dobby Jr. os desea buena partida.'
+BOT_GENERAL = 'Dobby'             # el bot del chat general: versiones nuevas y apagado / encendido del servidor
+GENERAL = '*'                     # «campaña» de los mensajes del chat general (lo ven y escriben todas las cuentas)
 MAX_MENSAJE = 1000
 MAX_BOT_NOMBRE = 30
 MAX_BIENVENIDA = 300
@@ -2501,6 +2621,36 @@ def enviar_chat(actor, cuerpo):
     return con_escritura(hacer)
 
 
+def enviar_general(u, cuerpo):
+    """Chat general de la taberna: lo leen y escriben todas las cuentas, estén en la mesa que estén."""
+    texto = texto_limpio(cuerpo.get('texto'), MAX_MENSAJE + 1)
+    if not texto:
+        raise Rechazo('invalida', 'El mensaje está vacío.')
+    if len(texto) > MAX_MENSAJE:
+        raise Rechazo('invalida', f'El mensaje es demasiado largo (máximo {MAX_MENSAJE} caracteres).')
+    if demasiadas('chat:' + u['clave'], 8, 10):
+        raise Rechazo('espera', 'Vas muy deprisa: espera unos segundos antes de mandar otro mensaje.')
+
+    def hacer(con):
+        cur = con.execute('INSERT INTO chat (campana, autor, nombre, texto, fecha) VALUES (?,?,?,?,?)',
+                          (GENERAL, u['clave'], u['nombre'], texto, ahora()))
+        return {'ok': True, 'id': cur.lastrowid}
+    return con_escritura(hacer)
+
+
+def borrar_general(u, cuerpo):
+    """Moderación del chat general: solo el superusuario (los DM lo son de su mesa, no de toda la taberna)."""
+    if not es_admin(u):
+        raise Rechazo('permiso', 'Solo el superusuario puede borrar mensajes del chat general.')
+    try:
+        mid = int(cuerpo.get('id'))
+    except (TypeError, ValueError):
+        raise Rechazo('invalida', 'Mensaje no válido.')
+    con_escritura(lambda con: con.execute('UPDATE chat SET borrado=1, borrado_por=?, borrado_fecha=? WHERE id=? AND campana=?',
+                                          (u['clave'], ahora(), mid, GENERAL)))
+    return {'ok': True}
+
+
 def borrar_mensaje(actor, cuerpo):
     """Moderación: el DM de la mesa o el superusuario retiran un mensaje del chat (de quien sea, también del bot).
     Desaparece para todos; en la base queda marcado con quién lo retiró, y en el historial de la mesa."""
@@ -2546,10 +2696,16 @@ def duracion(seg):
 
 
 def bot_a_todas(con, texto):
-    """Un mensaje del bot de cada mesa en el chat de todas las campañas (con el nombre que le haya puesto su DM)."""
-    for camp, nombre in con.execute('SELECT id, bot_nombre FROM campanas').fetchall():
-        con.execute('INSERT INTO chat (campana, autor, nombre, texto, fecha) VALUES (?,?,?,?,?)',
-                    (camp, '', nombre or BOT_NOMBRE, texto, ahora()))
+    """Dobby lo dice en el chat GENERAL (lo ven todas las cuentas). Los chats de las mesas no se tocan:
+    allí Dobby Jr. solo anuncia quién llega por primera vez y quién se va."""
+    con.execute('INSERT INTO chat (campana, autor, nombre, texto, fecha) VALUES (?,?,?,?,?)',
+                (GENERAL, '', BOT_GENERAL, texto, ahora()))
+
+
+def bot_de_mesa(con, camp, texto):
+    """Dobby Jr. (o como lo haya llamado el DM) dice algo en el chat de una mesa."""
+    con.execute('INSERT INTO chat (campana, autor, nombre, texto, fecha) VALUES (?,?,?,?,?)',
+                (camp, '', bot_de(con, camp)['nombre'], texto_limpio(texto, 600), ahora()))
 
 
 def leer_ajuste(con, clave):
@@ -2603,6 +2759,122 @@ def latidos():
             con_escritura(lambda con: poner_ajuste(con, 'servidor-latido', time.time()))
         except Exception as e:   # que un fallo puntual no pare los latidos
             print('Latido no guardado:', e, file=sys.stderr)
+
+
+# ---- Avisos personales y chats privados
+MAX_AVISOS = 300   # por cuenta: los más viejos se van borrando
+
+
+def avisar(con, clave, texto, camp=None):
+    """Apunta un aviso para «clave» (dentro de la transacción de lo que lo provoca: o las dos cosas o ninguna)."""
+    if not clave:
+        return
+    con.execute('INSERT INTO avisos (usuario, texto, campana, fecha) VALUES (?,?,?,?)',
+                (clave, texto_limpio(texto, 600), camp, ahora()))
+    con.execute('DELETE FROM avisos WHERE usuario=? AND id <= (SELECT id FROM avisos WHERE usuario=? ORDER BY id DESC LIMIT 1 OFFSET ?)',
+                (clave, clave, MAX_AVISOS))
+
+
+def nombre_mesa(con, camp):
+    return (con.execute('SELECT nombre FROM campanas WHERE id=?', (camp,)).fetchone() or [camp])[0]
+
+
+def quien_corto(actor):
+    """«El superusuario», «Jhon (DM)» o «Ana», para los avisos."""
+    if actor.get('rol') == 'admin':
+        return 'El superusuario'
+    return f'{actor["nombre"]} (DM)' if actor.get('rol') == 'dm' else actor['nombre']
+
+
+def lista_avisos(con, clave, antes=None):
+    filas = con.execute('SELECT a.id, a.texto, a.fecha, a.leido, a.campana, c.nombre FROM avisos a LEFT JOIN campanas c ON c.id=a.campana '
+                        'WHERE a.usuario=? AND a.id<? ORDER BY a.id DESC LIMIT 60', (clave, antes or 2 ** 62)).fetchall()
+    return [{'id': i, 'texto': t, 'fecha': f, 'leido': bool(l), 'campana': c, 'mesa': m} for i, t, f, l, c, m in filas]
+
+
+def avisos_leidos(u, cuerpo):
+    try:
+        hasta = int(cuerpo.get('hasta'))
+    except (TypeError, ValueError):
+        raise Rechazo('invalida', 'Falta hasta dónde se ha leído.')
+    con_escritura(lambda con: con.execute('UPDATE avisos SET leido=1 WHERE usuario=? AND id<=? AND leido=0', (u['clave'], hasta)))
+    return {'ok': True}
+
+
+def resumen_buzon(con, clave):
+    """Lo que el sondeo necesita para los numeritos: avisos y privados sin leer, y el último id de cada cosa."""
+    a = con.execute('SELECT COALESCE(MAX(id),0), COALESCE(SUM(leido=0),0) FROM avisos WHERE usuario=?', (clave,)).fetchone()
+    p = con.execute('SELECT COALESCE(MAX(id),0) FROM privados WHERE de=? OR para=?', (clave, clave)).fetchone()
+    n = con.execute('SELECT COUNT(*) FROM privados WHERE para=? AND leido=0', (clave,)).fetchone()
+    return {'avisos': a[1], 'avisosUltimo': a[0], 'privados': n[0], 'privadosUltimo': p[0]}
+
+
+def puede_escribir_a(con, para):
+    f = con.execute('SELECT nombre, baneado, pendiente FROM usuarios WHERE clave=?', (para,)).fetchone()
+    if not f or f[1] or f[2]:
+        raise Rechazo('invalida', 'No se le puede escribir a esa cuenta.')
+    return f[0]
+
+
+def conversaciones(con, clave):
+    """Las conversaciones privadas de una cuenta: con quién, el último mensaje y cuántos sin leer."""
+    filas = con.execute('''SELECT otro, MAX(id) FROM (
+            SELECT para AS otro, id FROM privados WHERE de=? UNION ALL SELECT de AS otro, id FROM privados WHERE para=?)
+        GROUP BY otro ORDER BY MAX(id) DESC''', (clave, clave)).fetchall()
+    fotos = versiones_avatar(con)
+    out = []
+    for otro, ultimo in filas:
+        u = con.execute('SELECT nombre, baneado FROM usuarios WHERE clave=?', (otro,)).fetchone()
+        if not u:
+            continue
+        de, texto, fecha = con.execute('SELECT de, texto, fecha FROM privados WHERE id=?', (ultimo,)).fetchone()
+        n = con.execute('SELECT COUNT(*) FROM privados WHERE de=? AND para=? AND leido=0', (otro, clave)).fetchone()[0]
+        out.append({'clave': otro, 'nombre': u[0], 'baneado': bool(u[1]), 'avatar': fotos.get(otro, 0), 'ultimo': ultimo,
+                    'texto': texto[:120], 'mio': de == clave, 'fecha': fecha, 'sinLeer': n})
+    return out
+
+
+def mensajes_privados(con, clave, otro, desde=None, antes=None):
+    if desde is not None:
+        filas = con.execute('SELECT id, de, texto, fecha, leido FROM privados WHERE ((de=? AND para=?) OR (de=? AND para=?)) AND id>? '
+                            'ORDER BY id LIMIT 200', (clave, otro, otro, clave, desde)).fetchall()
+    else:
+        filas = con.execute('SELECT id, de, texto, fecha, leido FROM privados WHERE ((de=? AND para=?) OR (de=? AND para=?)) AND id<? '
+                            'ORDER BY id DESC LIMIT 60', (clave, otro, otro, clave, antes or 2 ** 62)).fetchall()[::-1]
+    return [{'id': i, 'autor': d, 'texto': t, 'fecha': f, 'leido': bool(l)} for i, d, t, f, l in filas]
+
+
+def enviar_privado(u, cuerpo):
+    para = clave_de(cuerpo.get('para'))
+    if para == u['clave']:
+        raise Rechazo('invalida', 'No puedes escribirte a ti mismo.')
+    texto = texto_limpio(cuerpo.get('texto'), MAX_MENSAJE + 1)
+    if not texto:
+        raise Rechazo('invalida', 'El mensaje está vacío.')
+    if len(texto) > MAX_MENSAJE:
+        raise Rechazo('invalida', f'El mensaje es demasiado largo (máximo {MAX_MENSAJE} caracteres).')
+    if demasiadas('chat:' + u['clave'], 8, 10):
+        raise Rechazo('espera', 'Vas muy deprisa: espera unos segundos antes de mandar otro mensaje.')
+
+    def hacer(con):
+        puede_escribir_a(con, para)
+        cur = con.execute('INSERT INTO privados (de, para, texto, fecha) VALUES (?,?,?,?)', (u['clave'], para, texto, ahora()))
+        return {'ok': True, 'id': cur.lastrowid}
+    return con_escritura(hacer)
+
+
+def privados_leidos(u, cuerpo):
+    otro = clave_de(cuerpo.get('con'))
+    con_escritura(lambda con: con.execute('UPDATE privados SET leido=1 WHERE de=? AND para=? AND leido=0', (otro, u['clave'])))
+    return {'ok': True}
+
+
+def directorio(con, yo):
+    """Cuentas a las que se puede escribir en privado (todas las activas menos uno mismo)."""
+    fotos = versiones_avatar(con)
+    return [{'clave': c, 'nombre': n, 'admin': r == 'admin', 'avatar': fotos.get(c, 0)} for c, n, r in con.execute(
+        "SELECT clave, nombre, rol FROM usuarios WHERE baneado=0 AND pendiente=0 AND clave!=? "
+        "AND (rol!='admin' OR ?) ORDER BY nombre COLLATE NOCASE", (yo, 1 if ADMIN_CLAVE else 0))]
 
 
 def ajustar_bot(actor, cuerpo):
@@ -2754,6 +3026,37 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     self.end_headers()
                     self.wfile.write(datos)
                     return
+                # --- avisos personales y chats privados (de la cuenta, no de una campaña)
+                if ruta == '/api/avisos':
+                    try:
+                        antes = int(q['antes'][0]) if 'antes' in q else None
+                    except ValueError:
+                        antes = None
+                    return self.json(200, {'ok': True, 'avisos': lista_avisos(con, u['clave'], antes), 'buzon': resumen_buzon(con, u['clave'])})
+                if ruta == '/api/general':   # chat general (?desde=ID los nuevos, ?antes=ID los anteriores)
+                    try:
+                        desde = int(q['desde'][0]) if 'desde' in q else None
+                        antes = int(q['antes'][0]) if 'antes' in q else None
+                    except ValueError:
+                        desde = antes = None
+                    return self.json(200, {'ok': True, 'mensajes': mensajes_chat(con, GENERAL, desde, antes),
+                                           'ultimo': ultimo_chat(con, GENERAL), 'borrados': borrados_chat(con, GENERAL),
+                                           'puedeModerar': es_admin(u)})
+                if ruta == '/api/privados':
+                    return self.json(200, {'ok': True, 'conversaciones': conversaciones(con, u['clave']),
+                                           'directorio': directorio(con, u['clave']), 'buzon': resumen_buzon(con, u['clave'])})
+                if ruta == '/api/privados/con':
+                    otro = clave_de((q.get('u') or [''])[0])
+                    f = con.execute('SELECT nombre FROM usuarios WHERE clave=?', (otro,)).fetchone()
+                    if not f or otro == u['clave']:
+                        return self.json(404, {'ok': False, 'mensaje': 'Esa cuenta no existe.'})
+                    try:
+                        desde = int(q['desde'][0]) if 'desde' in q else None
+                        antes = int(q['antes'][0]) if 'antes' in q else None
+                    except ValueError:
+                        desde = antes = None
+                    return self.json(200, {'ok': True, 'con': {'clave': otro, 'nombre': f[0], 'avatar': versiones_avatar(con).get(otro, 0)},
+                                           'mensajes': mensajes_privados(con, u['clave'], otro, desde, antes)})
                 if ruta == '/api/campanas':
                     if not es_admin(u) and not puede_crear_campanas(con, u):
                         return self.json(200, {'ok': True, 'campanas': campanas_de(con, u)})
@@ -2776,7 +3079,9 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                     except ValueError:
                         desde = -1
                     base = {'ok': True, 'rev': rev, 'usuario': actor, 'presencia': lista_presencia(con, camp),
-                            'chat': ultimo_chat(con, camp), 'chatBorrados': borrados_chat(con, camp)}   # V3.9: chat (nuevos / moderados)
+                            'chat': ultimo_chat(con, camp), 'chatBorrados': borrados_chat(con, camp),
+                            'buzon': resumen_buzon(con, actor['clave']),   # avisos personales y privados sin leer
+                            'general': ultimo_chat(con, GENERAL), 'generalBorrados': borrados_chat(con, GENERAL)}   # chat general   # V3.9: chat (nuevos / moderados)
                     if es_dm(actor):   # cuentas de Discord esperando aprobación (aviso en «En línea»)
                         base['pendientes'] = con.execute('SELECT COUNT(*) FROM usuarios WHERE pendiente=1 AND baneado=0').fetchone()[0]
                     if actor['rol'] == 'admin':   # solicitudes de campaña esperando (aviso al superusuario)
@@ -2856,11 +3161,12 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
         acciones = ('/api/transaccion', '/api/registro', '/api/entrar', '/api/salir',
                     '/api/usuarios/rol', '/api/usuarios/contrasena', '/api/usuarios/destierro',
                     '/api/campanas/crear', '/api/registro/desbloquear', '/api/campanas/renombrar', '/api/campanas/unirse',
-                    '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave', '/api/historial/deshacer', '/api/yo/avatar',
+                    '/api/mesa/miembro', '/api/mesa/disciplina', '/api/mesa/personaje', '/api/mesa/clave', '/api/mesa/acceso', '/api/historial/deshacer', '/api/yo/avatar',
                     '/api/discord/empezar', '/api/discord/desvincular', '/api/usuarios/aprobar',
                     '/api/recuperar', '/api/recuperar/nueva', '/api/correo/verificar', '/api/yo/correo', '/api/registro/confirmar',
                     '/api/campanas/solicitar', '/api/campanas/solicitud/cancelar', '/api/campanas/solicitud/resolver',
-                    '/api/chat/enviar', '/api/chat/bot', '/api/chat/borrar')
+                    '/api/chat/enviar', '/api/chat/bot', '/api/chat/borrar',
+                    '/api/avisos/leidos', '/api/privados/enviar', '/api/privados/leidos', '/api/general/enviar', '/api/general/borrar')
         if ruta not in acciones:
             return self.json(404, {'ok': False, 'mensaje': 'No existe.'})
         largo = int(self.headers.get('Content-Length') or 0)
@@ -2930,6 +3236,16 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, guardar_avatar(u, cuerpo))
             if ruta == '/api/yo/correo':
                 return self.json(200, poner_correo(u, cuerpo))
+            if ruta == '/api/avisos/leidos':
+                return self.json(200, avisos_leidos(u, cuerpo))
+            if ruta == '/api/privados/enviar':
+                return self.json(200, enviar_privado(u, cuerpo))
+            if ruta == '/api/privados/leidos':
+                return self.json(200, privados_leidos(u, cuerpo))
+            if ruta == '/api/general/enviar':
+                return self.json(200, enviar_general(u, cuerpo))
+            if ruta == '/api/general/borrar':
+                return self.json(200, borrar_general(u, cuerpo))
             con = conectar()
             try:
                 actor = self.actor_mesa(con, u)
@@ -2956,6 +3272,8 @@ class Manejador(http.server.SimpleHTTPRequestHandler):
                 return self.json(200, guardar_personaje(actor, cuerpo))
             if ruta == '/api/mesa/clave':
                 return self.json(200, poner_clave_mesa(actor, cuerpo))
+            if ruta == '/api/mesa/acceso':
+                return self.json(200, poner_acceso_mesa(actor, cuerpo))
             if ruta == '/api/historial/deshacer':
                 return self.json(200, deshacer(actor, cuerpo))
             if ruta == '/api/chat/enviar':

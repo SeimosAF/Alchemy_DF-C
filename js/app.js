@@ -283,7 +283,9 @@ sync.setHooks({
   presencia(lista) { panel.setPresencia(lista); },
   pendientes(n) { panel.setPendientes(n); },   // cuentas de Discord esperando aprobación (solo DM)
   solicitudes(n) { panel.setSolicitudes(n); },   // solicitudes de campaña (solo superusuario)
-  chat(n, b) { chat.alSondeo(n, b); },   // V3.9: mensajes nuevos (o retirados) en el chat de la mesa
+  chat(n, b) { chat.alSondeo(n, b); },
+  buzon(b) { chat.alBuzon(b); },   // avisos personales y chats privados
+  general(n, b) { chat.alGeneral(n, b); },   // chat general de la taberna   // V3.9: mensajes nuevos (o retirados) en el chat de la mesa
   usuario(u, antes) {
     aplicarRol();
     if (antes && antes.rol !== u.rol) sync.aviso(auth.esDM() ? '👑 Ahora eres DM de la mesa.' : 'Ya no eres DM de la mesa.');

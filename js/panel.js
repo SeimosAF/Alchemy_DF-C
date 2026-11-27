@@ -9,6 +9,7 @@ import * as sync from './sync.js';
 import * as avatar from './avatar.js';
 import * as cuenta from './cuenta.js';
 import * as filtros from './filtros.js';
+import * as chat from './chat.js';
 
 let presencia = [];
 let cuentas = null;        // cuentas que el DM puede invitar (se piden al abrir la sala)
@@ -64,8 +65,8 @@ export function resumenAlquimia() {
 }
 export function resumenUsuarios() {
   if (!auth.servidor) return 'Sin servidor: estás jugando en solitario';
-  const en = presencia.filter(p => p.estado === 'en-linea');
-  const aus = presencia.filter(p => p.estado === 'ausente');
+  const en = presencia.filter(p => !p.fuera && !p.otraMesa && p.estado === 'en-linea');
+  const aus = presencia.filter(p => !p.fuera && !p.otraMesa && p.estado === 'ausente');
   return `<span class="avatares">${en.concat(aus).slice(0, 6).map(p =>
     avatar.html(p.clave, p.avatar, inicial(p.nombre), `avatar avatar-${p.estado}`, p.nombre)).join('')}</span>` +
     `<b>${en.length}</b> en línea${aus.length ? ` · ${aus.length} ausente${aus.length === 1 ? '' : 's'}` : ''}`;
@@ -73,7 +74,7 @@ export function resumenUsuarios() {
 
 export function pintarTarjetas() {
   modulos.pintarResumenes();
-  const n = presencia.filter(p => p.estado === 'en-linea').length;
+  const n = presencia.filter(p => !p.fuera && !p.otraMesa && p.estado === 'en-linea').length;   // solo los que están en esta mesa
   const badge = document.getElementById('navOnlineCount');
   if (badge) badge.textContent = auth.servidor ? String(n) : '';
   cuenta.setEnLinea(n);   // el numerito del icono de la cuenta
@@ -166,13 +167,43 @@ export function renderUsuarios() {
   const en = filtros.estado('usuarios').en;
   const lista = todos.filter(p => filtros.coincide('usuarios', p.nombre, p.personaje, nombreDisciplina(p.disciplina), p.rol === 'dm' ? 'DM' : '')
       && (!en || (en === 'dm' ? p.rol === 'dm' || p.rol === 'admin' : p.estado === en)))
-    .sort((a, b) => (a.baneado - b.baneado) || orden[a.estado] - orden[b.estado] || a.nombre.localeCompare(b.nombre));
+    // Primero los de esta mesa y después todas las demás cuentas («fuera»)
+    .sort((a, b) => (!!a.fuera - !!b.fuera) || (a.baneado - b.baneado) || orden[a.estado] - orden[b.estado] || a.nombre.localeCompare(b.nombre));
   filtros.cuenta('usuarios', lista.length, todos.length);
   const txtEstado = { 'en-linea': 'En línea', ausente: 'Ausente', desconectado: 'Desconectado' };
-  el.innerHTML = lista.map(p => {
+  const nDentro = lista.filter(p => !p.fuera).length;
+  const cabFuera = `<h3 class="usr-seccion">🚶 Fuera de esta mesa <span class="muted">· cuentas de la taberna que no juegan en «${esc(auth.mesa?.nombre || '')}»</span></h3>`;
+  el.innerHTML = lista.map((p, i) => {
     const yo = p.clave === auth.usuario?.clave;
     const acciones = [];
     const admin = p.rol === 'admin';
+    const cab = p.fuera && i === nDentro ? cabFuera : '';
+    const privado = !yo && !p.baneado
+      ? `<button class="btn btn-sm btn-info" data-usr="privado" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}" title="Chat privado">💬 Mensaje</button>` : '';
+    if (p.fuera) {
+      // Cuenta que no juega en esta mesa: mensaje privado, invitar (DM) y lo de cuenta del superusuario
+      if (privado) acciones.push(privado);
+      if (auth.esDM() && !p.baneado) acciones.push(`<button class="btn btn-sm" data-usr="invitar-fila" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}">➕ Invitar a la mesa</button>`);
+      if (auth.esAdmin()) {
+        if (p.avatar) acciones.push(`<button class="btn btn-sm" data-usr="quitar-foto" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}">🖼️ Quitar foto</button>`);
+        if (!p.baneado) acciones.push(`<button class="btn btn-sm btn-info" data-usr="pass" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}">🔑 Nueva contraseña</button>`);
+        acciones.push(p.baneado
+          ? `<button class="btn btn-sm" data-usr="readmitir" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}">🕊️ Readmitir</button>`
+          : `<button class="btn btn-sm btn-danger" data-usr="desterrar" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}">🚫 Desterrar</button>`);
+      }
+      return cab + `<div class="usr-fila usr-fuera usr-${p.estado}${p.baneado ? ' usr-desterrado' : ''}">
+        ${avatar.html(p.clave, p.avatar, inicial(p.nombre), `avatar avatar-${p.estado} avatar-grande`)}
+        <div class="usr-info">
+          <div class="usr-nombre">${esc(p.nombre)} <span class="usr-rol rol-fuera">🚶 No está en esta mesa</span></div>
+          <div class="usr-estado"><span class="punto punto-${p.estado}"></span>${p.baneado ? 'Desterrado' : txtEstado[p.estado]}
+            ${p.estado === 'en-linea' ? ' · en la taberna' : ''}${p.estado === 'desconectado' && p.hace != null ? ' · visto ' + haceTxt(p.hace) : ''}</div>
+        </div>
+        <div class="usr-acciones">${acciones.join('')}</div>
+      </div>`;
+    }
+    if (privado) acciones.push(privado);
+    if (yo && p.rol === 'jugador')   // un jugador puede irse de la mesa él solo (el DM no: se lo quita el superusuario)
+      acciones.push(`<button class="btn btn-sm btn-danger" data-usr="irse" title="Sales de esta campaña. No se borra nada: si te vuelven a invitar, lo recuperas todo.">🚪 Salir de la mesa</button>`);
     if (!admin && !p.baneado) acciones.push(`<button class="btn btn-sm" data-usr="ver-perfil" data-clave="${esc(p.clave)}">🧙 Perfil</button>`);
     if (auth.esAdmin() && !yo && !admin) {
       if (p.avatar) acciones.push(`<button class="btn btn-sm" data-usr="quitar-foto" data-clave="${esc(p.clave)}" data-nombre="${esc(p.nombre)}" title="Por si alguien sube una foto que no toca">🖼️ Quitar foto</button>`);
@@ -221,7 +252,7 @@ export function renderUsuarios() {
           ${rolTxt} ${disc}</div>
         ${p.personaje ? `<div class="usr-pj">juega con <b>${esc(p.personaje)}</b></div>` : ''}
         <div class="usr-estado"><span class="punto punto-${p.estado}"></span>${txtEstado[p.estado]}
-          ${p.estado !== 'desconectado' && p.lugar ? ' · ' + esc(modulos.textoLugar(p.lugar)) : ''}
+          ${p.otraMesa ? ' · en otra mesa' : p.estado !== 'desconectado' && p.lugar ? ' · ' + esc(modulos.textoLugar(p.lugar)) : ''}
           ${p.estado === 'desconectado' ? ' · visto ' + haceTxt(p.hace) : ''}</div>
       </div>
       <div class="usr-acciones">${acciones.join('')}</div>
@@ -309,15 +340,25 @@ function renderGestion() {
             <select id="mesaInvitar">${fuera.map(c => `<option value="${esc(c.clave)}">${esc(c.nombre)}</option>`).join('')}</select>
             <button class="btn btn-sm" data-usr="invitar">➕ Invitar a la mesa</button>
           </div>` : '<p class="muted">Todas las cuentas ya están en esta mesa. Quien quiera unirse tiene que crearse una cuenta primero (con la palabra de paso de la mesa, o con Discord y tu aprobación).</p>'}
-        <h3>🔑 Contraseña de la mesa</h3>
-        <p class="muted">${auth.mesa.conClave
-          ? 'Esta mesa <b>tiene contraseña</b>: quien sepa su nombre y la contraseña puede unirse solo, sin invitación (entra como jugador alquimista).'
-          : 'Esta mesa <b>no tiene contraseña</b>: solo se entra por invitación. Si le pones una, quien la sepa podrá unirse solo.'}</p>
-        <div class="dm-dar">
-          <input type="password" id="mesaClaveNueva" maxlength="100" autocomplete="new-password" placeholder="${auth.mesa.conClave ? 'Nueva contraseña' : 'Contraseña (mínimo 4)'}">
-          <button class="btn btn-sm" data-usr="clave-mesa">${auth.mesa.conClave ? 'Cambiar' : 'Poner'} contraseña</button>
-          ${auth.mesa.conClave ? '<button class="btn btn-sm btn-danger" data-usr="quitar-clave-mesa">Quitar contraseña</button>' : ''}
-        </div>
+      </div>
+      <div class="gestion-caja gestion-ajustes">
+        <h3>⚙️ Ajustes de «${esc(auth.mesa.nombre)}»</h3>
+        <p class="muted">Cómo entra en la mesa quien no está en ella. Invitar desde aquí arriba o desde «En línea» funciona siempre, sea cual sea el modo.</p>
+        ${(() => {
+          const acc = auth.mesa.acceso || (auth.mesa.conClave ? 'clave' : 'invitacion');
+          const op = (v, t, d) => `<label class="acceso-opcion"><input type="radio" name="mesaAcceso" value="${v}" ${acc === v ? 'checked' : ''}>
+            <span><b>${t}</b><br><small class="muted">${d}</small></span></label>`;
+          return `<div class="acceso-opciones">
+            ${op('abierta', '🚪 Abierta', 'Cualquier cuenta de la taberna la ve normal y entra pulsando en ella.')}
+            ${op('clave', '🔒 Con contraseña', 'Sale con candado: entra quien escriba la contraseña.')}
+            ${op('invitacion', '✉️ Solo por invitación', 'Sale en gris hasta que la invites.')}
+          </div>
+          <div class="dm-dar" id="mesaClaveFila" ${acc === 'clave' ? '' : 'hidden'}>
+            <input type="password" id="mesaClaveNueva" maxlength="100" autocomplete="new-password"
+              placeholder="${auth.mesa.conClave ? 'Nueva contraseña (vacío = la misma)' : 'Contraseña (mínimo 4)'}">
+          </div>
+          <button class="btn btn-sm" data-usr="acceso-mesa">💾 Guardar</button>`;
+        })()}
       </div>`;
     }
   }
@@ -329,7 +370,8 @@ function renderGestion() {
       <span class="avatar avatar-grande">🗺️</span>
       <div class="usr-info">
         <div class="usr-nombre">${esc(c.nombre)}${auth.mesa?.id === c.id ? ' <span class="muted">(aquí estás)</span>' : ''}</div>
-        <div class="usr-estado">${c.jugadores} cuenta${c.jugadores === 1 ? '' : 's'} · DM: ${c.dms.length ? c.dms.map(esc).join(', ') : '<b>sin DM</b>'}</div>
+        <div class="usr-estado">${c.jugadores} cuenta${c.jugadores === 1 ? '' : 's'} · DM: ${c.dms.length ? c.dms.map(esc).join(', ') : '<b>sin DM</b>'}
+          · ${{ abierta: '🚪 Abierta', clave: '🔒 Con contraseña', invitacion: '✉️ Solo por invitación' }[c.acceso] || ''}</div>
       </div>
       <div class="usr-acciones">
         ${auth.mesa?.id === c.id ? '' : `<button class="btn btn-sm" data-usr="ir-mesa" data-id="${esc(c.id)}">🚪 Entrar</button>`}
@@ -379,6 +421,11 @@ function renderGestion() {
 export function initUsuarios(verInventario, verPerfil = () => {}) {
   const sala = document.getElementById('tab-usuarios');
   sala?.addEventListener('change', async e => {
+    if (e.target.name === 'mesaAcceso') {   // la contraseña solo hace falta en modo «con contraseña»
+      const fila = document.getElementById('mesaClaveFila');
+      if (fila) fila.hidden = e.target.value !== 'clave';
+      return;
+    }
     const s = e.target.closest('[data-usr-disc]');
     if (!s) return;
     const disciplinas = [...s.querySelectorAll('input[type=checkbox]:checked')].map(c => c.value);
@@ -393,6 +440,35 @@ export function initUsuarios(verInventario, verPerfil = () => {}) {
     const accion = b.dataset.usr;
     if (accion === 'ver-inv') { verInventario(b.dataset.clave); return; }
     if (accion === 'ver-perfil') { verPerfil(b.dataset.clave); return; }
+    if (accion === 'privado') { chat.abrirPrivado(b.dataset.clave, b.dataset.nombre); return; }
+    if (accion === 'irse') {
+      if (!confirm(`¿Salir de «${auth.mesa?.nombre}»? No se borra nada: si el DM te vuelve a invitar, recuperas tu inventario, tus libros y tu nivel.`)) return;
+      const r = await auth.apiMesa('/api/mesa/miembro', { usuario: auth.usuario.clave, accion: 'quitar' });
+      if (!r.ok) { alert(r.mensaje); return; }
+      auth.cambiarMesa();   // al selector de campañas
+      return;
+    }
+    if (accion === 'invitar-fila') {
+      if (!confirm(`¿Invitar a ${b.dataset.nombre} a «${auth.mesa?.nombre}»? Le llegará un aviso y la verá en su selector de campañas.`)) return;
+      const r = await auth.apiMesa('/api/mesa/miembro', { usuario: b.dataset.clave, accion: 'invitar' });
+      if (!r.ok) alert(r.mensaje); else sync.aviso(`${b.dataset.nombre} ya está invitado a la mesa.`);
+      await cargarGestion(); await sync.refrescar({ presencia: true });
+      return;
+    }
+    if (accion === 'acceso-mesa') {
+      const acceso = document.querySelector('input[name="mesaAcceso"]:checked')?.value;
+      const clave = document.getElementById('mesaClaveNueva')?.value || '';
+      if (!acceso) return;
+      if (acceso === 'clave' && clave && clave.length < 4) { alert('La contraseña de la mesa debe tener al menos 4 caracteres.'); return; }
+      if (acceso === 'clave' && !clave && !auth.mesa?.conClave) { alert('Escribe la contraseña de la mesa (mínimo 4 caracteres).'); return; }
+      const r = await auth.apiMesa('/api/mesa/acceso', { acceso, clave });
+      if (!r.ok) { alert(r.mensaje); return; }
+      if (auth.mesa) { auth.mesa.acceso = r.acceso; auth.mesa.conClave = r.conClave; }
+      sync.aviso({ abierta: 'Mesa abierta: cualquiera puede entrar desde su lista de campañas.',
+        clave: 'Mesa con contraseña: entra quien la sepa.', invitacion: 'Mesa solo por invitación.' }[r.acceso]);
+      renderGestion();
+      return;
+    }
     if (accion === 'clave-mesa' || accion === 'quitar-clave-mesa') {
       const clave = accion === 'quitar-clave-mesa' ? '' : document.getElementById('mesaClaveNueva')?.value || '';
       if (accion === 'clave-mesa' && clave.length < 4) { alert('La contraseña de la mesa debe tener al menos 4 caracteres.'); return; }

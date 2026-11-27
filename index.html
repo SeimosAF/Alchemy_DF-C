@@ -90,22 +90,41 @@
   <input type="file" id="importFile" accept=".json" style="display:none">
 </header>
 
-<!-- V3.9: panel del chat de la mesa (se abre con 💬). Ver js/chat.js -->
-<aside class="chat-panel" id="chatPanel" aria-label="Chat de la mesa" hidden>
+<!-- Panel del chat (se abre con 💬). Ver js/chat.js. Pestañas: chat general, chat de la mesa, chats privados y avisos personales -->
+<aside class="chat-panel" id="chatPanel" aria-label="Chat" hidden>
   <div class="chat-panel-cab">
-    <span class="chat-panel-icono" aria-hidden="true">💬</span>
-    <div class="chat-panel-titulos"><div class="chat-panel-sub">Chat de la mesa</div><div class="chat-panel-titulo" id="chatTitulo"></div></div>
+    <button type="button" class="chat-cab-btn chat-volver" id="chatVolver" title="Volver a la lista" aria-label="Volver" hidden>←</button>
+    <span class="chat-panel-icono" id="chatIcono" aria-hidden="true">💬</span>
+    <div class="chat-panel-titulos"><div class="chat-panel-sub" id="chatSub">Chat de la mesa</div><div class="chat-panel-titulo" id="chatTitulo"></div></div>
     <button type="button" class="chat-cab-btn" id="chatAjustesBtn" title="Ajustes del bot (solo DM)" aria-label="Ajustes del bot" hidden>⚙️</button>
     <button type="button" class="chat-cab-btn" id="chatCerrar" title="Cerrar" aria-label="Cerrar el chat">✕</button>
   </div>
+  <div class="chat-pestanas" role="tablist">
+    <button type="button" role="tab" data-chat-tab="general" aria-selected="false" title="Chat de toda la taberna">🍺 General <span class="chat-pestana-n" id="chatNGeneral"></span></button>
+    <button type="button" role="tab" data-chat-tab="mesa" aria-selected="true" title="Chat de esta mesa">🗺️ Mesa <span class="chat-pestana-n" id="chatNMesa"></span></button>
+    <button type="button" role="tab" data-chat-tab="privados" aria-selected="false">✉️ Privados <span class="chat-pestana-n" id="chatNPrivados"></span></button>
+    <button type="button" role="tab" data-chat-tab="avisos" aria-selected="false">🔔 Avisos <span class="chat-pestana-n" id="chatNAvisos"></span></button>
+  </div>
   <form class="chat-bot-form" id="chatBotForm" hidden>
-    <div class="chat-bot-tit">🧝 El bot de la mesa</div>
+    <div class="chat-bot-tit">🧝 Dobby Jr., el bot de esta mesa</div>
     <label>Nombre<input type="text" id="chatBotNombre" maxlength="30" required></label>
     <label>Mensaje de bienvenida<textarea id="chatBotBienvenida" maxlength="300" rows="3" required></textarea></label>
-    <p class="chat-bot-ayuda">Lo dice el bot la primera vez que alguien entra en la mesa. <code>{nombre}</code> = quien llega, <code>{mesa}</code> = el nombre de la mesa.</p>
+    <p class="chat-bot-ayuda">Lo dice la primera vez que alguien entra en la mesa (también avisa cuando alguien se va o le sacan). <code>{nombre}</code> = quien llega, <code>{mesa}</code> = el nombre de la mesa.</p>
     <p class="chat-bot-error" id="chatBotError"></p>
     <div class="chat-bot-botones"><button type="button" class="btn btn-sm btn-info" id="chatBotCancelar">Cancelar</button><button type="submit" class="btn btn-sm">Guardar</button></div>
   </form>
+  <!-- Chats privados: lista de conversaciones y «nuevo mensaje» -->
+  <div class="chat-lista chat-convs" id="chatConvs" hidden>
+    <label class="chat-nuevo">✏️ Escribir a…
+      <select id="chatNuevoPara"><option value="">Elige a alguien</option></select>
+    </label>
+    <div id="chatConvsLista"></div>
+  </div>
+  <!-- Avisos personales: lo que te ha pasado (invitaciones, cosas que te han dado, cambios del DM...) -->
+  <div class="chat-lista chat-avisos" id="chatAvisos" hidden>
+    <div id="chatAvisosLista"></div>
+    <button type="button" class="chat-anteriores" id="chatAvisosMas" hidden>Ver avisos anteriores</button>
+  </div>
   <div class="chat-lista" id="chatLista">
     <button type="button" class="chat-anteriores" id="chatAnteriores" hidden>Ver mensajes anteriores</button>
     <div id="chatMensajes"></div>
@@ -134,7 +153,7 @@
 <section id="tab-usuarios" class="tab-content">
   <div class="panel">
     <h2>🔮 Usuarios en línea</h2>
-    <p class="muted">Aquí está quien juega en esta campaña. Se actualiza solo cada pocos segundos. <span class="solo-dm">Como DM invitas a jugadores a la campaña (o los sacas),
+    <p class="muted">Arriba, quien juega en esta campaña; debajo, el resto de cuentas de la taberna (con «💬 Mensaje» para escribirles en privado). Se actualiza solo cada pocos segundos. <span class="solo-dm">Como DM invitas a jugadores a la campaña (o los sacas),
       les asignas disciplina, pones una contraseña nueva a quien la olvide y abres su inventario, sus libros y su nivel.</span>
       <span class="solo-admin">Como superusuario, además, creas campañas, das o quitas poderes de DM y destierras (o readmites) cuentas.</span></p>
     <div id="mesaGestion"></div>

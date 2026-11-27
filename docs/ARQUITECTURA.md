@@ -216,3 +216,25 @@ o la rechaza con un motivo. Se avisa por correo si la cuenta lo tiene confirmado
 - Moderación: el DM de la mesa y el superusuario tienen una 🗑️ en cada mensaje (`POST /api/chat/borrar`). El mensaje desaparece para todos; en la base queda marcado (`borrado`, `borrado_por`, `borrado_fecha`) y en el historial de la mesa. El sondeo trae `chatBorrados` y, si cambia, el navegador recarga la lista.
 - Apagado y encendido: al arrancar, el bot dice en todas las mesas que el servidor se ha encendido y cuánto tiempo estuvo apagado. Al apagarse bien (Ctrl+C, `docker compose down`/SIGTERM, cerrar la ventana en Windows) dice que se apaga. Si se apaga de golpe (corte de luz), al volver dice «se apagó sin avisar» con la hora del último latido (`ajustes.servidor-latido`, cada minuto). Las horas van como `{{hora:FECHA}}` y cada navegador las pinta en su hora local.
 - Versiones: `VERSION` y `NOVEDADES` al principio de `servidor.py`. Si al arrancar la versión no es la última anunciada (`ajustes.version-anunciada`), el bot lo cuenta con esa línea. **Al publicar una versión nueva, cambia las dos.**
+
+## V3.10: «En línea» con todas las cuentas, avisos personales y chats privados
+
+- «En línea» enseña primero a los de la mesa y después, en «Fuera de esta mesa», al resto de cuentas de la taberna (`lista_presencia` las devuelve con `fuera: true`; de ellas solo se dice si están conectadas, no dónde). El DM y el superusuario las invitan desde ahí (➕ Invitar a la mesa). Los números de «en línea» solo cuentan a los de la mesa.
+- Avisos personales (tabla `avisos`, pestaña 🔔 del chat; los 300 últimos por cuenta). `avisar(con, clave, texto, camp)` se llama dentro de la misma transacción que lo provoca: invitar o sacar de una mesa, dar o quitar poderes de DM, cambiar oficios o el personaje de otro, aprobar una cuenta, resolver una solicitud de campaña, destierro y readmisión, contraseña puesta por el superusuario, y cualquier transacción que cambie cosas de otro jugador (🎁 si se las dan, 🧙 si las cambia el DM), con el resumen de la transacción. Rutas `GET /api/avisos` y `POST /api/avisos/leidos`.
+- Chats privados (tabla `privados`, pestaña ✉️): entre dos cuentas cualesquiera de la taberna (no desterradas). Solo los ven esas dos personas; no hay moderación. Rutas `GET /api/privados` (conversaciones y a quién se puede escribir), `GET /api/privados/con?u=CLAVE` (`desde`/`antes`), `POST /api/privados/enviar` y `POST /api/privados/leidos`. Mismo límite que el chat de la mesa (8 mensajes cada 10 s).
+- El sondeo de `/api/estado` trae `buzon` (`avisos`, `privados` sin leer y el último id de cada uno) para los numeritos y los avisos pequeños.
+
+## V3.10: Chat general, Dobby y Dobby Jr.
+
+- **Chat general (🍺)**: un chat para toda la taberna, lo ve cualquier cuenta esté en la mesa que esté. Se guarda en la tabla `chat` con `campana='*'` (`GENERAL`), que nunca coincide con una campaña real. Rutas `GET /api/general` (`desde`/`antes`), `POST /api/general/enviar` y `POST /api/general/borrar`. Mismos límites que el de la mesa (1000 caracteres, 8 mensajes cada 10 s). Solo el superusuario lo modera. `/api/estado` trae `general` (último id) y `generalBorrados`.
+- **Dobby** (`BOT_GENERAL`) habla solo en el chat general: encendido y apagado del servidor (con hora) y versiones nuevas (`VERSION`/`NOVEDADES`).
+- **Dobby Jr.** (`BOT_NOMBRE`) es el bot de cada mesa. Solo avisa de dos cosas: alguien entra por primera vez (bienvenida editable por el DM) y alguien se va o le sacan. Las mesas que no habían cambiado el nombre del bot pasan a llamarse Dobby Jr.
+- **Salir de la mesa**: un jugador puede irse él solo («🚪 Salir de la mesa» en su fila de «En línea»); va por `/api/mesa/miembro` con `quitar` sobre sí mismo. Un DM no puede irse de su propia campaña.
+- **«En línea · en otra mesa»**: un miembro conectado pero jugando en otra campaña sale como en línea con `otraMesa: true` (sin lugar y sin contar en los conectados de la mesa).
+
+## V3.10: Cómo se entra en una campaña (abierta, con contraseña o solo por invitación)
+
+- Columna `campanas.acceso`: `abierta` (cualquier cuenta entra pulsando en ella), `clave` (entra quien sepa la contraseña, `clave_hash`) o `invitacion` (solo si el DM o el superusuario la invitan). Al crear la columna, las campañas con contraseña pasan a `clave` y las demás a `abierta`. Las campañas nuevas empiezan abiertas.
+- El DM y el superusuario lo cambian en «⚙️ Ajustes de la campaña» (pestaña Usuarios): `POST /api/mesa/acceso {acceso, clave}`. La contraseña solo se guarda en modo `clave`; en ese modo, dejarla vacía mantiene la que había. La ruta antigua `/api/mesa/clave` sigue valiendo (poner contraseña = `clave`, quitarla = `abierta`).
+- Selector de campañas: las abiertas salen como una mesa normal, las de contraseña con candado y su recuadro, y las de solo invitación en gris. Invitar funciona en cualquier modo; al invitar, la mesa pasa a ser «suya» y sale normal.
+- `POST /api/campanas/unirse {id}` entra sin contraseña solo si la mesa es abierta. Por nombre (formulario manual) solo valen las de contraseña, con el mismo mensaje si no existe o no coincide.
