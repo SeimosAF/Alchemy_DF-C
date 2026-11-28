@@ -151,23 +151,27 @@ export function construirTarjetas(mesa, centro = '', opciones = {}) {
     observador = new ResizeObserver(() => colocar(mesa));
     observador.observe(mesa.querySelector('.orbita3d-escena'));
   }
-  if (mesa.dataset.orbita) return;
-  mesa.dataset.orbita = '1';   // los controles se enganchan una sola vez
+  if (mesa.dataset.orbitaLista) return;
+  // Los controles se enganchan una sola vez. Ojo: la marca NO puede llamarse data-orbita, porque
+  // closest('[data-orbita]') la encontraría en cualquier clic y giraría siempre a la derecha.
+  mesa.dataset.orbitaLista = '1';
   // Flechas, teclado o pulsar una de los lados: el destino avanza y el muelle lleva hasta él
   // conservando la velocidad que hubiera (si ya giraba, no frena de golpe).
   const girar = d => { frente = (moviendo ? Math.round(destino()) : frente) + d; animar(mesa, MUELLE_BOTON); };
   mesa.addEventListener('click', e => {
     if (performance.now() - finArrastre < 350) { e.preventDefault(); e.stopPropagation(); return; }
     const portal = e.target.closest('[data-portal]');
-    if (portal && alPortal) {   // el planeta se traga la vista y lleva al selector de campañas
-      portal.closest('.orbita3d')?.classList.add('cruzando');
-      setTimeout(alPortal, 650);
-      return;
-    }
+    if (portal && alPortal) { cruzarPortal(mesa, portal); return; }   // el planeta lleva al selector de campañas
     const f = e.target.closest('[data-orbita]');
     if (f) { girar(Number(f.dataset.orbita)); return; }
     const it = e.target.closest('.orbita3d-item');
-    if (!it) return;
+    if (!it) {   // clic en un hueco de la órbita: gira hacia el lado en el que se ha pulsado
+      const esc3d = mesa.querySelector('.orbita3d-escena');
+      if (!esc3d?.contains(e.target) || e.target.closest('.orbita3d-planeta')) return;
+      const r = esc3d.getBoundingClientRect();
+      girar(e.clientX < r.left + r.width / 2 ? -1 : 1);
+      return;
+    }
     const n = mesa.querySelectorAll('.orbita3d-item').length;
     const rel = relativo(Number(it.dataset.i), frente, n);
     if (Math.round(rel) !== 0) girar(Math.round(rel));   // uno de los lados: primero gira hasta él
@@ -230,6 +234,59 @@ export function construirTarjetas(mesa, centro = '', opciones = {}) {
   // bola la pierde y eso NO es soltar. Solo cuenta si la pierde la propia escena.
   mesa.addEventListener('lostpointercapture', e => { if (e.target === escena()) soltar(e); });
   window.addEventListener('resize', () => colocar(mesa));
+}
+
+// V3.10.1: cruzar el portal. Las lunas caen en espiral hacia el planeta, el remolino se acelera y se
+// abre hasta tragarse la pantalla; entonces se recarga en el selector de campañas, que empieza con el
+// mismo remolino pintado (js/portal-llegada.js) y el pergamino sale de él (auth.js).
+function cruzarPortal(mesa, portal) {
+  const orb = portal.closest('.orbita3d');
+  if (!orb || orb.classList.contains('cruzando')) return;
+  const pr = portal.getBoundingClientRect();
+  const cx = pr.left + pr.width / 2, cy = pr.top + pr.height / 2;
+  const ir = () => {
+    try {
+      sessionStorage.setItem('taberna.portal', JSON.stringify({
+        x: Math.round(cx / innerWidth * 1000) / 10, y: Math.round(cy / innerHeight * 1000) / 10 }));
+    } catch (_) {}
+    alPortal();
+  };
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches || !orb.animate) { alPortal(); return; }
+  cancelAnimationFrame(animId); moviendo = true; vel = 0;   // la órbita se queda quieta: ya nada se elige
+  orb.classList.add('cruzando');
+  // 1) Las lunas caen en espiral, cada una un poco después de la anterior
+  const esc = mesa.querySelector('.orbita3d-escena').getBoundingClientRect();
+  const px = cx - esc.left, py = cy - esc.top;
+  [...mesa.querySelectorAll('.orbita3d-item')].forEach((it, k) => {
+    const m = /translate\(([-\d.]+)px, ([-\d.]+)px\).*scale\(([-\d.]+)\)/.exec(it.style.transform || '');
+    if (!m) return;
+    const dx = Number(m[1]) - px, dy = Number(m[2]) - py, s0 = Number(m[3]);
+    const r0 = Math.hypot(dx, dy), a0 = Math.atan2(dy, dx), op0 = Number(it.style.opacity || 1);
+    const pasos = [];
+    for (let j = 0; j <= 12; j++) {
+      const t = j / 12, r = r0 * Math.pow(1 - t, 1.5), a = a0 + t * Math.PI * 1.6;
+      pasos.push({ transform: `translate(${(px + r * Math.cos(a)).toFixed(1)}px, ${(py + r * Math.sin(a)).toFixed(1)}px) translate(-50%, -50%) scale(${(s0 * (1 - 0.92 * t)).toFixed(3)}) rotate(${Math.round(t * 300)}deg)`,
+        opacity: t < 0.75 ? op0 : op0 * (1 - t) * 4 });
+    }
+    it.animate(pasos, { duration: 760, delay: 35 * k, easing: 'cubic-bezier(.5,0,.8,.4)', fill: 'forwards' });
+  });
+  // 2) El remolino se abre desde el planeta hasta cubrirlo todo
+  const velo = document.createElement('div');
+  velo.className = 'portal-velo';
+  velo.style.setProperty('--portal-x', cx + 'px');
+  velo.style.setProperty('--portal-y', cy + 'px');
+  velo.innerHTML = '<div class="portal-giro"></div><div class="portal-ojo"></div>';
+  document.body.appendChild(velo);
+  const R = Math.hypot(Math.max(cx, innerWidth - cx), Math.max(cy, innerHeight - cy)) + 20;
+  const r0 = pr.width / 2;
+  velo.animate([
+    { clipPath: `circle(${r0 * 0.6}px at ${cx}px ${cy}px)`, opacity: 0 },
+    { clipPath: `circle(${r0 * 1.1}px at ${cx}px ${cy}px)`, opacity: 1, offset: 0.3 },
+    { clipPath: `circle(${R}px at ${cx}px ${cy}px)`, opacity: 1 }
+  ], { duration: 900, delay: 300, easing: 'cubic-bezier(.7,0,.6,1)', fill: 'forwards' });
+  setTimeout(ir, 1250);
+  // Si se vuelve con «atrás» y el navegador recupera la página tal cual, que no se quede tapada
+  addEventListener('pageshow', e => { if (e.persisted) location.reload(); }, { once: true });
 }
 
 // Distancia (en posiciones, con signo y por el camino corto) de la opción i a la que está delante

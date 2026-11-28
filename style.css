@@ -1719,9 +1719,47 @@ body:not(.es-dm) #tab-inventario .inv-barra .subtab-bar { display:none; }
 .orbita3d-portal-txt { position:absolute; left:50%; bottom:calc(100% + 14px); transform:translateX(-50%); white-space:nowrap; font-family:var(--f-texto);
   font-style:italic; font-size:.95em; color:#e6cfa3; opacity:0; transition:opacity .25s; pointer-events:none; text-shadow:0 1px 3px rgba(0,0,0,.7); }
 .orbita3d-planeta.es-portal:hover .orbita3d-portal-txt, .orbita3d-planeta.es-portal:focus-visible .orbita3d-portal-txt { opacity:1; }
-.orbita3d.cruzando .orbita3d-planeta { animation:portal-cruza .65s ease-in forwards; z-index:400; }
-.orbita3d.cruzando .orbita3d-item, .orbita3d.cruzando .orbita3d-anillo, .orbita3d.cruzando .orbita3d-flecha { transition:opacity .4s; opacity:0 !important; }
-@keyframes portal-cruza { to { transform:translate(-50%, -50%) scale(6) rotate(90deg); opacity:0; filter:blur(4px); } }
+/* V3.10.1: cruzar el portal (modulos.js cruzarPortal). Las lunas caen en espiral (con JS), el anillo y las
+   flechas se apagan, el planeta gira y brilla cada vez más y el remolino se abre hasta cubrir la pantalla. */
+.orbita3d.cruzando { pointer-events:none; }
+.orbita3d.cruzando .orbita3d-planeta { animation:portal-traga 1.2s cubic-bezier(.6,0,.4,1) forwards; z-index:400; }
+.orbita3d.cruzando .orbita3d-remolino { animation-duration:.45s; inset:-34px; filter:blur(2px) brightness(1.4); transition:inset .6s; }
+.orbita3d.cruzando .orbita3d-anillo, .orbita3d.cruzando .orbita3d-flecha, .orbita3d.cruzando .orbita3d-sombra,
+.orbita3d.cruzando .orbita3d-portal-txt { transition:opacity .45s; opacity:0 !important; }
+.orbita3d.cruzando ~ .orbita-info { transition:opacity .4s, transform .4s; opacity:0; transform:translateY(10px); }
+@keyframes portal-traga {
+  0%   { transform:translate(-50%, -50%) scale(1) rotate(0); filter:brightness(1); }
+  25%  { transform:translate(-50%, -50%) scale(.88) rotate(-25deg); filter:brightness(1.2); }
+  100% { transform:translate(-50%, -50%) scale(1.5) rotate(320deg); filter:brightness(2.2) blur(2px); }
+}
+/* El remolino que cubre la pantalla: el mismo al irse (.portal-velo) y al llegar (html.portal-llegada) */
+.portal-velo { position:fixed; inset:0; z-index:10000; pointer-events:none; overflow:hidden; opacity:0; }
+.portal-giro, html.portal-llegada body::after {
+  position:fixed; left:var(--portal-x, 50%); top:var(--portal-y, 45%); width:300vmax; height:300vmax; margin:-150vmax 0 0 -150vmax;
+  border-radius:50%; pointer-events:none;
+  background:
+    radial-gradient(circle, #04020b 0, #0d0824 4%, rgba(30,16,70,.85) 9%, rgba(30,16,70,0) 22%),
+    repeating-conic-gradient(from 0deg, #1a0f3c 0deg, #3b6fd6 22deg, #8d55d6 44deg, #f2d58a 58deg, #2b1866 80deg, #1a0f3c 90deg);
+  filter:blur(6px); animation:portal-gira 1.1s linear infinite; }
+.portal-ojo { position:absolute; left:var(--portal-x); top:var(--portal-y); width:40px; height:40px; margin:-20px 0 0 -20px; border-radius:50%;
+  background:radial-gradient(circle, #fff7dc 0, rgba(242,213,138,.9) 30%, rgba(242,213,138,0) 70%);
+  animation:portal-ojo 1.2s ease-in .3s forwards; }
+@keyframes portal-gira { to { transform:rotate(360deg); } }
+@keyframes portal-ojo { to { transform:scale(9); opacity:.85; } }
+html.portal-llegada body::after { content:''; z-index:10000; }
+html.portal-llegada.portal-abriendo body::after { animation:portal-gira 1.1s linear infinite, portal-se-abre 1.1s cubic-bezier(.3,0,.2,1) forwards; }
+@keyframes portal-se-abre { 0% { opacity:1; scale:1; } 60% { opacity:.6; } 100% { opacity:0; scale:2.4; } }
+/* El pergamino sale girando del centro del remolino */
+.entrada.desde-portal .pergamino { animation:pergamino-del-portal 1.1s cubic-bezier(.2,.9,.25,1.1) both; }
+@keyframes pergamino-del-portal {
+  0%   { transform:scale(.15) rotate(-160deg); opacity:0; filter:blur(10px) drop-shadow(0 22px 30px rgba(0,0,0,.6)); }
+  55%  { opacity:1; }
+  100% { transform:none; opacity:1; filter:drop-shadow(0 22px 30px rgba(0,0,0,.6)); }
+}
+@media (prefers-reduced-motion:reduce) {
+  html.portal-llegada body::after { display:none; }
+  .entrada.desde-portal .pergamino { animation:none; }
+}
 /* Selector de campañas: buscador y mesas con candado */
 .mesa-buscar { width:100%; padding:8px 12px; border-radius:8px; border:1px solid #b9a27c; background:#fffaf0; font:inherit; margin-top:6px; }
 .mesa-ajena { padding:0; cursor:default; }

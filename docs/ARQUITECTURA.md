@@ -238,3 +238,9 @@ o la rechaza con un motivo. Se avisa por correo si la cuenta lo tiene confirmado
 - El DM y el superusuario lo cambian en «⚙️ Ajustes de la campaña» (pestaña Usuarios): `POST /api/mesa/acceso {acceso, clave}`. La contraseña solo se guarda en modo `clave`; en ese modo, dejarla vacía mantiene la que había. La ruta antigua `/api/mesa/clave` sigue valiendo (poner contraseña = `clave`, quitarla = `abierta`).
 - Selector de campañas: las abiertas salen como una mesa normal, las de contraseña con candado y su recuadro, y las de solo invitación en gris. Invitar funciona en cualquier modo; al invitar, la mesa pasa a ser «suya» y sale normal.
 - `POST /api/campanas/unirse {id}` entra sin contraseña solo si la mesa es abierta. Por nombre (formulario manual) solo valen las de contraseña, con el mismo mensaje si no existe o no coincide.
+
+## V3.10.1: giro de la mesa y cruzar el portal
+
+- La mesa marcaba su contenedor con `data-orbita="1"` para enganchar los controles una sola vez, y `closest('[data-orbita]')` lo encontraba en cualquier clic: todo giraba a la derecha. Ahora la marca es `data-orbita-lista`. Pulsar un hueco de la órbita gira hacia ese lado; pulsar una bola de un lado gira hasta ella.
+- Cruzar el portal (`cruzarPortal` en js/modulos.js): las lunas caen en espiral (Web Animations), el planeta gira y brilla y un remolino (`.portal-velo`) se abre desde él hasta cubrir la pantalla. Entonces se recarga en el selector, guardando en `sessionStorage['taberna.portal']` dónde estaba el planeta.
+- `js/portal-llegada.js` (en el `<head>`, sin módulos) lee esa marca y pinta el mismo remolino desde el primer fotograma (`html.portal-llegada body::after`). `salirDelPortal()` en js/auth.js lo abre y el pergamino sale girando de él en vez de desenrollarse. Si nada lo abre, se quita solo a los 6 s. Con «reducir movimiento» no hay animación.

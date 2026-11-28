@@ -427,6 +427,19 @@ function elegirMesa(pantalla) {
   });
 }
 
+// V3.10.1: se llega cruzando el portal de la mesa (js/portal-llegada.js ya pintó el remolino):
+// el remolino se abre y el pergamino sale girando de él, en vez de desenrollarse.
+function salirDelPortal(pantalla) {
+  const raiz = document.documentElement;
+  if (!raiz.classList.contains('portal-llegada')) return false;
+  requestAnimationFrame(() => {
+    pantalla.classList.add('desde-portal');
+    raiz.classList.add('portal-abriendo');
+  });
+  setTimeout(() => { raiz.classList.remove('portal-llegada', 'portal-abriendo'); pantalla.classList.remove('desde-portal'); }, 1400);
+  return true;
+}
+
 function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
   return new Promise(resolve => {
     document.body.classList.add('sin-sesion');
@@ -434,14 +447,14 @@ function mostrarPantalla(pantalla, soloMesa = false, aviso = null) {
     if (soloMesa) {   // ya ha entrado: solo falta elegir mesa
       const elegida = elegirMesa(pantalla);
       pantalla.style.setProperty('--media-hoja', (pantalla.querySelector('.pergamino-hoja').offsetHeight / 2) + 'px');
-      pantalla.classList.add('desenrollar');
+      if (!salirDelPortal(pantalla)) pantalla.classList.add('desenrollar');
       elegida.then(c => sellar(pantalla, c, resolve));
       return;
     }
     // Mide el pergamino para que los rodillos se separen justo lo que mide al desenrollarse
     const hoja = pantalla.querySelector('.pergamino-hoja');
     pantalla.style.setProperty('--media-hoja', (hoja.offsetHeight / 2) + 'px');
-    pantalla.classList.add('desenrollar');
+    if (!salirDelPortal(pantalla)) pantalla.classList.add('desenrollar');
     const form = pantalla.querySelector('#entradaForm');
     const error = pantalla.querySelector('#entradaError');
     const nombre = pantalla.querySelector('#entradaNombre');

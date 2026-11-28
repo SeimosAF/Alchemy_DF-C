@@ -60,9 +60,9 @@ RAIZ = os.path.dirname(os.path.abspath(__file__))
 
 # Versión de la app y lo que trae de nuevo, en una línea. Al arrancar con una versión distinta de la
 # última anunciada, Dobby lo cuenta en el chat general. Al publicar una versión nueva, cambia las dos.
-VERSION = '3.10'
-NOVEDADES = ('chat general con Dobby y Dobby Jr. en cada mesa, campañas abiertas, con contraseña o solo por invitación, '
-             '«En línea» con todas las cuentas, avisos personales y chats privados.')
+VERSION = '3.10.1'
+NOVEDADES = ('la mesa gira hacia el lado en el que pulsas y cruzar el portal del centro tiene animación nueva '
+             'hasta el selector de campañas.')
 PUERTO = int(sys.argv[1]) if len(sys.argv) > 1 and sys.argv[1].isdigit() else int(os.environ.get('PORT', '8080'))
 HOST = os.environ.get('HOST', '0.0.0.0')
 DB_PATH = os.environ.get('DB_PATH') or os.path.join(RAIZ, 'datos', 'alquimia.db')
